@@ -24,7 +24,7 @@ Open **History** to browse accepted product changes by entity or kind. Follow co
 
 The entry page includes a synthetic editor and graph demo. **Open full demo** gives you an uncropped view before sign-in.
 
-Run `pnpm alpha:verify` on the separate test database and `pnpm alpha:stop` to stop the web and worker. The setup guide gives the Playwright installation command for your platform.
+Run `pnpm alpha:verify` on the dedicated test database. Run `pnpm alpha:reset` to restore its generated fixture scenario once verification has stopped. `pnpm alpha:stop` stops the interactive web and worker. The setup guide gives the Playwright installation command for your platform.
 
 ## Start the first megarun
 

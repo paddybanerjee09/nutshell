@@ -63,7 +63,7 @@ async function stopAfterFailure(stop: () => Promise<void>, error: unknown): Prom
   throw error;
 }
 
-export async function startServices(env: NodeJS.ProcessEnv, optimized: boolean, signal?: AbortSignal) {
+export async function startServices(env: NodeJS.ProcessEnv, optimized: boolean, signal?: AbortSignal, scope: "all" | "web" | "worker" = "all") {
   signal?.throwIfAborted();
   const config = loadLocalConfig(env);
   const children: ReturnType<typeof launch>[] = [];
@@ -80,8 +80,8 @@ export async function startServices(env: NodeJS.ProcessEnv, optimized: boolean, 
   const deadline = new AbortController();
   const startupSignal = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
   try {
-    children.push(launch("apps/web/src/serve.ts", optimized ? ["--optimized"] : [], env));
-    children.push(launch("apps/worker/src/main.ts", [], env));
+    if (scope !== "worker") children.push(launch("apps/web/src/serve.ts", optimized ? ["--optimized"] : [], env));
+    if (scope !== "web") children.push(launch("apps/worker/src/main.ts", [], env));
     const exited = Promise.race(children.map((child) => child.exited));
     const failOnExit = exited.then((message) => { throw new Error(message); });
     const timeout = delay(startupTimeout, undefined, { signal: startupSignal }).catch((error: unknown) => {

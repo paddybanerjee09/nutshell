@@ -16,7 +16,8 @@
     "./setup": "./src/setup.ts",
     "./team-notes": "./src/team-notes.ts",
     "./team-tasks": "./src/team-tasks.ts",
-    "./provision": "./src/provision.ts"
+    "./provision": "./src/provision.ts",
+    "./verification-reset": "./src/verification-reset.ts"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.28",
