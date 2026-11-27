@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { useWorkspaceProposals } from "./workspace-proposals";
 
 type SavedDraft = { markdown: string; sourceRevision: string; version: number };
+type NewDraftInput = { path: string; title: string; sourceRevision: string };
 type ReadyResponse = { status: "ready"; source: string; sourceRevision: string; draft: SavedDraft | null };
 type Conflict = { status: "conflict"; reason: "source" | "version"; currentRevision: string | null; draft: SavedDraft | null };
 type Editing = {
@@ -23,6 +24,9 @@ type DraftEntry = Editing | { kind: "loading" } | { kind: "unavailable"; message
 type WorkspaceDrafts = {
   canEdit: boolean;
   entries: ReadonlyMap<string, DraftEntry>;
+  newPaths: readonly string[];
+  newPathsReady: boolean;
+  create: (input: NewDraftInput) => Promise<string | null>;
   begin: (path: string) => Promise<void>;
   change: (path: string, markdown: string) => void;
   save: (path: string) => Promise<void>;
@@ -59,10 +63,34 @@ export function WorkspaceDraftProvider({ repositoryId, canEdit, children }: {
 }) {
   const entriesRef = useRef(new Map<string, DraftEntry>());
   const [entries, setEntries] = useState<ReadonlyMap<string, DraftEntry>>(entriesRef.current);
+  const [newPaths, setNewPaths] = useState<readonly string[]>([]);
+  const [newPathsReady, setNewPathsReady] = useState(false);
   const endpoint = "/api/repos/" + encodeURIComponent(repositoryId) + "/draft";
   const proposals = useWorkspaceProposals(repositoryId, canEdit);
   const hasUnsaved = [...entries.values()].some((entry) =>
     entry.kind === "editing" && (entry.saving || entry.markdown !== entry.baseline));
+
+  useEffect(() => {
+    if (!canEdit) return;
+    const request = new AbortController();
+    async function loadNewPaths() {
+      try {
+        const response = await fetch(endpoint, {
+          cache: "no-store", signal: AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]),
+        });
+        if (response.ok && !request.signal.aborted) {
+          const { drafts } = await response.json() as { drafts: { path: string }[] };
+          setNewPaths(drafts.map(({ path }) => path));
+        }
+      } catch {
+        // Published documents remain available if the private draft list cannot load.
+      } finally {
+        if (!request.signal.aborted) setNewPathsReady(true);
+      }
+    }
+    void loadNewPaths();
+    return () => request.abort();
+  }, [canEdit, endpoint]);
 
   useEffect(() => {
     if (!hasUnsaved) return;
@@ -87,6 +115,7 @@ export function WorkspaceDraftProvider({ repositoryId, canEdit, children }: {
         current.sourceRevision !== proposal.baseRevision || current.version !== proposal.draftVersion ||
         current.markdown !== current.baseline || current.markdown !== source) return;
     set(proposal.path, fromSaved({ markdown: source, sourceRevision: proposal.mergeRevision, version: 0 }));
+    setNewPaths((paths) => paths.includes(proposal.path) ? paths.filter((path) => path !== proposal.path) : paths);
   }, [set]);
 
   function updateEditing(path: string, update: (entry: Editing) => Editing) {
@@ -94,7 +123,7 @@ export function WorkspaceDraftProvider({ repositoryId, canEdit, children }: {
     if (current?.kind === "editing") set(path, update(current));
   }
 
-  async function begin(path: string) {
+  const begin = useCallback(async (path: string) => {
     const current = entriesRef.current.get(path);
     if (!canEdit || current?.kind === "loading" || current?.kind === "editing") return;
     set(path, { kind: "loading" });
@@ -116,6 +145,25 @@ export function WorkspaceDraftProvider({ repositoryId, canEdit, children }: {
       set(path, fromSaved(draft ?? { markdown: source, sourceRevision, version: 0 }));
     } catch {
       set(path, { kind: "unavailable", message: unavailableMessage(0, "open") });
+    }
+  }, [canEdit, endpoint, set]);
+
+  async function create(input: NewDraftInput) {
+    if (!canEdit) return "Creating a draft requires current repository write access.";
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(15_000), body: JSON.stringify(input),
+      });
+      if (response.status === 409) return "That path or the repository revision changed. Reopen the workspace before retrying.";
+      if (response.status === 400) return "Enter a title and an unused .md path in the vault.";
+      if (!response.ok) return unavailableMessage(response.status, "save");
+      const { draft } = await response.json() as { status: "saved"; draft: SavedDraft };
+      set(input.path, fromSaved(draft));
+      setNewPaths((current) => current.includes(input.path) ? current : [...current, input.path]);
+      return null;
+    } catch {
+      return "Couldn’t create the private draft. Try again.";
     }
   }
 
@@ -172,6 +220,7 @@ export function WorkspaceDraftProvider({ repositoryId, canEdit, children }: {
   }
 
   return <DraftContext.Provider value={{
-    canEdit, entries, begin, change, save, acceptVersion, proposals, propose, acceptPublication,
+    canEdit, entries, newPaths: canEdit ? newPaths : [], newPathsReady: !canEdit || newPathsReady,
+    create, begin, change, save, acceptVersion, proposals, propose, acceptPublication,
   }}>{children}</DraftContext.Provider>;
 }

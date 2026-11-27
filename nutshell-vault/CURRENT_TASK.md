@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: managed-markdown-creation-2026-11-27
 task_state: pr_open
-task_revision: 119
+task_revision: 120
 repository_id: 1467144605
 branch: feature/managed-markdown-creation
 base_branch: main
@@ -28,7 +28,7 @@ Reuse workspace editing and the current repository grants, guard the expected ba
 
 ## Consequences
 
-Migration 0010 applied on both local databases. Seventeen targeted checks passed, including PostgreSQL draft history, absent-path creation and publication, and HTTP privacy. The connected workspace reuses the source editor and proposal controls. Verify it in the optimized browser.
+Migration 0010 applied on both local databases. Seventeen targeted checks passed for the vault, PostgreSQL proposal and draft stores, and HTTP privacy. The form now opens the saved private draft in a workspace pane and restores it after reload. Run the integrated optimized browser and source checks.
 
 ## Affected files
 

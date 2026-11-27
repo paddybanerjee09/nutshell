@@ -20,6 +20,8 @@ Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Sign in as Coordinator and 
 
 Repository writers can upload a PNG, JPEG, or WebP from **Screenshot evidence** in the **Details** dock. Copy the returned ID into the evidence entry of the Git change record. The dock shows each screenshot's provenance and labels unavailable evidence.
 
+Choose **New Markdown note** in Explorer or the command palette to create a private draft. Resume it under **Private Markdown drafts**. After a checked **Simulate change merge**, the worker publishes the file and its catalog row at the indexed revision.
+
 Open **History** to browse accepted product changes by entity or kind. Follow corrections, reversals, and links to the notes as they appeared at the indexed source revision.
 
 The entry page includes a synthetic editor and graph demo. **Open full demo** gives you an uncropped view before sign-in.

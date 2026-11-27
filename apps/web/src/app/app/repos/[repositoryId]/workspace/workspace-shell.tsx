@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent, ReactNode } from "react";
-import { ArrowLeft, Box, Boxes, ChevronRight, FileText, FolderClosed, FolderTree, History, ListTodo, Network, NotebookText, PanelRight, Search, X } from "lucide-react";
+import { ArrowLeft, Box, Boxes, ChevronRight, FilePlus, FileText, FolderClosed, FolderTree, History, ListTodo, Network, NotebookText, PanelRight, Search, X } from "lucide-react";
 import {
   canSplitPane,
   createWorkspaceLayout,
@@ -24,9 +24,10 @@ import type { WorkspaceCommand } from "./pane-controls";
 import { documentModeLabels, WorkspaceContent, WorkspaceDetails, WorkspaceStatus } from "./workspace-content";
 import type { DocumentMode } from "./workspace-content";
 import type { WorkspaceData, WorkspaceItem } from "./workspace-data";
-import { WorkspaceDraftProvider } from "./workspace-drafts";
+import { WorkspaceDraftProvider, useWorkspaceDrafts } from "./workspace-drafts";
 import { graphTitles, WorkspaceGraphPanel } from "./workspace-graph-panel";
 import { WorkspaceHistoryPanel, type HistoryFocus } from "./workspace-history-panel";
+import { WorkspaceNewNote } from "./workspace-new-note";
 import { historyTabId, WorkspaceHistoryProvider } from "./workspace-history";
 import { WorkspaceTaskPanel } from "./workspace-task-panel";
 import { WorkspaceTasksProvider } from "./workspace-tasks";
@@ -37,12 +38,14 @@ const sides: DockSide[] = ["left", "right"];
 const moduleLabels: Record<DockModule, string> = { explorer: "Explorer", details: "Details" };
 const layoutBreakpoint = 1_024;
 const dockWidthBounds = { min: 160, max: 420 };
+const newNoteTab = { id: "view:new-markdown-note", title: "New Markdown note", kind: "new-note", icon: FilePlus } as const;
 const workspaceTabs = [
   { id: "view:memory-graph", title: graphTitles.memory, kind: "graph", mode: "memory", icon: Network },
   { id: "view:product-map", title: graphTitles.product, kind: "graph", mode: "product", icon: Boxes },
   { id: historyTabId, title: "History", kind: "history", icon: History },
   { id: "view:team-tasks", title: "Team tasks", kind: "tasks", icon: ListTodo },
   { id: "view:team-notes", title: "Team notes", kind: "notes", icon: NotebookText },
+  newNoteTab,
 ] as const;
 const workspaceTabsById = new Map<string, (typeof workspaceTabs)[number]>(workspaceTabs.map((tab) => [tab.id, tab]));
 
@@ -117,7 +120,19 @@ function ExplorerItem({ item, active, open }: { item: WorkspaceItem; active: boo
   );
 }
 
-export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; initialHistory?: HistoryFocus }) {
+type WorkspaceShellProps = { data: WorkspaceData; initialHistory?: HistoryFocus };
+
+export function WorkspaceShell(props: WorkspaceShellProps) {
+  return <WorkspaceDraftProvider repositoryId={props.data.repositoryId} canEdit={props.data.canEdit}>
+    <WorkspaceShellLayout {...props} />
+  </WorkspaceDraftProvider>;
+}
+
+function WorkspaceShellLayout({ data, initialHistory }: WorkspaceShellProps) {
+  const drafts = useWorkspaceDrafts();
+  const newPathsReady = drafts?.newPathsReady ?? true;
+  const canCreateNote = data.canEdit && data.status === "current";
+  const restoreKey = JSON.stringify([data.layoutKey, initialHistory ?? null]);
   const instanceId = useId();
   const main = useRef<HTMLDivElement>(null);
   const center = useRef<HTMLDivElement>(null);
@@ -128,13 +143,20 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
   const historyRequest = useRef(0);
   const [layout, setLayout] = useState(() => createWorkspaceLayout(data.initialItemId ?? undefined));
   const [restoredKey, setRestoredKey] = useState<string | null>(null);
-  const layoutReady = restoredKey === data.layoutKey;
+  const layoutReady = restoredKey === restoreKey;
   const [size, setSize] = useState({ width: 0, center: { width: 0, height: 0 } });
   const [drawer, setDrawer] = useState<DockSide | null>(null);
   const [notice, setNotice] = useState("");
   const [documentModes, setDocumentModes] = useState<Record<string, { itemId: string; mode: DocumentMode }>>({});
   const [historyTargets, setHistoryTargets] = useState<Record<string, { focus: HistoryFocus; request: number }>>({});
-  const itemsById = useMemo(() => new Map(data.items.map((item) => [item.id, item])), [data.items]);
+  const privateItems = useMemo<WorkspaceItem[]>(() => {
+    const indexed = new Set(data.items.map(({ path }) => path));
+    return (drafts?.newPaths ?? []).filter((path) => !indexed.has(path)).map((path) => ({
+      id: "document:" + path, title: path.slice(path.lastIndexOf("/") + 1), path, kind: "document", privateDraft: true,
+      source: "", markdown: "", properties: "", linkedItemIds: [], backlinkIds: [], words: 0, characters: 0,
+    }));
+  }, [data.items, drafts?.newPaths]);
+  const itemsById = useMemo(() => new Map([...data.items, ...privateItems].map((item) => [item.id, item])), [data.items, privateItems]);
   const folders = useMemo(() => explorerFolders(data.items), [data.items]);
   const entities = useMemo(() => data.items.filter((item) => item.kind === "entity"), [data.items]);
   const panes = listPanes(layout.root);
@@ -153,20 +175,28 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
   const visibleLayout = fitted ?? activePane;
 
   useEffect(() => {
+    if (!newPathsReady) return;
+    const allowed = new Set([...itemsById.keys(), ...workspaceTabsById.keys()]);
+    if (!canCreateNote) allowed.delete(newNoteTab.id);
+    if (restoredKey === restoreKey) {
+      setLayout((current) => listPanes(current.root).every((pane) => pane.tabs.every((id) => allowed.has(id))) ? current
+        : restoreWorkspaceLayout(JSON.stringify(current), allowed, data.initialItemId ?? undefined));
+      return;
+    }
     let saved: string | null = null;
     try {
       saved = window.localStorage.getItem(data.layoutKey);
     } catch {
       // The workspace also works when browser preferences are disabled.
     }
-    const restored = restoreWorkspaceLayout(saved, new Set([...itemsById.keys(), ...workspaceTabsById.keys()]), data.initialItemId ?? undefined);
+    const restored = restoreWorkspaceLayout(saved, allowed, data.initialItemId ?? undefined);
     if (initialHistory) {
       const paneId = restored.activePaneId;
       setHistoryTargets((current) => current[paneId] ? current : { ...current, [paneId]: { focus: initialHistory, request: 0 } });
       setLayout(workspaceLayoutReducer(restored, { type: "open-tab", paneId, tabId: historyTabId }));
     } else setLayout(restored);
-    setRestoredKey(data.layoutKey);
-  }, [data.initialItemId, data.layoutKey, initialHistory, itemsById]);
+    setRestoredKey(restoreKey);
+  }, [canCreateNote, data.initialItemId, data.layoutKey, initialHistory, itemsById, newPathsReady, restoreKey, restoredKey]);
 
   useEffect(() => {
     if (!layoutReady) return;
@@ -241,6 +271,7 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
   }
 
   function openItem(id: string, paneId = activePane.id) {
+    if (id === newNoteTab.id && !canCreateNote) return;
     if (!itemsById.has(id) && !workspaceTabsById.has(id)) return;
     if (tabCount >= maximumOpenTabs && !findPane(layout.root, paneId)?.tabs.includes(id)) {
       setNotice("Close a tab before opening another item.");
@@ -249,6 +280,16 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
     dispatch({ type: "open-tab", tabId: id, paneId });
     setDrawer(null);
     focusPane(paneId);
+  }
+
+  function openCreatedNote(path: string, paneId: string) {
+    const tabId = "document:" + path;
+    setLayout((current) => {
+      const withoutForm = workspaceLayoutReducer(current, { type: "close-tab", paneId, tabId: newNoteTab.id });
+      const pane = findPane(withoutForm.root, paneId);
+      return workspaceLayoutReducer(withoutForm, { type: "open-tab", paneId: pane?.id ?? withoutForm.activePaneId, tabId });
+    });
+    focusPane();
   }
 
   function openEntityHistory(paneId: string, entityId: string, changeId?: string) {
@@ -468,6 +509,8 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
           {workspaceTab?.kind === "history" ? <WorkspaceHistoryPanel key={historyTargets[node.id]?.request ?? 0}
             data={data} focus={historyTargets[node.id]?.focus} onOpenEntity={(id) => openItem("entity:" + id, node.id)} />
             : workspaceTab?.kind === "notes" ? <WorkspaceTeamNotePanel />
+            : workspaceTab?.kind === "new-note" && canCreateNote ? <WorkspaceNewNote revision={data.revision}
+              onCreated={(path) => openCreatedNote(path, node.id)} />
             : workspaceTab?.kind === "tasks" ? <WorkspaceTaskPanel data={data} onOpen={(id) => openItem(id, node.id)} />
             : workspaceTab?.kind === "graph" ? <WorkspaceGraphPanel key={workspaceTab.id} data={data} mode={workspaceTab.mode}
               active={node.id === activePane.id} onOpen={(id) => openItem(id, node.id)} /> : <WorkspaceContent
@@ -551,7 +594,18 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
             <div className="workspace-dock-content">
               {module === "details" ? <WorkspaceDetails data={data} item={activeItem} items={data.items} onOpen={openItem} /> : (
                 <nav className="workspace-tree" aria-label="Repository explorer">
+                  {canCreateNote && <button type="button" className="workspace-tree-item" onClick={() => openItem(newNoteTab.id)}>
+                    <FilePlus size={16} strokeWidth={1.5} aria-hidden="true" /><span>{newNoteTab.title}</span>
+                  </button>}
                   <ExplorerList folder={folders} activeId={activePane.activeTabId} open={openItem} />
+                  {privateItems.length > 0 && <details className="workspace-tree-group" open>
+                    <summary className="workspace-tree-folder">
+                      <ChevronRight className="workspace-tree-arrow" size={16} strokeWidth={1.5} aria-hidden="true" />
+                      <FileText size={16} strokeWidth={1.5} aria-hidden="true" /><span>Private Markdown drafts</span>
+                    </summary>
+                    <ul>{privateItems.map((item) => <ExplorerItem key={item.id} item={item}
+                      active={activePane.activeTabId === item.id} open={openItem} />)}</ul>
+                  </details>}
                   {entities.length > 0 && (
                     <details className="workspace-tree-group" open>
                       <summary className="workspace-tree-folder">
@@ -580,7 +634,8 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
 
   const commands = [
     ...paneCommands(activePane),
-    ...workspaceTabs.map((tab) => ({ id: tab.id, label: tab.title, run: () => openItem(tab.id) })),
+    ...workspaceTabs.filter((tab) => tab.kind !== "new-note" || canCreateNote)
+      .map((tab) => ({ id: tab.id, label: tab.title, run: () => openItem(tab.id) })),
     ...(["explorer", "details"] as const).flatMap((module) => {
       const target = moduleSide(module) === "left" ? "right" : "left";
       return [
@@ -588,13 +643,12 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
         { id: "move-" + module, label: "Move " + moduleLabels[module] + " to " + target + " sidebar", run: () => moveModule(module, target) },
       ];
     }),
-    ...data.items.map((item) => ({
+    ...[...data.items, ...privateItems].map((item) => ({
       id: "item-" + item.id, label: item.title, detail: item.path, run: () => openItem(item.id),
     })),
   ];
 
-  return <WorkspaceDraftProvider repositoryId={data.repositoryId} canEdit={data.canEdit}>
-    <WorkspaceTasksProvider repositoryId={data.repositoryId}>
+  return <WorkspaceTasksProvider repositoryId={data.repositoryId}>
     <WorkspaceTeamNotesProvider repositoryId={data.repositoryId}>
     <WorkspaceHistoryProvider repositoryId={data.repositoryId} snapshotKey={`${data.revision}:${data.status}:${data.headRevision ?? ""}`}>
     <main className="workspace-shell" id="content" tabIndex={-1} aria-busy={!layoutReady}>
@@ -620,7 +674,7 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
               />
             </span>
           ))}
-          {workspaceTabs.map((tab) => (
+          {workspaceTabs.filter((tab) => tab.kind !== "new-note").map((tab) => (
             <span className="workspace-ribbon-item" data-tooltip={tab.title} key={tab.id}>
               <IconButton icon={tab.icon} label={tab.title} aria-pressed={activePane.activeTabId === tab.id}
                 onClick={() => openItem(tab.id)} />
@@ -651,6 +705,5 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
     </main>
     </WorkspaceHistoryProvider>
     </WorkspaceTeamNotesProvider>
-    </WorkspaceTasksProvider>
-  </WorkspaceDraftProvider>;
+  </WorkspaceTasksProvider>;
 }
