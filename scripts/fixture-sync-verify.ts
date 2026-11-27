@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { loadConfig } from "@nutshell/server/config";
+import { loadLocalConfig } from "@nutshell/server/config";
 import { setFixtureHead } from "@nutshell/server/fixture-sync";
 import { closeRuntime } from "@nutshell/server/runtime";
 import { setVerificationFieldNotesHead } from "./verification-fixture-head.ts";
@@ -80,7 +80,7 @@ function fixtureTree(name: string, id: string) {
 }
 
 async function verifyFixtureSync() {
-  const { origin, mode, databaseUrl, testDatabaseUrl, webhookSecret } = loadConfig();
+  const { origin, mode, databaseUrl, testDatabaseUrl, webhookSecret } = loadLocalConfig();
   assert.equal(process.env.NUTSHELL_VERIFY, "1", "Fixture verification requires the isolated test database.");
   assert.equal(mode, "local-alpha");
   assert.ok(databaseUrl === testDatabaseUrl, "Fixture verification resolved a non-test database.");

@@ -1,10 +1,10 @@
-import { loadConfig } from "@nutshell/server/config";
+import { loadLocalConfig } from "@nutshell/server/config";
 import { isFixtureRevision, lockFixtureConnection, normalizeFixtureFiles, storeFixtureTree, writeFixtureHead } from "@nutshell/server/fixture-sync";
 import type { FixtureFile } from "@nutshell/server/fixture-sync";
 import { getFixtureDatabase } from "@nutshell/server/runtime";
 
 export async function setVerificationFieldNotesHead(revision: string, files: readonly FixtureFile[]) {
-  const config = loadConfig();
+  const config = loadLocalConfig();
   if (process.env.NUTSHELL_VERIFY !== "1" || config.databaseUrl !== config.testDatabaseUrl || !isFixtureRevision(revision)) {
     throw new Error("Resetting Field Notes fixtures requires a full revision in the dedicated verification database.");
   }

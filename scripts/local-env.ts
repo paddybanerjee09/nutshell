@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { loadConfig } from "@nutshell/server/config";
+import { loadLocalConfig } from "@nutshell/server/config";
 
 const secretNames = ["BETTER_AUTH_SECRET", "NUTSHELL_WEBHOOK_SECRET"] as const;
 
@@ -23,7 +23,7 @@ export function loadLocalEnv(create: boolean) {
       NUTSHELL_WEBHOOK_SECRET: process.env.NUTSHELL_WEBHOOK_SECRET,
       ...Object.fromEntries(missingSecrets()),
     };
-    loadConfig(config);
+    loadLocalConfig(config);
     const rows = Object.entries(config).map(([key, value]) => key + "=" + JSON.stringify(value));
     writeFileSync(".env", rows.join("\n") + "\n", { flag: "wx", mode: 0o600 });
   }
@@ -32,7 +32,7 @@ export function loadLocalEnv(create: boolean) {
     if (!create) return;
     const secrets = missingSecrets();
     if (!secrets.length) return;
-    loadConfig({ ...process.env, ...Object.fromEntries(secrets) });
+    loadLocalConfig({ ...process.env, ...Object.fromEntries(secrets) });
     let existing = readFileSync(".env", "utf8");
     for (const [key, value] of secrets) {
       const blank = new RegExp("^" + key + "=[ \\t]*(?:\"\"|'')?[ \\t]*\\r?$", "m");

@@ -8,8 +8,14 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { z } from "zod";
 import { loadConfig } from "./config.ts";
+import {
+  createGitHubAppAdapter, createGitHubAppAuthOptions, createGitHubAppDrizzleTokenStore, createGitHubAppUserTokens,
+} from "./github-app.ts";
+import { createGitHubLiveAccessResolver } from "./github-live-access.ts";
 import { personas } from "./local-fixtures.ts";
-import { account, installation, membership, providerGrant, repository, session, user, verification } from "./schema.ts";
+import {
+  account, githubRepositoryAssociation, installation, membership, providerGrant, repository, session, user, verification,
+} from "./schema.ts";
 
 function localPersonaPlugin(origin: string) {
   return {
@@ -51,20 +57,34 @@ function createRuntime() {
   });
   pool.on("error", () => console.error("An idle Nutshell database connection failed."));
   const db = drizzle(pool);
-  const auth = betterAuth({
-    database: drizzleAdapter(db, { provider: "pg", schema: { user, session, account, verification } }),
-    baseURL: config.origin,
-    secret: config.authSecret,
-    trustedOrigins: [config.origin],
-    advanced: {
-      useSecureCookies: config.origin.startsWith("https:"),
-      disableOriginCheck: false,
-      disableCSRFCheck: false,
+  const database = drizzleAdapter(db, { provider: "pg", schema: { user, session, account, verification } });
+  const auth = config.mode === "live"
+    ? betterAuth(createGitHubAppAuthOptions({ origin: config.origin, authSecret: config.authSecret, app: config.githubApp }, { database }))
+    : betterAuth({
+      database,
+      baseURL: config.origin,
+      secret: config.authSecret,
+      trustedOrigins: [config.origin],
+      advanced: {
+        useSecureCookies: false,
+        disableOriginCheck: false,
+        disableCSRFCheck: false,
+      },
+      session: { cookieCache: { enabled: false } },
+      plugins: [localPersonaPlugin(config.origin)],
+    });
+  const github = config.mode === "live" ? {
+    repository: createGitHubAppAdapter(config.githubApp).repository,
+    async getAccessToken(userId: string) {
+      const { secretConfig } = await auth.$context;
+      return createGitHubAppUserTokens({
+        app: config.githubApp,
+        store: createGitHubAppDrizzleTokenStore(db),
+        encryptionKey: secretConfig,
+      }).getAccessToken(userId);
     },
-    session: { cookieCache: { enabled: false } },
-    plugins: [localPersonaPlugin(config.origin)],
-  });
-  return { db, auth, config, pool };
+  } : undefined;
+  return { db, auth, config, pool, github };
 }
 
 let runtime: ReturnType<typeof createRuntime> | undefined;
@@ -92,7 +112,7 @@ export async function closeRuntime(): Promise<void> {
   await previous?.pool.end();
 }
 
-export type Repository = { id: string; name: string; description: string };
+export type Repository = { id: string; name: string; description: string; role?: string };
 
 export function getFixtureDatabase() {
   const { config, db } = getRuntime();
@@ -115,13 +135,19 @@ function readableGrant(userId: string) {
   return and(eq(providerGrant.repositoryId, repository.id), eq(providerGrant.userId, userId), eq(providerGrant.canRead, true));
 }
 
-function repositoryAccessFilter(userId: string, id?: number) {
+function activeRepositoryFilter(userId: string, id?: number) {
   const { db } = getRuntime();
   return and(
     eq(repository.active, true),
     id === undefined ? undefined : eq(repository.id, id),
     exists(db.select({ id: installation.id }).from(installation).where(activeInstallation())),
     exists(db.select({ id: membership.repositoryId }).from(membership).where(activeMembership(userId))),
+  );
+}
+
+function repositoryAccessFilter(userId: string, id?: number) {
+  const { db } = getRuntime();
+  return and(activeRepositoryFilter(userId, id),
     exists(db.select({ id: providerGrant.repositoryId }).from(providerGrant).where(readableGrant(userId))),
   );
 }
@@ -145,10 +171,58 @@ export async function lockRepositoryGrant(tx: FixtureTransaction, actor: Reposit
 }
 
 export async function resolveRepositoryReadFilter(headers: Headers, id: string) {
+  if (getRuntime().config.mode !== "local-alpha") return undefined;
   const numericId = Number(id);
   if (!/^[1-9]\d{0,15}$/u.test(id) || !Number.isSafeInteger(numericId)) return undefined;
   const actor = await resolveRepositoryActor(headers);
   return actor ? repositoryAccessFilter(actor.userId, numericId) : undefined;
+}
+
+async function authorizedGitHubRepositories(actor: RepositoryActor, id?: number): Promise<Repository[]> {
+  const { db, github } = getRuntime();
+  if (!github) return [];
+  const [githubAccount, duplicate] = await db.select({ accountId: account.accountId }).from(account)
+    .where(and(eq(account.userId, actor.userId), eq(account.providerId, "github"))).limit(2);
+  if (!githubAccount || duplicate) return [];
+
+  const associations = await db.select({
+    repositoryId: repository.id,
+    installationId: repository.installationId,
+    ownerId: githubRepositoryAssociation.ownerId,
+    repositoryNodeId: githubRepositoryAssociation.repositoryNodeId,
+    connectionEpoch: repository.connectionEpoch,
+  }).from(repository).innerJoin(githubRepositoryAssociation, eq(repository.id, githubRepositoryAssociation.repositoryId))
+    .where(activeRepositoryFilter(actor.userId, id)).orderBy(asc(repository.name), asc(repository.id));
+  const resolver = createGitHubLiveAccessResolver({
+    getAccessToken: github.getAccessToken,
+    verifyCurrentUserAccess: github.repository.verifyCurrentUserAccess,
+  });
+  const authorized: Repository[] = [];
+  for (let offset = 0; offset < associations.length; offset += 4) {
+    const batch = await Promise.all(associations.slice(offset, offset + 4).map(async (association) => {
+      const result = await resolver.resolve({ userId: actor.userId, accountId: githubAccount.accountId, association });
+      if (result.status !== "ready") return null;
+      // Provider requests can finish after a local revocation or re-association. Recheck the exact local identity.
+      const [current] = await db.select({ name: repository.name, description: repository.description }).from(repository)
+        .innerJoin(githubRepositoryAssociation, eq(repository.id, githubRepositoryAssociation.repositoryId))
+        .where(and(
+          activeRepositoryFilter(actor.userId, association.repositoryId),
+          eq(repository.installationId, association.installationId),
+          eq(repository.connectionEpoch, association.connectionEpoch),
+          eq(githubRepositoryAssociation.ownerId, association.ownerId),
+          eq(githubRepositoryAssociation.repositoryNodeId, association.repositoryNodeId),
+          exists(db.select({ id: session.id }).from(session).where(and(
+            eq(session.userId, actor.userId), eq(session.id, actor.sessionId), gt(session.expiresAt, sql`now()`),
+          ))),
+          exists(db.select({ id: account.id }).from(account).where(and(
+            eq(account.userId, actor.userId), eq(account.providerId, "github"), eq(account.accountId, githubAccount.accountId),
+          ))),
+        ));
+      return current ? { id: String(association.repositoryId), ...current, role: result.access.role } : null;
+    }));
+    for (const row of batch) if (row) authorized.push(row);
+  }
+  return authorized;
 }
 
 async function authorizedRepositories(userId: string, id?: number): Promise<Repository[]> {
@@ -161,11 +235,22 @@ async function authorizedRepositories(userId: string, id?: number): Promise<Repo
 }
 
 export async function listRepositories(headers: Headers): Promise<Repository[] | null> {
-  const auth = await getSession(headers);
-  return auth ? authorizedRepositories(auth.user.id) : null;
+  const actor = await resolveRepositoryActor(headers);
+  if (!actor) return null;
+  return getRuntime().config.mode === "live"
+    ? authorizedGitHubRepositories(actor)
+    : authorizedRepositories(actor.userId);
 }
 
 export async function readRepository(headers: Headers, id: string): Promise<Repository | null> {
+  if (getRuntime().config.mode === "live") {
+    const numericId = Number(id);
+    if (!/^[1-9]\d{0,15}$/u.test(id) || !Number.isSafeInteger(numericId)) return null;
+    const actor = await resolveRepositoryActor(headers);
+    if (!actor) return null;
+    const [result] = await authorizedGitHubRepositories(actor, numericId);
+    return result ?? null;
+  }
   const filter = await resolveRepositoryReadFilter(headers, id);
   if (!filter) return null;
   const [result] = await getRuntime().db.select({ name: repository.name, description: repository.description })

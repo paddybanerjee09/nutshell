@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { Socket } from "node:net";
 import { fileURLToPath } from "node:url";
 import next from "next";
-import { loadConfig } from "@nutshell/server/config";
+import { loadLocalConfig } from "@nutshell/server/config";
 import { closeRuntime } from "@nutshell/server/runtime";
 import { waitForStartupDatabase } from "./startup-database.ts";
 
@@ -18,7 +18,7 @@ async function start() {
   const optimized = args.length === 1 && args[0] === "--optimized";
   if (args.length && !optimized) throw new Error("Usage: node apps/web/src/serve.ts [--optimized]");
 
-  const url = new URL(loadConfig().origin);
+  const url = new URL(loadLocalConfig().origin);
   if (url.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
     throw new Error("Nutshell's local web server requires a loopback HTTP origin.");
   }
