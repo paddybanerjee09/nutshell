@@ -21,6 +21,8 @@ Pull validation compares exact base and head tree inventories, including path ad
 
 The fixture webhook validates the configured raw-body HMAC and accepts default-branch push deliveries through the [receipt outbox](../../decisions/2026-11-26-fixture-receipt-outbox.md). The core projector validates the immutable tree and the authenticated snapshot API returns the published revision, provider head, and status.
 
+Local alpha verification stops its first worker and keeps the optimized web process running. It stages a test fixture tree, sends a signed delivery, and observes its committed queue record with zero attempts. A new worker must publish that exact revision on its first attempt before browser verification starts.
+
 The setup tree builder reads the immutable base, preserves tracked owner content, and appends one delimited instructions section to `AGENTS.md`. It generates missing vault and record files, refuses conflicting managed content, and validates the resulting tree with the same projector used by the worker.
 
 [Fixture setup](../../decisions/2026-11-26-fixture-setup-proposals.md) requires an explicit configuration grant and uses a revision-bound proposal. The setup route sends the stored merge delivery to the signed ingress and reuses the same identity on retry.
@@ -43,6 +45,7 @@ Controlled transport, repository, and setup tests covered authority separation, 
 - [Setup tree builder](../../../packages/core/src/fixture-setup-tree.ts) and [owner-content regressions](../../../packages/core/src/fixture-setup-tree.test.ts).
 - [Fixture onboarding service](../../../packages/server/src/fixture-onboarding.ts) and [local browser journey](../../../scripts/local-browser.ts).
 - [Fixture webhook](../../../apps/web/src/app/api/github/webhook/route.ts) and [verification journey](../../../scripts/fixture-sync-verify.ts).
+- [Worker-offline fixture](../../../scripts/fixture-worker-offline.ts) and [local verification supervisor](../../../scripts/alpha.ts).
 - [GitHub App transport](../../../packages/server/src/github-app-transport.ts) and [controlled transport tests](../../../packages/server/src/github-app-transport.test.ts).
 - [GitHub App adapter](../../../packages/server/src/github-app.ts), [repository and Check authority](../../../packages/server/src/github-app-repository.ts), and [GitHub setup proposals](../../../packages/server/src/github-app-setup.ts).
 - [Trusted change validator](../../../packages/core/src/repository-change-validation.ts), [GitHub Check orchestration](../../../packages/server/src/github-app-validation.ts), and [simulated proposal validation](../../../packages/server/src/fixture-change-validation.ts).

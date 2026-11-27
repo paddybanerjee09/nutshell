@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: local-verification-recovery-2026-11-27
 task_state: pr_open
-task_revision: 113
+task_revision: 114
 repository_id: 1467144605
 branch: feature/local-verification-recovery
 base_branch: main
@@ -28,7 +28,7 @@ Target the exact loopback verification database. Restrict reset to identified sy
 
 ## Consequences
 
-GitHub created draft PR #21 from confirmed canonical idle revision 111. The database delegate owns scoped reset, its advisory lease, and tests. The lead owns the command and real worker restart proof.
+The exact packaged reset refused the interactive override and competing lease, cleared generated state, and preserved the interactive database, unrelated test row, and screenshot assets. A restarted worker published a signed delivery accepted while its predecessor was stopped. The focused reset and supervisor tests and strict root checks passed. Run the complete verification on the integrated head before finishing the source gate.
 
 ## Affected files
 

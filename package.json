@@ -8,6 +8,7 @@
     "alpha:setup": "node scripts/alpha.ts setup",
     "alpha:dev": "node scripts/alpha.ts dev",
     "alpha:verify": "node scripts/alpha.ts verify",
+    "alpha:reset": "node scripts/alpha.ts reset",
     "alpha:stop": "node scripts/alpha.ts stop",
     "lint": "eslint .",
     "typecheck": "tsc && pnpm --filter @nutshell/web typecheck",

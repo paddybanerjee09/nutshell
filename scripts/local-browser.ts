@@ -493,7 +493,9 @@ async function verifyWorkspaceGraphs(page: Page, origin: string, output: string)
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByRole("combobox", { name: "Search commands and files" }).fill("Product Map");
   await palette.getByRole("option", { name: "Product Map", exact: true }).click();
+  await page.getByRole("tab", { name: "Product Map", selected: true, exact: true }).waitFor();
   const product = page.getByRole("region", { name: "Product Map", exact: true });
+  await product.getByRole("group", { name: "Visible graph scope" }).getByText(/1 of 1 declared relationships/u).waitFor();
   const canvas = product.getByTestId("workspace-graph-canvas");
   await canvas.getByTestId("workspace-graph-edge").first().waitFor({ state: "attached" });
   const capture = canvas.getByRole("button", { name: "Observation capture", exact: true });
