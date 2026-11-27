@@ -36,14 +36,15 @@ async function verify() {
   await prepare(config.testDatabaseUrl);
   await runPnpm(["lint"]);
   await runPnpm(["typecheck"]);
-  await runPnpm(["test"], env);
+  await runPnpm(["test", "--no-file-parallelism"], env);
   await runPnpm(["--filter", "@nutshell/web", "build"], env);
+  await runPnpm(["exec", "node", "scripts/fixture-onboarding-prepare.ts"], env);
   const services = await startServices(env, true);
   try {
     await runWorkerProbe(config.databaseUrl);
     console.log("The worker completed a persisted job in the dedicated verification database.");
-    await runPnpm(["exec", "node", "scripts/fixture-sync-verify.ts"], env);
     await verifyEntryFlow(config.origin);
+    await runPnpm(["exec", "node", "scripts/fixture-sync-verify.ts"], env);
   } finally {
     await services.stop();
   }

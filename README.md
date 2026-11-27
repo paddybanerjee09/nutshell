@@ -4,7 +4,7 @@
 
 A web app for individuals or teams to visualize, understand, and collaborate on AI-assisted GitHub projects.
 
-Nutshell's current local slice includes branded entry, database-backed fixture sign-in, protected repository selection, a persistent worker, and the vault validation CLI.
+Nutshell's local alpha includes branded entry, database-backed fixture sign-in, protected repository setup, signed fixture synchronization, a persistent worker, and the vault validation CLI.
 
 ## Start locally
 
@@ -16,7 +16,7 @@ pnpm alpha:setup
 pnpm alpha:dev
 ```
 
-Open [http://127.0.0.1:3000](http://127.0.0.1:3000). The local sign-in screen offers three fixture identities. Run `pnpm alpha:verify` for the optimized smoke test on the separate test database and `pnpm alpha:stop` to stop the web and worker.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Sign in as Coordinator and open Field Notes to create a setup proposal and simulate its merge. The repository page reports the indexed revision. Run `pnpm alpha:verify` for the optimized smoke test on the separate test database and `pnpm alpha:stop` to stop the web and worker. The setup guide includes the Playwright installation command for your platform.
 
 ## Start the first megarun
 
@@ -66,7 +66,7 @@ Finish with exact startup commands and an honest acceptance ledger.
 | [NOTE.md](nutshell-vault/templates/NOTE.md) | Context, Decision, Consequences, Affected files |
 | [GIT_WORKFLOW.md](nutshell-vault/workflows/GIT_WORKFLOW.md) | PR lifecycle and safe post-merge task cleanup |
 | [UI_GUIDE.md](nutshell-vault/design/UI_GUIDE.md) | Exact fifteen design requirements |
-| [ACCEPTANCE.md](nutshell-vault/runs/ACCEPTANCE.md) | Verification ledger; application gates initially not run |
+| [ACCEPTANCE.md](nutshell-vault/runs/ACCEPTANCE.md) | Observed local, simulated-provider, live-provider, and source PR evidence |
 
 The index is the only active router; old nested indexes and the former run checkpoint have been archived. Notes target fewer than 200 lines. Replacing a decision requires marking the previous note superseded, archiving it, and updating the active index and references together.
 
