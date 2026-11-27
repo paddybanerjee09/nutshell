@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: local-authoring-compatibility-2026-11-27
-task_state: pr_open
-task_revision: 109
+task_state: ready_for_review
+task_revision: 110
 repository_id: 1467144605
 branch: feature/local-authoring-compatibility
 base_branch: main
 pr_number: 20
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/20
-last_verified_head: null
+last_verified_head: 103b25186aa9178e656b4cfacecf6f8805d5e4b8
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ Keep separately owned setup-builder and semantic-history changes. Preserve owner
 
 ## Consequences
 
-Fourteen setup tests passed. Eight CLI tests passed, including real Git archival, authoring and validating a correction, and refusing rewritten history. A separate optimized Firefox run verified the exact private screenshot journey after PR #19. Rerun integrated checks and confirm the trusted source gate.
+The integrated head passed lint, strict types, 264 tests, the optimized build, and a persisted worker job. The full browser run timed out opening the Product Map edge. Both graph modes passed on the same optimized build and indexed fixture in a focused run. The setup and change CLI paths passed. Confirm the latest trusted source check, then merge and clear only the matching task.
 
 ## Affected files
 

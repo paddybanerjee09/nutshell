@@ -93,7 +93,9 @@ pnpm test
 
 Compare exact Git revisions with `pnpm nutshell validate --base <ref> --head <ref>`. A configured repository uses the selected base coverage policy and checks new semantic change records. Use `pnpm nutshell impact --base <ref> --head <ref>` to see changed paths, mapped entities, and related notes. Add `--json` for structured results.
 
-Run `pnpm nutshell init` to preview repository setup and `pnpm nutshell init --write` to apply it. Initialization preserves existing owner instructions and creates the vault, control files, templates, and initial records. Run `pnpm nutshell change add --help` for the noninteractive record fields.
+Run `pnpm nutshell init` to preview repository setup and `pnpm nutshell init --write` to apply it. For a new vault, initialization creates the control files, templates, and initial records. For an existing valid vault with indexed `AGENTS.md`, it preserves the catalog and notes, appends the managed instructions, and creates the records. If `AGENTS.md` is missing, add it and its catalog row before rerunning setup.
+
+Run `pnpm nutshell change add --help` for the noninteractive record fields. If an older committed change references a note that has since moved to the archive, the CLI checks its original record against local Git history before writing a new record.
 
 From another repository, invoke the same CLI entry point with that repository as the working directory.
 
