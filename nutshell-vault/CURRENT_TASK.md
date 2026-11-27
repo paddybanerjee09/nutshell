@@ -4,13 +4,13 @@ date: "2026-11-26"
 status: active
 tags: [control, task, pull-requests]
 task_id: fixture-onboarding-2026-11-26
-task_state: in_progress
-task_revision: 22
+task_state: pr_open
+task_revision: 23
 repository_id: 1467144605
 branch: feature/fixture-onboarding
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 5
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/5
 last_verified_head: null
 lead_agent: codex-lead
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Preserve owner-managed files and instructions. Pin the setup proposal and check 
 
 ## Consequences
 
-PR #4 merged and canonical cleanup confirmed idle revision 21. Open the setup feature draft and verify authorization, repeat onboarding, and the actual fixture ingestion path.
+Draft PR #5 opened from canonical idle revision 21. Core owns setup tree construction, server owns durable proposal state and configuration authority, and web owns the repository setup actions. Verify repeat setup, a real browser journey, and signed publication before promotion.
 
 ## Affected files
 

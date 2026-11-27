@@ -15,6 +15,8 @@ Follow [R-08 integration](../../../SPEC.md#11-r-08-accounts-access-and-github-in
 
 The fixture webhook validates the configured raw-body HMAC and accepts default-branch push deliveries through the [receipt outbox](../../decisions/2026-11-26-fixture-receipt-outbox.md). The core projector validates the immutable tree and the authenticated snapshot API returns the published revision, provider head, and status.
 
+The setup tree builder reads the immutable base, preserves tracked owner content, and appends one delimited instructions section to `AGENTS.md`. It generates missing vault and record files, refuses conflicting managed content, and validates the resulting tree with the same projector used by the worker.
+
 ## Consequences
 
 Local fixture events exercise the product ingestion path independently of development PRs. Setup proposal simulation, accepted event history, and the live GitHub App adapter still have separate acceptance gates.
@@ -24,4 +26,5 @@ Local fixture events exercise the product ingestion path independently of develo
 - [GITHUB_CONTRACT.md](../../architecture/GITHUB_CONTRACT.md) — provider and record semantics.
 - [Local execution decision](../../decisions/2026-11-26-local-alpha-execution.md).
 - [Record projector](../../../packages/core/src/repo-snapshot.ts), [fixture synchronization](../../../packages/server/src/fixture-sync.ts), and [worker](../../../apps/worker/src/main.ts).
+- [Setup tree builder](../../../packages/core/src/fixture-setup-tree.ts) and [owner-content regressions](../../../packages/core/src/fixture-setup-tree.test.ts).
 - [Fixture webhook](../../../apps/web/src/app/api/github/webhook/route.ts) and [verification journey](../../../scripts/fixture-sync-verify.ts).
