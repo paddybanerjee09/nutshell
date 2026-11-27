@@ -45,7 +45,7 @@ Record the exact command or reproducible action, relevant paths/revision, observ
 | A28 | Relevant decisions, unique keys, and supersession | Partial | Validator fixtures reject duplicate accepted keys and broken supersession links. The starter's mismatched backlink was corrected. Decision retrieval remains unrun. |
 | A29 | Metadata, four headings, and length policy | Pass | `pnpm test` exercised note metadata, exact H2 headings including fenced examples, and length policy; `pnpm nutshell validate --working-tree` passed the managed vault. |
 | A30 | Default archive exclusion and explicit history | Not run | No application retrieval or graph run |
-| A31 | Real source PR proof and guarded canonical cleanup | Partial | Authenticated push and [draft source PR #1](https://github.com/paddybanerjee09/nutshell/pull/1) observed at `ecd6576e5cdce6e14eb0d0838c51a70ed00efa46`. Main was unprotected and had no applicable rulesets or required checks. Merge, canonical cleanup, and negative lifecycle fixtures remain unrun. |
+| A31 | Real source PR proof and guarded canonical cleanup | Partial | Source [PR #1](https://github.com/paddybanerjee09/nutshell/pull/1) was opened as a draft, tested at `e1f743fafcae3c205d610c0aaed6b11cf9e37e8c`, and confirmed merged at `99a0f9c7da2f371ea7f13076de073c1ae1a587ba`. GitHub accepted the expected-head one-file cleanup at `6c4bd36555f3661adc484ce8bbda57124c752ea7`; canonical task revision 4 was idle. No required main-branch checks or reviews were configured. Negative lifecycle fixtures remain unrun. |
 | Live | Actual GitHub and external acceptance | Not run | No live setup or acceptance |
 
 ## Consequences
