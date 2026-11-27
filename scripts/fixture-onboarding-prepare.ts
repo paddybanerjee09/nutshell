@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import type { RepositoryEntity } from "@nutshell/core/snapshot";
 import { loadConfig } from "@nutshell/server/config";
 import { setFixtureHead } from "@nutshell/server/fixture-sync";
 import { closeRuntime, getFixtureDatabase } from "@nutshell/server/runtime";
+import type { RepositoryEntity } from "../packages/core/src/repo-snapshot.ts";
 
 if (process.env.NUTSHELL_VERIFY !== "1") throw new Error("Onboarding preparation requires the isolated verification database.");
 const config = loadConfig();
