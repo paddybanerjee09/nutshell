@@ -6,7 +6,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import type { Browser, BrowserServer, Locator, Page, Request } from "playwright";
+import type { Browser, BrowserServer, Locator, Page, Request, Route } from "playwright";
 
 const personaPath = "/api/auth/nutshell/persona";
 
@@ -812,7 +812,9 @@ async function verifyScreenshotEvidence(coordinator: Page, reader: Page, other: 
   assert.equal(before.status(), 200);
   const { revision: sourceRevision } = await before.json() as { revision: string };
   assert.match(sourceRevision, /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
+  const readyWorkspace = coordinator.locator("main.workspace-shell[aria-busy='false']");
   await coordinator.goto(workspace);
+  await readyWorkspace.waitFor();
   const uploader = coordinator.getByRole("region", { name: "Screenshot evidence", exact: true });
   const input = uploader.getByLabel("Screenshot file", { exact: true });
   await input.waitFor();
@@ -862,19 +864,53 @@ async function verifyScreenshotEvidence(coordinator: Page, reader: Page, other: 
   while (!indexed && Date.now() < deadline) {
     const result = await coordinator.request.get(snapshotUrl, { timeout: 15_000 });
     assert.equal(result.status(), 200);
-    const payload = await result.json() as { status: string; revision: string };
+    const payload = await result.json() as {
+      status: string;
+      revision: string;
+      snapshot: { changes: Array<{ id: string; evidence: Array<{ asset_id: string }> }> } | null;
+    };
     indexed = payload.status === "current" && payload.revision === evidenceRevision;
-    if (!indexed) await delay(250);
+    if (indexed) {
+      const change = payload.snapshot?.changes.find(({ id }) => id === "chg_private_screenshot_fixture");
+      assert.ok(change?.evidence.some(({ asset_id }) => asset_id === asset.id), "The indexed change must reference the exact uploaded asset.");
+    } else await delay(250);
   }
   assert.equal(indexed, true, "Signed screenshot fixture must reach the indexed workspace.");
 
-  await coordinator.reload();
-  const explorer = coordinator.getByRole("navigation", { name: "Repository explorer", exact: true });
+  const nextScript = (url: URL) => url.origin === origin && url.pathname.startsWith("/_next/static/") && url.pathname.endsWith(".js");
+  const scripts = Promise.withResolvers<void>();
+  async function pauseScript(route: Route) {
+    await scripts.promise;
+    await route.continue();
+  }
+  await coordinator.route(nextScript, pauseScript);
+  try {
+    // Inspect the server markup while the scripts needed for hydration are paused.
+    await coordinator.reload({ waitUntil: "commit" });
+    await coordinator.locator("main.workspace-shell[aria-busy='true'] .workspace-main[inert]").waitFor({ state: "attached" });
+  } finally {
+    scripts.resolve();
+    await coordinator.unroute(nextScript, pauseScript);
+  }
+  await readyWorkspace.waitFor();
+  await readyWorkspace.getByTestId("workspace-status").locator(`.workspace-status-state[title="${evidenceRevision}"]`)
+    .filter({ hasText: /^Indexed$/u }).waitFor();
+  const explorer = readyWorkspace.getByRole("navigation", { name: "Repository explorer", exact: true });
   const records = explorer.locator("summary").filter({ hasText: /^Product records$/u });
   if (!await records.evaluate((node) => (node.parentElement as HTMLDetailsElement).open)) await records.click();
-  await explorer.getByRole("button", { name: "Observation capture", exact: true }).click();
-  const evidence = coordinator.getByRole("region", { name: "Evidence for Inspect screenshot evidence for observation capture.", exact: true });
-  const declared = evidence.getByRole("listitem").filter({ hasText: asset.id });
+  const observation = explorer.getByRole("button", { name: "Observation capture", exact: true });
+  await observation.click();
+  await observation.and(explorer.locator('[aria-current="true"]')).waitFor();
+  const details = readyWorkspace.getByRole("region", { name: "Details", exact: true });
+  if (!await details.isVisible()) {
+    await readyWorkspace.getByRole("navigation", { name: "Workspace controls", exact: true })
+      .getByRole("button", { name: "Details", exact: true }).click();
+  }
+  await details.waitFor();
+  const evidence = details.getByRole("region", { name: "Evidence for Inspect screenshot evidence for observation capture.", exact: true });
+  await evidence.waitFor();
+  const declared = evidence.getByRole("listitem").filter({ has: coordinator.getByText(asset.id, { exact: true }) });
+  await declared.waitFor();
   await declared.getByText("Declared screenshot", { exact: true }).waitFor();
   await evidence.getByText("Fixture capture", { exact: true }).waitFor();
   await evidence.getByText("Evidence unavailable", { exact: true }).waitFor();

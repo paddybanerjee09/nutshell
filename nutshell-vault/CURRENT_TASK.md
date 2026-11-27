@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: local-repository-authoring-2026-11-27
 task_state: pr_open
-task_revision: 101
+task_revision: 102
 repository_id: 1467144605
 branch: feature/local-repository-authoring
 base_branch: main
@@ -28,7 +28,7 @@ The filesystem delegate owns bounded managed reads and targeted writes. The init
 
 ## Consequences
 
-The scratch CLI journey passed. The corrected supervisor mock restored 261 passing tests. Next.js then exited during Windows page-data collection with code 3221226505. The optimized standalone build passed with two Windows workers. Rerun the whole workflow on that change, then verify the exact source check, merge, and canonical cleanup.
+The scratch CLI journey passed. The bounded full Windows run passed 261 tests, the optimized build, and its persisted worker. Firefox then missed a rendered evidence row even though the expected revision published and the exact image digest matched. Workspace controls now wait for layout restoration. The focused optimized run checks this with scripts paused briefly during the evidence reload.
 
 ## Affected files
 
