@@ -1,6 +1,6 @@
-import { createHmac } from "node:crypto";
 import { loadConfig } from "@nutshell/server/config";
 import { openFixtureSetup, readFixtureOnboarding, simulateFixtureSetupMerge } from "@nutshell/server/fixture-onboarding";
+import { sendFixturePush } from "../../../fixture-push";
 import { readBoundedBody } from "../../../request-body";
 
 export const runtime = "nodejs";
@@ -8,7 +8,6 @@ export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ repositoryId: string }> };
 type SetupAction = { action: "open" } | { action: "merge"; expectedHead: string };
-type Delivery = { deliveryId: string; repositoryId: number; installationId: number; revision: string };
 
 const revision = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const errorCodes = { unavailable: 404, forbidden: 403, conflict: 409 } as const;
@@ -25,23 +24,6 @@ function readAction(value: unknown): SetupAction | null {
     return { action: "merge", expectedHead: value.expectedHead };
   }
   return null;
-}
-
-async function sendFixturePush(origin: string, secret: string, delivery: Delivery) {
-  const body = JSON.stringify({ ref: "refs/heads/main", after: delivery.revision,
-    repository: { id: delivery.repositoryId }, installation: { id: delivery.installationId } });
-  const signature = createHmac("sha256", secret).update(body).digest("hex");
-  const result = await fetch(origin + "/api/github/webhook", {
-    method: "POST", body, redirect: "error", signal: AbortSignal.timeout(8_000),
-    headers: {
-      "content-type": "application/json",
-      "x-github-event": "push",
-      "x-github-delivery": delivery.deliveryId,
-      "x-hub-signature-256": "sha256=" + signature,
-    },
-  });
-  const receipt = await result.json() as { status?: string };
-  return result.status === 202 && (receipt.status === "accepted" || receipt.status === "duplicate");
 }
 
 export async function GET(request: Request, { params }: RouteContext): Promise<Response> {

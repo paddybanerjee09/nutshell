@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { isLiteralPath } from "@nutshell/core/vault";
 import { and, eq, sql } from "drizzle-orm";
-import { fixturePolicyVersion, fixtureSchemaVersion, lockFixtureConnection } from "./fixture-sync.ts";
+import { fixturePolicyVersion, fixtureSchemaVersion, isFixtureRevision, lockFixtureConnection } from "./fixture-sync.ts";
 import { fixtureRepositories } from "./local-fixtures.ts";
 import { getFixtureDatabase, lockRepositoryGrant, resolveRepositoryActor, type FixtureTransaction } from "./runtime.ts";
 import { fixtureSnapshot, fixtureState, markdownDraft } from "./schema.ts";
@@ -9,7 +9,6 @@ import { fixtureSnapshot, fixtureState, markdownDraft } from "./schema.ts";
 export const maxFixtureDraftBytes = 256 * 1024;
 export const maxFixtureDraftPathBytes = 512;
 const maxExpectedVersion = 2_147_483_646;
-const revisionPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
 export type FixtureMarkdownDraft = {
   path: string;
@@ -28,10 +27,10 @@ type DraftConflict = { status: "conflict"; reason: "source" | "version"; current
 type ReadDraftResult = { status: "ready"; source: string; sourceRevision: string; draft: FixtureMarkdownDraft | null } | DraftConflict | DraftRejection;
 type SaveDraftResult = { status: "saved"; draft: FixtureMarkdownDraft } | DraftConflict | DraftRejection;
 
-type DraftScope = { tx: FixtureTransaction; repositoryId: number; epoch: number; userId: string };
+export type DraftScope = { tx: FixtureTransaction; repositoryId: number; installationId: number; epoch: number; userId: string };
 type StoredDraft = typeof markdownDraft.$inferSelect;
 
-function validPath(path: string) {
+export function isFixtureDraftPath(path: string) {
   if (typeof path !== "string" || path.length > maxFixtureDraftPathBytes || !path.isWellFormed() ||
       Buffer.byteLength(path) > maxFixtureDraftPathBytes) return false;
   return path.startsWith("nutshell-vault/") && !path.startsWith("nutshell-vault/archive/") && /\.md$/iu.test(path) &&
@@ -39,14 +38,14 @@ function validPath(path: string) {
 }
 
 function validSave(input: SaveFixtureDraftInput) {
-  return validPath(input.path) && typeof input.sourceRevision === "string" && revisionPattern.test(input.sourceRevision) &&
+  return isFixtureDraftPath(input.path) && isFixtureRevision(input.sourceRevision) &&
     Number.isInteger(input.version) && input.version >= 0 && input.version <= maxExpectedVersion &&
     typeof input.markdown === "string" && input.markdown.length <= maxFixtureDraftBytes && input.markdown.isWellFormed() &&
     !input.markdown.includes("\0") && Buffer.byteLength(input.markdown) <= maxFixtureDraftBytes;
 }
 
-async function withDraftAccess<Result>(
-  headers: Headers, repositoryId: string, perform: (scope: DraftScope) => Promise<Result>,
+export async function withDraftAccess<Result>(
+  headers: Headers, repositoryId: string, perform: (scope: DraftScope) => Promise<Result>, lock: "share" | "update" = "share",
 ): Promise<Result | AccessRejection> {
   const fixture = fixtureRepositories.find(({ id }) => String(id) === repositoryId);
   if (!fixture) return { status: "unavailable" };
@@ -55,16 +54,16 @@ async function withDraftAccess<Result>(
 
   return getFixtureDatabase().transaction(async (tx) => {
     // Keep the provider head and epoch stable through the draft read/write. Draft writers still use per-row optimistic updates.
-    const connection = await lockFixtureConnection(tx, fixture.id, fixture.installationId, "share");
+    const connection = await lockFixtureConnection(tx, fixture.id, fixture.installationId, lock);
     if (!connection) return { status: "unavailable" };
     const grant = await lockRepositoryGrant(tx, actor, fixture.id);
     if (!grant) return { status: "unavailable" };
     if (!grant.canWrite) return { status: "forbidden" };
-    return perform({ tx, repositoryId: fixture.id, epoch: connection.epoch, userId: actor.userId });
+    return perform({ tx, repositoryId: fixture.id, installationId: fixture.installationId, epoch: connection.epoch, userId: actor.userId });
   });
 }
 
-async function readPublishedSource({ tx, repositoryId, epoch }: DraftScope, path: string) {
+export async function readPublishedSource({ tx, repositoryId, epoch }: DraftScope, path: string) {
   const source = sql<string | null>`(
     select document ->> 'markdown'
     from jsonb_array_elements(${fixtureSnapshot.projection} -> 'documents') as document
@@ -80,17 +79,17 @@ async function readPublishedSource({ tx, repositoryId, epoch }: DraftScope, path
   return row;
 }
 
-function draftFilter({ repositoryId, epoch, userId }: DraftScope, path: string) {
+export function draftFilter({ repositoryId, epoch, userId }: DraftScope, path: string) {
   return and(eq(markdownDraft.repositoryId, repositoryId), eq(markdownDraft.connectionEpoch, epoch),
     eq(markdownDraft.userId, userId), eq(markdownDraft.path, path));
 }
 
-async function readStoredDraft(scope: DraftScope, path: string) {
+export async function readStoredDraft(scope: DraftScope, path: string) {
   const [stored] = await scope.tx.select().from(markdownDraft).where(draftFilter(scope, path));
   return stored;
 }
 
-function serializeDraft({ path, markdown, sourceRevision, sourceBlob, version, updatedAt }: StoredDraft): FixtureMarkdownDraft {
+export function serializeDraft({ path, markdown, sourceRevision, sourceBlob, version, updatedAt }: StoredDraft): FixtureMarkdownDraft {
   return { path, markdown, sourceRevision, sourceBlob, version, updatedAt: updatedAt.toISOString() };
 }
 
@@ -98,7 +97,11 @@ function conflict(reason: DraftConflict["reason"], currentRevision: string | nul
   return { status: "conflict", reason, currentRevision, draft: stored ? serializeDraft(stored) : null };
 }
 
-async function readEditableSource(scope: DraftScope, path: string) {
+export function fixtureDraftSourceBlob(markdown: string) {
+  return createHash("sha256").update(markdown, "utf8").digest("hex");
+}
+
+export async function readEditableSource(scope: DraftScope, path: string) {
   const published = await readPublishedSource(scope, path);
   const stored = await readStoredDraft(scope, path);
   if ((published?.source ?? null) === null && !stored) return { status: "unavailable" } as const;
@@ -107,7 +110,7 @@ async function readEditableSource(scope: DraftScope, path: string) {
   }
 
   // Projection documents retain the exact text from the immutable tree at sourceRevision.
-  const sourceBlob = createHash("sha256").update(published.source, "utf8").digest("hex");
+  const sourceBlob = fixtureDraftSourceBlob(published.source);
   if (stored && (stored.sourceRevision !== published.sourceRevision || stored.sourceBlob !== sourceBlob)) {
     return conflict("source", published.headRevision, stored);
   }
@@ -119,7 +122,7 @@ export async function canEditFixtureMarkdown(headers: Headers, repositoryId: str
 }
 
 export async function readFixtureDraft(headers: Headers, repositoryId: string, path: string): Promise<ReadDraftResult> {
-  if (!validPath(path)) return { status: "invalid" };
+  if (!isFixtureDraftPath(path)) return { status: "invalid" };
   return withDraftAccess<ReadDraftResult>(headers, repositoryId, async (scope) => {
     const current = await readEditableSource(scope, path);
     if (current.status !== "ready") return current;

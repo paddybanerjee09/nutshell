@@ -1,5 +1,6 @@
 import type { RepositoryProjection } from "@nutshell/core/snapshot";
-import { bigint, boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { bigint, boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const time = (name: string) => timestamp(name, { withTimezone: true });
 const numericId = (name: string) => bigint(name, { mode: "number" });
@@ -162,4 +163,31 @@ export const markdownDraft = pgTable("markdown_draft", {
 }, (table) => [
   primaryKey({ columns: [table.repositoryId, table.connectionEpoch, table.userId, table.path] }),
   foreignKey({ columns: [table.repositoryId, table.sourceRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
+]);
+
+export const fixtureDraftProposal = pgTable("fixture_draft_proposal", {
+  id: text("id").primaryKey(),
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  connectionEpoch: integer("connection_epoch").notNull(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  path: text("path").notNull(),
+  sourceBlob: text("source_blob").notNull(),
+  draftVersion: integer("draft_version").notNull(),
+  baseRevision: text("base_revision").notNull(),
+  headRevision: text("head_revision").notNull(),
+  previousHeadRevision: text("previous_head_revision"),
+  checkedRevision: text("checked_revision").notNull(),
+  schemaVersion: integer("schema_version").notNull(),
+  policyVersion: integer("policy_version").notNull(),
+  mergedRevision: text("merged_revision"),
+  deliveryId: text("delivery_id").notNull().unique(),
+  createdAt: time("created_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("fixture_draft_proposal_open_idx").on(table.repositoryId, table.connectionEpoch, table.userId, table.path)
+    .where(sql`${table.mergedRevision} is null`),
+  index("fixture_draft_proposal_scope_idx").on(table.repositoryId, table.connectionEpoch, table.userId, table.path, table.createdAt),
+  foreignKey({ columns: [table.repositoryId, table.baseRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
+  foreignKey({ columns: [table.repositoryId, table.headRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
+  foreignKey({ columns: [table.repositoryId, table.previousHeadRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
+  foreignKey({ columns: [table.repositoryId, table.mergedRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
 ]);
