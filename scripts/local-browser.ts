@@ -199,7 +199,7 @@ export async function verifyEntryFlow(origin: string) {
     const output = ".local/verification";
     await mkdir(output, { recursive: true });
     const health = await page.request.get(origin + "/api/health");
-    assert.equal(health.status(), 200);
+    assert.equal(health.status(), 200, "The served health route must be ready before the browser journey.");
     const protectedPage = await page.request.get(origin + "/app", { maxRedirects: 0 });
     assert.equal(new URL(protectedPage.headers().location ?? "/", origin).pathname, "/login");
     const crossOrigin = await page.request.post(origin + personaPath, {

@@ -4,7 +4,7 @@ import type { Socket } from "node:net";
 import { fileURLToPath } from "node:url";
 import next from "next";
 import { loadConfig } from "@nutshell/server/config";
-import { closeRuntime, healthCheck } from "@nutshell/server/runtime";
+import { closeRuntime } from "@nutshell/server/runtime";
 import { waitForStartupDatabase } from "./startup-database.ts";
 
 function reportStartupFailure(error: unknown, phase: string) {
@@ -79,12 +79,20 @@ async function start() {
   try {
     await app.prepare();
     if (signal.aborted) return;
-    phase = "PostgreSQL readiness";
-    await waitForStartupDatabase(healthCheck, signal);
-    if (signal.aborted) return;
     phase = "loopback binding";
     server.listen(port, hostname);
     await once(server, "listening", { signal });
+    if (signal.aborted) return;
+    phase = "served PostgreSQL readiness";
+    await waitForStartupDatabase(async () => {
+      const response = await fetch(new URL("/api/health", url), {
+        cache: "no-store", redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(18_000)]),
+      });
+      await response.arrayBuffer();
+      if (response.status === 503) return false;
+      if (response.status !== 200) throw new Error("The health endpoint returned " + response.status + ".");
+      return true;
+    }, signal);
     if (signal.aborted) return;
 
     console.log(`Nutshell web listening at ${url.origin}`);

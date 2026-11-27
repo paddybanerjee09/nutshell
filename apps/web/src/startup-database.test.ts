@@ -16,6 +16,16 @@ describe("local web startup database readiness", () => {
     expect(check).toHaveBeenCalledTimes(3);
   });
 
+  it("holds readiness through a temporary 503 and rejects repeated unavailability", async () => {
+    const ready = vi.fn<() => Promise<boolean>>().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    await waitForStartupDatabase(ready, new AbortController().signal);
+    expect(ready).toHaveBeenCalledTimes(2);
+
+    const unavailable = vi.fn<() => Promise<boolean>>().mockResolvedValue(false);
+    await expect(waitForStartupDatabase(unavailable, new AbortController().signal)).rejects.toThrow("three web readiness checks");
+    expect(unavailable).toHaveBeenCalledTimes(3);
+  });
+
   it("fails on a permanent error and honors an abort before another attempt", async () => {
     const permanent = Object.assign(new Error("Invalid database credentials"), { code: "28P01" });
     const invalid = vi.fn<() => Promise<void>>().mockRejectedValue(permanent);
