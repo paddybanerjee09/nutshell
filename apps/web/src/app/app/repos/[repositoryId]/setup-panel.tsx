@@ -40,6 +40,8 @@ export function RepositorySetup({ repositoryId, initialSetup, initialSnapshot }:
   const api = "/api/repos/" + encodeURIComponent(repositoryId);
   const proposal = setup?.proposal;
   const mergeRevision = proposal?.mergeRevision ?? null;
+  const laterIndexedRevision = mergeRevision && initialSnapshot?.status === "current" && initialSnapshot.revision !== mergeRevision
+    ? initialSnapshot.revision : null;
 
   useEffect(() => {
     if (!mergeRevision || sync !== "pending" || retryDelivery) return;
@@ -143,6 +145,10 @@ export function RepositorySetup({ repositoryId, initialSetup, initialSnapshot }:
       actionLabel = "Simulate setup merge";
     } else if (proposal?.status === "merged") {
       [heading, detail] = mergeMessages[sync];
+      if (laterIndexedRevision) {
+        heading = "Repository indexed";
+        detail = "The current repository revision is indexed.";
+      }
       if (sync === "paused" || retryDelivery) {
         action = "merge";
         actionLabel = "Retry setup sync";
@@ -163,8 +169,8 @@ export function RepositorySetup({ repositoryId, initialSetup, initialSnapshot }:
     heading = "Indexing delivery needs retry";
     detail = "The fixture merge was recorded, but indexing could not be queued. Retry the same proposal.";
   }
-  const displayedRevision = mergeRevision ?? proposal?.headRevision;
-  const revisionLabel = mergeRevision ? (sync === "synced" ? "Indexed revision" : "Merged revision") : "Proposal revision";
+  const displayedRevision = laterIndexedRevision ?? mergeRevision ?? proposal?.headRevision;
+  const revisionLabel = laterIndexedRevision || sync === "synced" ? "Indexed revision" : mergeRevision ? "Merged revision" : "Proposal revision";
   const pendingLabel = pending === "open" ? "Creating setup proposal…" : "Sending simulated merge…";
 
   return (

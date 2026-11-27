@@ -2,7 +2,7 @@ import { projectRepositoryTree, type RepositoryProjection } from "@nutshell/core
 import { and, eq, exists, inArray, lte, sql } from "drizzle-orm";
 import { fixtureRepositories } from "./local-fixtures.ts";
 import { getFixtureDatabase, resolveRepositoryReadFilter, type FixtureTransaction } from "./runtime.ts";
-import { fixtureDelivery, fixtureSetupProposal, fixtureSnapshot, fixtureState, fixtureTree, installation, repository } from "./schema.ts";
+import { fixtureDelivery, fixtureDraftProposal, fixtureSetupProposal, fixtureSnapshot, fixtureState, fixtureTree, installation, repository } from "./schema.ts";
 
 export const fixtureSchemaVersion = 1;
 export const fixturePolicyVersion = 1;
@@ -11,6 +11,10 @@ const policyVersion = fixturePolicyVersion;
 const maxAttempts = 5;
 const revisionPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const deliveryPattern = /^[A-Za-z0-9_.-]{1,128}$/u;
+
+export function isFixtureRevision(revision: unknown): revision is string {
+  return typeof revision === "string" && revisionPattern.test(revision);
+}
 
 export type FixtureFile = { path: string; body: string };
 type FixtureDelivery = typeof fixtureDelivery.$inferSelect;
@@ -40,7 +44,7 @@ export async function lockFixtureConnection(tx: FixtureTransaction, repositoryId
 
 export async function acceptFixtureDelivery(input: DeliveryInput): Promise<"accepted" | "duplicate" | "unavailable"> {
   const { deliveryId, repositoryId, installationId, revision } = input;
-  if (!deliveryPattern.test(deliveryId) || !revisionPattern.test(revision)) return "unavailable";
+  if (!deliveryPattern.test(deliveryId) || !isFixtureRevision(revision)) return "unavailable";
 
   return getFixtureDatabase().transaction(async (tx) => {
     const [previous] = await tx.select({ id: fixtureDelivery.id }).from(fixtureDelivery).where(eq(fixtureDelivery.id, deliveryId));
@@ -49,13 +53,17 @@ export async function acceptFixtureDelivery(input: DeliveryInput): Promise<"acce
     const connection = await lockFixtureConnection(tx, repositoryId, installationId);
     if (!connection) return "unavailable";
 
-    // A delayed setup event remains scoped to the connection that actually merged the proposal.
-    const [setup] = await tx.select({
+    // A delayed proposal event stays scoped to the connection that merged its exact revision.
+    const proposals = await tx.select({
       repositoryId: fixtureSetupProposal.repositoryId,
       epoch: fixtureSetupProposal.connectionEpoch,
       mergedRevision: fixtureSetupProposal.mergedRevision,
-    }).from(fixtureSetupProposal).where(eq(fixtureSetupProposal.deliveryId, deliveryId));
-    if (setup && (setup.repositoryId !== repositoryId || setup.epoch !== connection.epoch || setup.mergedRevision !== revision)) {
+    }).from(fixtureSetupProposal).where(eq(fixtureSetupProposal.deliveryId, deliveryId)).unionAll(tx.select({
+      repositoryId: fixtureDraftProposal.repositoryId,
+      epoch: fixtureDraftProposal.connectionEpoch,
+      mergedRevision: fixtureDraftProposal.mergedRevision,
+    }).from(fixtureDraftProposal).where(eq(fixtureDraftProposal.deliveryId, deliveryId)));
+    if (proposals.some((proposal) => proposal.repositoryId !== repositoryId || proposal.epoch !== connection.epoch || proposal.mergedRevision !== revision)) {
       return "unavailable";
     }
 
@@ -110,7 +118,7 @@ export async function writeFixtureHead(tx: FixtureTransaction, repositoryId: num
 
 export async function setFixtureHead(repositoryId: number, revision: string, files: readonly FixtureFile[]): Promise<void> {
   const fixture = fixtureRepositories.find((item) => item.id === repositoryId);
-  if (!fixture || !revisionPattern.test(revision)) throw new Error("Expected a fixture repository and a full lowercase commit SHA.");
+  if (!fixture || !isFixtureRevision(revision)) throw new Error("Expected a fixture repository and a full lowercase commit SHA.");
   const sortedFiles = normalizeFixtureFiles(files);
   await getFixtureDatabase().transaction(async (tx) => {
     if (!await lockFixtureConnection(tx, repositoryId, fixture.installationId)) throw new Error("The fixture repository is unavailable.");

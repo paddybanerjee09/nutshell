@@ -29,6 +29,13 @@
       "when": 1795651200003,
       "tag": "0003_markdown_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795651200004,
+      "tag": "0004_fixture_draft_proposals",
+      "breakpoints": true
     }
   ]
 }

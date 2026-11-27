@@ -347,6 +347,13 @@
 
 .workspace-document-bar .workspace-draft-actions { margin-inline-start: auto; }
 
+.workspace-draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
 .workspace-draft-actions button {
   min-height: var(--ns-control-hit-size);
   padding: 4px 8px;
@@ -358,6 +365,25 @@
 
 .workspace-draft-actions button:hover:not([aria-disabled="true"]) { background: var(--ns-selection); }
 .workspace-draft-actions button[aria-disabled="true"] { color: var(--ns-muted); cursor: default; }
+
+.workspace-change-proposal {
+  padding: 5px 12px;
+  border-bottom: var(--ns-border-width) solid var(--ns-border);
+  font-size: var(--ns-font-size-ui-dense);
+  overflow-wrap: anywhere;
+}
+
+.workspace-proposal-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.workspace-proposal-summary > :not([role="status"], .workspace-draft-actions) { color: var(--ns-muted); }
+.workspace-change-proposal code { font-family: var(--ns-font-mono); }
+.workspace-change-proposal p { margin: 4px 0 0; }
+.workspace-change-proposal ul { margin: 4px 0 0; padding-inline-start: 20px; }
 
 .workspace-draft-feedback {
   margin: 0;

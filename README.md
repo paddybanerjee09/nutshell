@@ -16,7 +16,7 @@ pnpm alpha:setup
 pnpm alpha:dev
 ```
 
-Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Sign in as Coordinator and open Field Notes to create a setup proposal and simulate its merge. Once the repository is indexed, select **Open workspace** to browse the snapshot. A Markdown note’s pane actions offer **Read**, **Live preview**, and **Source**. Use **Edit draft** and **Save draft** to save private Markdown for your account. Run `pnpm alpha:verify` on the separate test database and `pnpm alpha:stop` to stop the web and worker. The setup guide gives the Playwright installation command for your platform.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Sign in as Coordinator and open Field Notes to create a setup proposal and simulate its merge. Once the repository is indexed, select **Open workspace** to browse the snapshot. A Markdown note’s pane actions offer **Read**, **Live preview**, and **Source**. Use **Edit draft** and **Save draft** to save private Markdown for your account. **Propose change** prepares a checked simulated proposal. **Simulate change merge** publishes it through the worker, and the workspace confirms the indexed revision. Run `pnpm alpha:verify` on the separate test database and `pnpm alpha:stop` to stop the web and worker. The setup guide gives the Playwright installation command for your platform.
 
 ## Start the first megarun
 
