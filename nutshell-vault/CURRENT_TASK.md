@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: interactive-marketing-preview-2026-11-27
-task_state: in_progress
-task_revision: 78
+task_state: pr_open
+task_revision: 80
 repository_id: 1467144605
 branch: feature/interactive-marketing-preview
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 15
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/15
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ The public-entry delegate owns the hero and navigation. The preview delegate own
 
 ## Consequences
 
-Durable history merged and canonical cleanup was confirmed at idle revision 77. Next open the draft source PR and integrate the public preview.
+Durable history merged and canonical cleanup was confirmed at idle revision 77. Draft PR #15 is open. The bundled demo data passed two focused Markdown, graph, and isolation tests. Next verify the integrated page, keyboard controls, original logo response, and public isolation in Firefox.
 
 ## Affected files
 
