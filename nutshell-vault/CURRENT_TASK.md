@@ -4,8 +4,8 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: configured-github-access-2026-11-27
-task_state: pr_open
-task_revision: 89
+task_state: ready_for_review
+task_revision: 90
 repository_id: 1467144605
 branch: feature/configured-github-access
 base_branch: main
@@ -28,7 +28,7 @@ The configuration delegate owns explicit mode, origin and isolated connection ch
 
 ## Consequences
 
-GitHub confirmed PR #16 merged and the one-file canonical cleanup advanced to idle revision 87. Draft PR #17 is open. No external product App credentials are present. Verify this runtime slice with controlled responses and preserve the full Windows fixture journey.
+Draft PR #17 has 36 passing focused tests, strict TypeScript, migrated local databases, and an optimized Windows Firefox and persisted-worker run. The repaired Markdown test binds keys to the intended note and pane and confirms shared edits. The fresh live-mode PostgreSQL smoke used controlled OAuth initiation and no external provider requests. Next pass the exact source check, merge, and verify canonical cleanup.
 
 ## Affected files
 

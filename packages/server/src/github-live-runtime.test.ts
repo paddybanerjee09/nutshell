@@ -5,7 +5,7 @@ import { loadConfig, requireLocalDatabaseUrl } from "./config.ts";
 import { closeRuntime, getAuth, listRepositories } from "./runtime.ts";
 import { migrateLiveDatabase } from "./setup.ts";
 
-test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts GitHub auth on an unseeded PostgreSQL runtime", async () => {
+test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts GitHub auth on an unseeded PostgreSQL runtime", async (context) => {
   const controlUrl = requireLocalDatabaseUrl(process.env.TEST_DATABASE_URL, "Verification database", "nutshell_alpha_test");
   const name = "nutshell_live_smoke_" + randomBytes(6).toString("hex");
   const target = new URL(controlUrl);
@@ -32,6 +32,11 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts GitHub auth on an unsee
   let created = false;
   try {
     await control.connect();
+    const privileges = await control.query<{ allowed: boolean }>(`
+      SELECT (rolcreatedb OR rolsuper) AS allowed FROM pg_roles WHERE rolname = current_user
+    `);
+    // An already provisioned alpha database does not require a database-creation role.
+    if (!privileges.rows[0]?.allowed) return context.skip();
     await control.query('CREATE DATABASE "' + name + '"');
     created = true;
     for (const [key, value] of Object.entries(liveEnv)) vi.stubEnv(key, value);
