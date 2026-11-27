@@ -2,3 +2,6 @@ packages:
   - "apps/*"
   - "packages/*"
 storeDir: .local/pnpm-store
+overrides:
+  '@codemirror/state': 6.7.6
+  '@codemirror/view': 6.44.0

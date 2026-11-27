@@ -5,6 +5,10 @@ import { unified, type Plugin } from "unified";
 const wikiPrefix = "#nutshell-note=";
 const wikiPattern = /\[\[([^\r\n|\]]{1,512})(?:\|([^\r\n\]]{1,256}))?\]\]/gu;
 
+export function wikiLinkHref(target: string) {
+  return wikiPrefix + (target.isWellFormed() ? encodeURIComponent(target) : "");
+}
+
 type MarkdownNode = {
   type: string;
   children?: MarkdownNode[];
@@ -21,7 +25,7 @@ function splitWikiText(value: string): MarkdownNode[] {
     const target = match[1]!.trim();
     if (!target) continue;
     if (match.index > offset) nodes.push({ type: "text", value: value.slice(offset, match.index) });
-    nodes.push({ type: "link", url: wikiPrefix + encodeURIComponent(target),
+    nodes.push({ type: "link", url: wikiLinkHref(target),
       children: [{ type: "text", value: match[2]?.trim() || target }] });
     offset = match.index + match[0].length;
   }
