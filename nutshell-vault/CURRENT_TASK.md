@@ -3,34 +3,36 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: null
-task_state: idle
-task_revision: 91
-repository_id: null
-branch: null
-base_branch: null
+task_id: trusted-change-validation-2026-11-27
+task_state: in_progress
+task_revision: 92
+repository_id: 1467144605
+branch: feature/trusted-change-validation
+base_branch: main
 pr_number: null
 pr_url: null
 last_verified_head: null
-lead_agent: null
-integration_checkout: null
+lead_agent: root
+integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
 ---
-# Current task
+# Trusted change validation
 
 ## Context
 
-No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
+Diagnose covered changes and their product classifications from immutable base and candidate trees. Keep the policy independent of candidate config, exclusions, and validator scripts.
 
 ## Decision
 
-The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
+One delegate owns changed-path policy and tests. One delegate owns the immutable Git CLI comparison. One delegate owns exact-head GitHub comparison inputs. The lead integrates shared contracts, simulated checks, and verification.
 
 ## Consequences
 
-See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
+GitHub confirmed PR #17 merged and its guarded canonical cleanup advanced to idle revision 91. Record contract behavior with controlled inputs and a local Git comparison. External product Check acceptance remains unrun.
 
 ## Affected files
 
-- [Task template](templates/TASK.md)
-- [Vault index](_INDEX.md)
+- [Contract](architecture/GITHUB_CONTRACT.md).
+- [GitHub synchronization context](features/github-sync/CONTEXT.md).
+- [Memory context](features/memory-vault/CONTEXT.md).
+- [Acceptance ledger](runs/ACCEPTANCE.md).
