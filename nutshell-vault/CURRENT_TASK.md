@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: workspace-graphs-2026-11-27
-task_state: pr_open
-task_revision: 51
+task_state: ready_for_review
+task_revision: 52
 repository_id: 1467144605
 branch: feature/workspace-graphs
 base_branch: main
 pr_number: 10
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/10
-last_verified_head: null
+last_verified_head: 19eaaf3c944c73697580fc8b41e1df0942044a34
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ Use one React Flow renderer with bounded d3-force layout, distinct graph semanti
 
 ## Consequences
 
-Source PR #10 has pinned graph dependencies and a tested bounded model. Five model tests passed. The isolated PostgreSQL fixture validated its declared edge and archive exclusion. The optimized Firefox journey passed both graph modes, pointer and keyboard interactions, and unchanged product relationships. Visual review found a stale desktop camera after narrowing the pane. A bounded resize fit and visible-node assertion are in place for the repeat verification.
+PR #10 passed lint, strict types, 19 focused graph and workspace tests, optimized build, the isolated indexed graph fixture, and the full local Firefox journey and signed provider checks. Desktop and 390-pixel screenshots were reviewed after the resize correction and the test verified both connected nodes stayed in the canvas. Next, verify the exact trusted source check, merge and confirm guarded canonical cleanup.
 
 ## Affected files
 
