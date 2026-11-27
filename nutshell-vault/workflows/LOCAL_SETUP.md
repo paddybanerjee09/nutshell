@@ -72,6 +72,8 @@ Install the browser for your platform with `pnpm exec playwright install firefox
 
 On this Windows host, Chromium's native child stayed alive after the browser connection closed, including with a synthetic page and a direct DevTools connection. Playwright Firefox exited successfully in the independent Windows probe. The verifier uses Firefox on Windows. It closes its own test pages, disconnects the Playwright client, and checks graceful native browser shutdown separately from the browser journey. See the [acceptance ledger](../runs/ACCEPTANCE.md#decision) for the application checks.
 
+The Windows optimized build uses two Next.js page-data workers after a worker exited with code `3221226505` during an eleven-worker build. Next.js selects the configured worker limit at build time. [Next.js build source](https://github.com/vercel/next.js/blob/canary/packages/next/src/build/index.ts)
+
 Verification runs the test files in sequence because PostgreSQL integration tests change shared fixture grants and connection epochs. On Windows, Vitest uses worker threads to avoid the observed fork shutdown timeouts.
 
 Web startup reports the failed phase and waits for HTTP 200 from its own loopback health route before signalling readiness. Transient unavailability permits up to three checks within the supervisor deadline. Provisioning and migration each allow 15 seconds per local connection. The PostgreSQL integration suites use explicit setup, test, and cleanup deadlines.
