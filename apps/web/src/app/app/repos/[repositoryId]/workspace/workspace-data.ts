@@ -9,6 +9,7 @@ type IndexedSnapshot = FixtureSnapshotRead & { status: WorkspaceData["status"]; 
 type Item = { id: string; title: string; path: string };
 type DocumentItem = Item & {
   kind: "document";
+  privateDraft?: true;
   source: string;
   markdown: string;
   properties: string;

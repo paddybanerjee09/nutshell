@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateVault } from "./vault.js";
+import { appendVaultCatalogNote, isNewVaultNotePath, readVaultCatalog, validateVault } from "./vault.js";
 
 const index = "nutshell-vault/_INDEX.md";
 const task = "nutshell-vault/CURRENT_TASK.md";
@@ -81,6 +81,36 @@ function issueCodes(files: ReadonlyMap<string, string>) {
 }
 
 describe("managed vault", () => {
+  it("inserts one row into the active CRLF catalog without replacing owner bytes", () => {
+    const files = snapshot();
+    const original = "\uFEFF" + files.get(index)!.replace("## Context", "## Context\n\n~~~md\n" + table + "\n~~~")
+      .replaceAll("\n", "\r\n");
+    const newPath = "nutshell-vault/notes/Field log (draft).md";
+    const markdown = note("field-log", "draft");
+    const updated = appendVaultCatalogNote(original, newPath, markdown);
+    expect(updated).not.toBeNull();
+    const row = updated!.split("\r\n").find((line) => line.includes(newPath))!;
+    expect(row).toContain("<notes/Field%20log%20(draft).md>");
+    expect(updated!.replace(row + "\r\n", "")).toBe(original);
+    expect(readVaultCatalog(updated!).entries.at(-1)).toMatchObject({ path: newPath, status: "draft", tags: ["memory"] });
+    expect(validateVault(files.set(index, updated!).set(newPath, markdown))).toEqual([]);
+    expect(appendVaultCatalogNote(updated!, newPath.toUpperCase().replace("NUTSHELL-VAULT", "nutshell-vault"), markdown)).toBeNull();
+  });
+
+  it("refuses reserved paths, bad metadata, and uncertain catalog edits", () => {
+    const original = snapshot().get(index)!;
+    const valid = "nutshell-vault/notes/Field log.md";
+    for (const path of ["nutshell-vault/notes/INDEX.md", "nutshell-vault/Archive/log.md", "nutshell-vault/decisions/log.md",
+      "nutshell-vault/templates/log.md", "nutshell-vault/../log.md", "nutshell-vault/notes/[old].md",
+      "nutshell-vault/notes/ log.md", "nutshell-vault/.git/log.md"]) {
+      expect(isNewVaultNotePath(path)).toBe(false);
+      expect(appendVaultCatalogNote(original, path, note("log"))).toBeNull();
+    }
+    expect(appendVaultCatalogNote(original, valid, note("log", "archived"))).toBeNull();
+    expect(appendVaultCatalogNote(original, valid, "# Missing metadata")).toBeNull();
+    expect(appendVaultCatalogNote(original.replace("## Decision", "## Decision\n\n" + table), valid, note("log"))).toBeNull();
+  });
+
   it("validates live controls and an exact catalog with historical supersession metadata", () => {
     expect(validateVault(snapshot())).toEqual([]);
   });

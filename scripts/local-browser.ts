@@ -461,6 +461,90 @@ async function verifyMarkdownProposal(page: Page, origin: string, output: string
   await page.close();
 }
 
+async function verifyNewMarkdownNote(page: Page, reader: Page, other: Page, origin: string, output: string) {
+  const indexPath = "nutshell-vault/_INDEX.md";
+  const endpoint = origin + "/api/repos/1001/draft";
+  const snapshotUrl = origin + "/api/repos/1001/snapshot";
+  type NoteSnapshot = { revision: string; snapshot: { documents: { path: string; markdown: string }[] } };
+  async function snapshot() {
+    const response = await page.request.get(snapshotUrl);
+    assert.equal(response.status(), 200);
+    return await response.json() as NoteSnapshot;
+  }
+
+  const before = await snapshot();
+  const relativePath = `notes/verification-${before.revision.slice(0, 8)}/Rainfall review.md`;
+  const path = "nutshell-vault/" + relativePath;
+  assert.ok(!before.snapshot.documents.some((note) => note.path === path));
+  await page.goto(origin + "/app/repos/1001/workspace");
+  await page.locator("main.workspace-shell[aria-busy='false']").waitFor();
+  await page.keyboard.press("Control+P");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const search = palette.getByRole("combobox", { name: "Search commands and files" });
+  await search.fill("New Markdown note");
+  await palette.getByRole("option", { name: "New Markdown note", exact: true, selected: true }).waitFor();
+  await search.press("Enter");
+  const form = page.getByRole("form", { name: "New Markdown note" });
+  await form.getByLabel("Title", { exact: true }).fill("Rainfall review");
+  await form.getByLabel("Vault path", { exact: true }).fill(relativePath);
+  const [created] = await Promise.all([
+    page.waitForResponse((response) => response.url() === endpoint && response.request().method() === "POST"),
+    form.getByRole("button", { name: "Create private draft", exact: true }).press("Enter"),
+  ]);
+  assert.equal(created.status(), 200);
+  const { draft } = await created.json() as { draft: { path: string; markdown: string; version: number; sourceBlob: string | null } };
+  assert.deepEqual([draft.path, draft.version, draft.sourceBlob], [path, 1, null]);
+  assert.deepEqual(await snapshot(), before);
+  assert.equal((await reader.request.get(endpoint)).status(), 403);
+  assert.equal((await other.request.get(endpoint)).status(), 404);
+
+  await page.reload();
+  await page.getByRole("tab", { name: "Rainfall review.md", exact: true, selected: true }).waitFor();
+  const pane = page.locator(".workspace-pane[data-focused='true']");
+  await pane.getByText("Private draft", { exact: true }).waitFor();
+  await pane.locator("summary[aria-label='Pane actions']").click();
+  await pane.getByRole("button", { name: "Source", exact: true }).click();
+  const editor = pane.getByRole("textbox", { name: "Markdown editor" });
+  await editor.getByText("# Rainfall review", { exact: true }).waitFor();
+  const addition = "\nRainfall measurements remain linked to their original observation.\n";
+  await editor.press("Control+End");
+  await page.keyboard.insertText(addition);
+  await pane.getByRole("button", { name: "Save draft", exact: true }).click();
+  await pane.getByText("Version 2", { exact: true }).waitFor();
+  const draftRead = await page.request.get(endpoint + "?path=" + encodeURIComponent(path));
+  assert.equal(draftRead.status(), 200);
+  const saved = await draftRead.json() as { draft: { markdown: string }; source: string };
+  assert.equal(saved.source, "");
+  assert.equal(saved.draft.markdown, draft.markdown + addition);
+  await pane.getByRole("button", { name: "Propose change", exact: true }).click();
+  await pane.getByText("Simulated PR open", { exact: true }).waitFor();
+  assert.deepEqual(await snapshot(), before);
+  await pane.getByRole("button", { name: "Simulate change merge", exact: true }).click();
+  await pane.getByText("Change indexed", { exact: true }).waitFor({ timeout: 60_000 });
+  const after = await snapshot();
+  assert.notEqual(after.revision, before.revision);
+  const beforeDocs = new Map(before.snapshot.documents.map((note) => [note.path, note.markdown]));
+  const afterDocs = new Map(after.snapshot.documents.map((note) => [note.path, note.markdown]));
+  assert.equal(afterDocs.size, beforeDocs.size + 1);
+  assert.equal(afterDocs.get(path), saved.draft.markdown);
+  const index = afterDocs.get(indexPath);
+  const target = relativePath.split("/").map(encodeURIComponent).join("/");
+  const rows = index?.match(/[^\n]*\n|[^\n]+$/gu)?.filter((line) => line.startsWith(`| [${path}](<${target}>)`));
+  const row = rows?.[0];
+  assert.ok(index && row && rows?.length === 1);
+  assert.equal(index.replace(row, ""), beforeDocs.get(indexPath));
+  for (const [oldPath, markdown] of beforeDocs) if (oldPath !== indexPath) assert.equal(afterDocs.get(oldPath), markdown);
+  const published = await page.request.get(endpoint + "?path=" + encodeURIComponent(path));
+  assert.equal(published.status(), 200);
+  assert.deepEqual(await published.json(), { status: "ready", source: saved.draft.markdown, sourceRevision: after.revision, draft: null });
+  await pane.locator("summary[aria-label='Pane actions']").click();
+  await pane.getByRole("button", { name: "Read", exact: true }).click();
+  await pane.getByText("Canonical", { exact: true }).waitFor();
+  await pane.getByRole("heading", { name: "Rainfall review", exact: true }).waitFor();
+  await page.screenshot({ path: output + "/workspace-new-markdown-note.png" });
+  await page.close();
+}
+
 async function verifyWorkspaceGraphs(page: Page, origin: string, output: string) {
   await page.goto(origin + "/app/repos/1001/workspace");
   const controls = page.getByRole("navigation", { name: "Workspace controls" });
@@ -1274,6 +1358,8 @@ export async function verifyEntryFlow(origin: string) {
     await verifyTeamNotes(teamNotePage, reader, origin, output);
     const proposalPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
     await verifyMarkdownProposal(proposalPage, origin, output);
+    const newNotePage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
+    await verifyNewMarkdownNote(newNotePage, reader, other, origin, output);
     const graphPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
     await verifyWorkspaceGraphs(graphPage, origin, output);
     const evidencePage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
@@ -1303,5 +1389,5 @@ export async function verifyEntryFlow(origin: string) {
       `${describe(journeyFailure.error)}\n${describe(shutdownError)}`, { cause: shutdownError });
   }
   if (journeyFailure) throw journeyFailure.error;
-  console.log(`${browserType.name()} entry, signed fixture setup, workspace, repository tasks and notes, private drafts, simulated proposal publication, both graph modes, private screenshot evidence, durable product history, and browser shutdown passed.`);
+  console.log(`${browserType.name()} entry, signed fixture setup, workspace, repository tasks and notes, private drafts, managed Markdown creation and simulated publication, both graph modes, private screenshot evidence, durable product history, and browser shutdown passed.`);
 }

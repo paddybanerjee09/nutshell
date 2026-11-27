@@ -366,6 +366,19 @@
 .workspace-draft-actions button:hover:not([aria-disabled="true"]) { background: var(--ns-selection); }
 .workspace-draft-actions button[aria-disabled="true"] { color: var(--ns-muted); cursor: default; }
 
+.workspace-new-note label { display: grid; gap: 4px; margin-block: 12px; font-size: 13px; }
+.workspace-new-note input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  background: var(--ns-selection);
+  color: var(--ns-text);
+  border: 1px solid var(--ns-border);
+  border-radius: 4px;
+  font: inherit;
+}
+.workspace-new-note p { font-size: 13px; }
+
 .workspace-change-proposal {
   padding: 5px 12px;
   border-bottom: var(--ns-border-width) solid var(--ns-border);

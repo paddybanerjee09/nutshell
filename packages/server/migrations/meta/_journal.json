@@ -71,6 +71,13 @@
       "when": 1795651200009,
       "tag": "0009_github_repository_association",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795651200010,
+      "tag": "0010_markdown_draft_new_source",
+      "breakpoints": true
     }
   ]
 }

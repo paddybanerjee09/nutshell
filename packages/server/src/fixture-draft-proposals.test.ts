@@ -4,7 +4,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.ts";
 import { mergeFixtureDraftProposal, proposeFixtureDraft, readFixtureDraftProposal } from "./fixture-draft-proposals.ts";
-import { readFixtureDraft, saveFixtureDraft } from "./fixture-drafts.ts";
+import { createFixtureDraft, listFixtureNewDrafts, readFixtureDraft, saveFixtureDraft } from "./fixture-drafts.ts";
 import { preserveFixtureTestHistory } from "./fixture-history-test-support.ts";
 import { acceptFixtureDelivery, processNextFixtureDelivery, readFixtureSnapshot, setFixtureHead, type FixtureFile } from "./fixture-sync.ts";
 import { closeRuntime, getAuth, getSession } from "./runtime.ts";
@@ -183,5 +183,82 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture draft p
     await db.query("UPDATE provider_installation SET active = true WHERE id = $1", [installationId]);
     expect(await mergeFixtureDraftProposal(owner, repositoryKey, exactMerge)).toEqual({ status: "unavailable" });
     expect(await acceptFixtureDelivery(final.delivery)).toBe("unavailable");
+  });
+
+  it("publishes one new Markdown note and one catalog row after a checked absent-source draft", async () => {
+    const owner = await login("coordinator");
+    const reader = await login("reader");
+    await setReaderWrite(false);
+    const sourceRevision = randomBytes(20).toString("hex");
+    const occupiedRevision = randomBytes(20).toString("hex");
+    revisions.add(sourceRevision).add(occupiedRevision);
+    const index = "nutshell-vault/_INDEX.md";
+    const absent = `nutshell-vault/features/Private note ${sourceRevision}.md`;
+    const sourceTree = tree.map((file) => file.path === index ? { ...file, body: "\uFEFF" + file.body.replaceAll("\n", "\r\n") } : file);
+    await setFixtureHead(repositoryId, sourceRevision, sourceTree);
+    const seed = randomUUID();
+    deliveries.push(seed);
+    expect(await acceptFixtureDelivery({ deliveryId: seed, repositoryId, installationId, revision: sourceRevision })).toBe("accepted");
+    await processReceipts();
+    expect(await readFixtureSnapshot(owner, repositoryKey)).toMatchObject({ status: "current", revision: sourceRevision });
+
+    const input = { path: absent, title: "Private note 😀", sourceRevision };
+    expect(await createFixtureDraft(reader, repositoryKey, input)).toEqual({ status: "forbidden" });
+    expect(await listFixtureNewDrafts(reader, repositoryKey)).toEqual({ status: "forbidden" });
+    expect(await createFixtureDraft(owner, repositoryKey, { ...input, path: index })).toEqual({ status: "invalid" });
+    expect(await createFixtureDraft(owner, repositoryKey, { ...input, path: path.replace("draft-proposal-", "DRAFT-PROPOSAL-") }))
+      .toMatchObject({ status: "conflict", reason: "source" });
+    expect(await createFixtureDraft(owner, repositoryKey, { ...input, sourceRevision: occupiedRevision }))
+      .toMatchObject({ status: "conflict", reason: "source", currentRevision: sourceRevision, draft: null });
+
+    const attempts = await Promise.all([createFixtureDraft(owner, repositoryKey, input), createFixtureDraft(owner, repositoryKey, input)]);
+    const created = attempts.find((attempt) => attempt.status === "saved");
+    if (!created) throw new Error("Expected exactly one absent-source draft.");
+    expect(created.draft).toMatchObject({ path: absent, sourceRevision, sourceBlob: null, version: 1 });
+    expect(created.draft.markdown).toContain("# Private note 😀");
+    expect(attempts.find((attempt) => attempt.status === "conflict")).toMatchObject({ reason: "version", draft: created.draft });
+    expect(await readFixtureDraft(owner, repositoryKey, absent)).toEqual({ status: "ready", source: "", sourceRevision, draft: created.draft });
+    expect(await listFixtureNewDrafts(owner, repositoryKey)).toMatchObject({ status: "ready", drafts: expect.arrayContaining([{ path: absent }]) });
+    await setReaderWrite(true);
+    expect(await readFixtureDraft(reader, repositoryKey, absent)).toEqual({ status: "unavailable" });
+    const readerDrafts = await listFixtureNewDrafts(reader, repositoryKey);
+    expect(readerDrafts).toMatchObject({ status: "ready" });
+    if (readerDrafts.status !== "ready") throw new Error("Expected the granted writer's own draft list.");
+    expect(readerDrafts.drafts).not.toContainEqual({ path: absent });
+    await setReaderWrite(false);
+    expect(await readFixtureDraftProposal(owner, repositoryKey, absent)).toEqual({ status: "ready", proposal: null });
+
+    const markdown = created.draft.markdown.replace("## Context\n\n", "## Context\n\nCreated from source absence ✅.  \n\n");
+    const edit = { path: absent, markdown, sourceRevision, version: 1 };
+    expect(await saveFixtureDraft(owner, repositoryKey, edit)).toMatchObject({ status: "saved", draft: { markdown, version: 2, sourceBlob: null } });
+    expect(await saveFixtureDraft(owner, repositoryKey, edit)).toMatchObject({ status: "conflict", reason: "version", draft: { markdown, version: 2 } });
+    const opened = await proposeFixtureDraft(owner, repositoryKey, { path: absent, version: 2 });
+    if (opened.status !== "open") throw new Error("Expected an open new-note proposal.");
+    proposals.push(opened.proposal.id);
+    revisions.add(opened.proposal.headRevision);
+    expect(opened.proposal).toMatchObject({ baseRevision: sourceRevision, draftVersion: 2, sourceBlob: null });
+    const checkedTree = await storedTree(opened.proposal.headRevision);
+    expect(checkedTree?.filter((file) => file.path !== index && file.path !== absent)).toEqual(sourceTree.filter((file) => file.path !== index));
+    expect(checkedTree?.find((file) => file.path === absent)?.body).toBe(markdown);
+    const checkedIndex = checkedTree?.find((file) => file.path === index)?.body ?? "";
+    const rows = checkedIndex.split("\r\n").filter((line) => line.startsWith(`| [${absent}]`));
+    expect(rows).toHaveLength(1);
+    expect(checkedIndex.replace(rows[0] + "\r\n", "")).toBe(sourceTree.find((file) => file.path === index)?.body);
+    expect(await readFixtureSnapshot(owner, repositoryKey)).toMatchObject({ revision: sourceRevision, headRevision: sourceRevision });
+
+    const merge = { path: absent, proposalId: opened.proposal.id, expectedHead: opened.proposal.headRevision };
+    await setFixtureHead(repositoryId, occupiedRevision, [...sourceTree, { path: absent, body: "A separately written path." }]);
+    expect(await mergeFixtureDraftProposal(owner, repositoryKey, merge)).toMatchObject({ status: "conflict", reason: "source", draft: { markdown } });
+    await setFixtureHead(repositoryId, sourceRevision, sourceTree);
+    const merged = await mergeFixtureDraftProposal(owner, repositoryKey, merge);
+    if (merged.status !== "merged") throw new Error("Expected the checked new-note proposal to merge.");
+    revisions.add(merged.delivery.revision);
+    deliveries.push(merged.delivery.deliveryId);
+    expect(await storedTree(merged.delivery.revision)).toEqual(checkedTree);
+    expect(await readFixtureSnapshot(owner, repositoryKey)).toMatchObject({ revision: sourceRevision, headRevision: merged.delivery.revision });
+    expect(await acceptFixtureDelivery(merged.delivery)).toBe("accepted");
+    await processReceipts();
+    expect(await readFixtureDraft(owner, repositoryKey, absent)).toEqual({ status: "ready", source: markdown, sourceRevision: merged.delivery.revision, draft: null });
+    expect(await listFixtureNewDrafts(owner, repositoryKey)).toMatchObject({ status: "ready", drafts: expect.not.arrayContaining([{ path: absent }]) });
   });
 });

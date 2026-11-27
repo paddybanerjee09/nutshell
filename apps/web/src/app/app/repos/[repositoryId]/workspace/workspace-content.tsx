@@ -1,5 +1,6 @@
 "use client";
 
+import { parseFrontmatter } from "@nutshell/core/frontmatter";
 import { useEffect, useId, useMemo } from "react";
 import { MarkdownEditor } from "./markdown-editor";
 import type { WorkspaceData, WorkspaceItem } from "./workspace-data";
@@ -22,17 +23,23 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
   const resolve = useMemo(() => documentResolver(items.filter(({ kind }) => kind === "document")), [items]);
   const drafts = useWorkspaceDrafts();
   const document = item?.kind === "document" ? item : null;
+  const privatePath = document?.privateDraft ? document.path : undefined;
   const proposalPath = document?.path;
   const source = document?.source;
   const proposalEntry = drafts?.canEdit && proposalPath ? drafts.proposals.entries.get(proposalPath) : undefined;
   const proposal = proposalEntry?.proposal;
   const loadProposal = drafts?.proposals.load;
   const acceptPublication = drafts?.acceptPublication;
+  const beginDraft = drafts?.begin;
   const proposalRevisionId = useId();
 
   useEffect(() => {
     if (proposalPath) void loadProposal?.(proposalPath, indexedRevision);
   }, [proposalPath, indexedRevision, loadProposal]);
+
+  useEffect(() => {
+    if (privatePath) void beginDraft?.(privatePath);
+  }, [beginDraft, privatePath]);
 
   const isIndexed = Boolean(proposal?.mergeRevision && proposal.mergeRevision === indexedRevision);
   useEffect(() => {
@@ -65,7 +72,7 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
 
   const entry = drafts?.entries.get(item.path);
   const draft = entry?.kind === "editing" ? entry : null;
-  const mode = requestedMode ?? "read";
+  const mode = requestedMode ?? (item.privateDraft ? "live" : "read");
   const showingDraft = draft && mode !== "read" ? draft : null;
   const dirty = draft !== null && draft.markdown !== draft.baseline;
   const conflict = showingDraft?.conflict;
@@ -84,9 +91,13 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
           : publication === "unavailable" ? "The published snapshot is unavailable"
             : retryDelivery ? "Change indexing is pending" : "Waiting for indexing";
 
+  const privateDocument = item.privateDraft && mode === "read" && draft ? parseFrontmatter(draft.markdown) : null;
+  const readingSource = privateDocument?.ok ? privateDocument.lines.slice(privateDocument.bodyStart).join("\n")
+    : privateDocument ? draft?.markdown ?? "" : item.markdown;
+  const readRevision = item.privateDraft ? draft?.sourceRevision : indexedRevision;
   const reading = <article className="workspace-reading" aria-label={item.title}>
     {item.properties && <details className="workspace-properties"><summary>Properties</summary><pre>{item.properties}</pre></details>}
-    <WorkspaceReadMarkdown markdown={item.markdown} resolve={(href) => resolve(item.path, href)} onOpen={onOpen} />
+    <WorkspaceReadMarkdown markdown={readingSource} resolve={(href) => resolve(item.path, href)} onOpen={onOpen} />
   </article>;
 
   return <>
@@ -99,8 +110,8 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
         <span role="status">{showingDraft.saving ? "Saving draft…" : conflict ? "Draft conflict" : dirty ? "Unsaved changes"
           : showingDraft.version > 0 ? "Draft saved" : "New draft"}</span>
       </> : <>
-        <span>Canonical</span>
-        {indexedRevision && <code title={indexedRevision}>{indexedRevision.slice(0, 12)}</code>}
+        <span>{item.privateDraft ? "Private draft" : "Canonical"}</span>
+        {readRevision && <code title={readRevision}>{readRevision.slice(0, 12)}</code>}
         {dirty && <span role="status">Draft has unsaved changes</span>}
       </>}
       <div className="workspace-draft-actions">
@@ -228,13 +239,13 @@ function Stats({ item, text }: { item: WorkspaceItem | null; text?: string }) {
   </>;
 }
 
-export function WorkspaceStatus({ item, data, mode = "read" }: {
+export function WorkspaceStatus({ item, data, mode }: {
   item: WorkspaceItem | null;
   data: WorkspaceData;
   mode?: DocumentMode;
 }) {
   const drafts = useWorkspaceDrafts();
-  const document = mode !== "read" && item?.kind === "document" ? item : null;
+  const document = item?.kind === "document" && (item.privateDraft || (mode !== undefined && mode !== "read")) ? item : null;
   const entry = document ? drafts?.entries.get(document.path) : null;
   const text = entry?.kind === "editing" ? entry.markdown : document?.source;
   return <footer className="workspace-status" aria-label="Workspace status" data-testid="workspace-status">
