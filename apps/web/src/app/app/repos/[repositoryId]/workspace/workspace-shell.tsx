@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent, ReactNode } from "react";
-import { ArrowLeft, Box, Boxes, ChevronRight, FileText, FolderClosed, FolderTree, ListTodo, Network, PanelRight, Search, X } from "lucide-react";
+import { ArrowLeft, Box, Boxes, ChevronRight, FileText, FolderClosed, FolderTree, ListTodo, Network, NotebookText, PanelRight, Search, X } from "lucide-react";
 import {
   canSplitPane,
   createWorkspaceLayout,
@@ -28,6 +28,8 @@ import { WorkspaceDraftProvider } from "./workspace-drafts";
 import { graphTitles, WorkspaceGraphPanel } from "./workspace-graph-panel";
 import { WorkspaceTaskPanel } from "./workspace-task-panel";
 import { WorkspaceTasksProvider } from "./workspace-tasks";
+import { WorkspaceTeamNotePanel } from "./workspace-team-note-panel";
+import { WorkspaceTeamNotesProvider } from "./workspace-team-notes";
 
 const sides: DockSide[] = ["left", "right"];
 const moduleLabels: Record<DockModule, string> = { explorer: "Explorer", details: "Details" };
@@ -37,6 +39,7 @@ const workspaceTabs = [
   { id: "view:memory-graph", title: graphTitles.memory, kind: "graph", mode: "memory", icon: Network },
   { id: "view:product-map", title: graphTitles.product, kind: "graph", mode: "product", icon: Boxes },
   { id: "view:team-tasks", title: "Team tasks", kind: "tasks", icon: ListTodo },
+  { id: "view:team-notes", title: "Team notes", kind: "notes", icon: NotebookText },
 ] as const;
 const workspaceTabsById = new Map<string, (typeof workspaceTabs)[number]>(workspaceTabs.map((tab) => [tab.id, tab]));
 
@@ -443,7 +446,8 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
           aria-label={selectedIndex < 0 ? "Empty pane" : undefined}
           tabIndex={0}
         >
-          {workspaceTab?.kind === "tasks" ? <WorkspaceTaskPanel data={data} onOpen={(id) => openItem(id, node.id)} />
+          {workspaceTab?.kind === "notes" ? <WorkspaceTeamNotePanel />
+            : workspaceTab?.kind === "tasks" ? <WorkspaceTaskPanel data={data} onOpen={(id) => openItem(id, node.id)} />
             : workspaceTab?.kind === "graph" ? <WorkspaceGraphPanel key={workspaceTab.id} data={data} mode={workspaceTab.mode}
               active={node.id === activePane.id} onOpen={(id) => openItem(id, node.id)} /> : <WorkspaceContent
             item={item}
@@ -569,6 +573,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
 
   return <WorkspaceDraftProvider repositoryId={data.repositoryId} canEdit={data.canEdit}>
     <WorkspaceTasksProvider repositoryId={data.repositoryId}>
+    <WorkspaceTeamNotesProvider repositoryId={data.repositoryId}>
     <main className="workspace-shell" id="content" tabIndex={-1}>
       <h1 className="sr-only">{data.repositoryName} workspace</h1>
       <div className="workspace-main" ref={main} data-compact={compact} onKeyDown={(event) => {
@@ -621,6 +626,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
         paletteTrigger.current = null;
       }} />
     </main>
+    </WorkspaceTeamNotesProvider>
     </WorkspaceTasksProvider>
   </WorkspaceDraftProvider>;
 }
