@@ -7,6 +7,7 @@ import { MarkdownEditor } from "./markdown-editor";
 import type { WorkspaceData, WorkspaceItem } from "./workspace-data";
 import { useWorkspaceDrafts } from "./workspace-drafts";
 import { documentResolver, remarkWorkspaceWikilinks } from "./workspace-markdown";
+import { WorkspaceDeclaredScreenshots, WorkspaceScreenshotUpload } from "./workspace-screenshot-evidence";
 
 type Selection = { item: WorkspaceItem | null; items: WorkspaceItem[]; onOpen: (id: string) => void };
 export const documentModeLabels = { read: "Read", live: "Live preview", source: "Source" } as const;
@@ -219,7 +220,11 @@ export function WorkspaceDetails({ item, items, data, onOpen }: Selection & { da
         <li key={id}><button type="button" className="workspace-wikilink" onClick={() => onOpen(id)}>{items.find((item) => item.id === id)?.title}</button></li>
       ))}</ul> : <p>No indexed backlinks.</p>}
     </>}
-    {changes.length > 0 && <><h2>Declared changes</h2><ul>{changes.map((change) => <li key={change.id}>{change.summary}</li>)}</ul></>}
+    {changes.length > 0 && <><h2>Declared changes</h2><ul>{changes.map((change) => <li key={change.id}>
+      {change.summary}
+      <WorkspaceDeclaredScreenshots key={data.revision} repositoryId={data.repositoryId} change={change} />
+    </li>)}</ul></>}
+    {data.canEdit && <WorkspaceScreenshotUpload repositoryId={data.repositoryId} />}
   </div>;
 }
 

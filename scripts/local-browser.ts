@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import type { Browser, BrowserServer, Locator, Page } from "playwright";
 
 const personaPath = "/api/auth/nutshell/persona";
@@ -753,6 +756,96 @@ async function verifyTeamNotes(coordinator: Page, reader: Page, origin: string, 
   await coordinator.close();
 }
 
+async function verifyScreenshotEvidence(coordinator: Page, reader: Page, other: Page, origin: string, output: string) {
+  const workspace = origin + "/app/repos/1001/workspace";
+  const endpoint = origin + "/api/repos/1001/screenshots";
+  const snapshotUrl = origin + "/api/repos/1001/snapshot";
+  type Asset = { id: string; mimeType: string; sha256: string; byteLength: number; provenance: string; captureRef: string | null };
+  const before = await coordinator.request.get(snapshotUrl);
+  assert.equal(before.status(), 200);
+  const { revision: sourceRevision } = await before.json() as { revision: string };
+  assert.match(sourceRevision, /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
+  await coordinator.goto(workspace);
+  const uploader = coordinator.getByRole("region", { name: "Screenshot evidence", exact: true });
+  const input = uploader.getByLabel("Screenshot file", { exact: true });
+  await input.waitFor();
+  const screenshot = await coordinator.screenshot({ path: output + "/private-evidence-fixture.png", scale: "css" });
+  const capturedAt = new Date().toISOString();
+  await input.setInputFiles({ name: "field-notes.png", mimeType: "image/png", buffer: screenshot });
+  const [uploaded] = await Promise.all([
+    coordinator.waitForResponse((response) => response.url() === endpoint && response.request().method() === "POST"),
+    uploader.getByRole("button", { name: "Upload screenshot", exact: true }).click(),
+  ]);
+  assert.equal(uploaded.status(), 201);
+  const { asset } = await uploaded.json() as { asset: Asset };
+  assert.deepEqual([asset.mimeType, asset.provenance, asset.captureRef], ["image/png", "declared", null]);
+  assert.equal(await uploader.getByRole("textbox", { name: "Evidence asset ID", exact: true }).inputValue(), asset.id);
+
+  const item = endpoint + "/" + encodeURIComponent(asset.id);
+  const imageUrl = item + "/image";
+  const image = await reader.request.get(imageUrl);
+  assert.equal(image.status(), 200);
+  assert.equal(image.headers()["content-type"], "image/png");
+  assert.equal(image.headers()["cache-control"], "private, no-store");
+  assert.equal(image.headers()["x-content-type-options"], "nosniff");
+  const stored = await image.body();
+  assert.equal(stored.byteLength, asset.byteLength);
+  assert.equal(createHash("sha256").update(stored).digest("hex"), asset.sha256);
+  assert.equal((await other.request.get(item)).status(), 404);
+  assert.equal((await other.request.get(imageUrl)).status(), 404);
+  const headers = { origin, "content-type": "image/png" };
+  assert.equal((await reader.request.post(endpoint, { headers, data: screenshot })).status(), 403);
+  assert.equal((await coordinator.request.post(endpoint, { headers, data: Buffer.from("not a PNG") })).status(), 400);
+  assert.equal((await coordinator.request.post(endpoint, { headers, data: Buffer.alloc(8 * 1024 * 1024 + 1) })).status(), 413);
+  assert.equal((await coordinator.request.post(endpoint, {
+    headers: { origin, "content-type": "image/svg+xml" }, data: Buffer.from("<svg/>"),
+  })).status(), 415);
+  assert.equal((await coordinator.request.post(endpoint, {
+    headers: { ...headers, "x-nutshell-screenshot": encodeURIComponent(JSON.stringify({ provenance: "fixture_capture" })) },
+    data: screenshot,
+  })).status(), 400);
+
+  const { stdout } = await promisify(execFile)(process.execPath, [
+    "scripts/fixture-screenshot-evidence.ts", sourceRevision, asset.id, capturedAt,
+  ], { timeout: 90_000, env: { ...process.env, NUTSHELL_VERIFY: "1", NUTSHELL_ORIGIN: origin } });
+  const evidenceRevision = stdout.trim();
+  assert.match(evidenceRevision, /^[a-f0-9]{40}$/u);
+  const deadline = Date.now() + 50_000;
+  let indexed = false;
+  while (!indexed && Date.now() < deadline) {
+    const result = await coordinator.request.get(snapshotUrl, { timeout: 15_000 });
+    assert.equal(result.status(), 200);
+    const payload = await result.json() as { status: string; revision: string };
+    indexed = payload.status === "current" && payload.revision === evidenceRevision;
+    if (!indexed) await delay(250);
+  }
+  assert.equal(indexed, true, "Signed screenshot fixture must reach the indexed workspace.");
+
+  await coordinator.reload();
+  const explorer = coordinator.getByRole("navigation", { name: "Repository explorer", exact: true });
+  const records = explorer.locator("summary").filter({ hasText: /^Product records$/u });
+  if (!await records.evaluate((node) => (node.parentElement as HTMLDetailsElement).open)) await records.click();
+  await explorer.getByRole("button", { name: "Observation capture", exact: true }).click();
+  const evidence = coordinator.getByRole("region", { name: "Evidence for Inspect screenshot evidence for observation capture.", exact: true });
+  const declared = evidence.getByRole("listitem").filter({ hasText: asset.id });
+  await declared.getByText("Declared screenshot", { exact: true }).waitFor();
+  await evidence.getByText("Fixture capture", { exact: true }).waitFor();
+  await evidence.getByText("Evidence unavailable", { exact: true }).waitFor();
+  for (const alt of ["Screenshot for Uploaded workspace image", "Screenshot for workspace-indexed"]) {
+    const element = evidence.getByRole("img", { name: alt, exact: true });
+    await element.waitFor();
+    assert.equal(await element.evaluate(async (node) => {
+      if (!(node instanceof HTMLImageElement)) return 0;
+      await node.decode();
+      return node.naturalWidth;
+    }), 1440);
+  }
+  assert.equal(await evidence.getByRole("img").count(), 2);
+  await evidence.scrollIntoViewIfNeeded();
+  await coordinator.screenshot({ path: output + "/workspace-screenshot-evidence.png" });
+  await coordinator.close();
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -817,7 +910,6 @@ export async function verifyEntryFlow(origin: string) {
     assert.equal((await other.request.get(proposalEndpoint)).status(), 404);
     assert.equal((await other.request.get(origin + "/api/repos/1001/tasks")).status(), 404);
     assert.equal((await other.request.get(origin + "/api/repos/1001/notes")).status(), 404);
-    await other.close();
 
     const reader = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await reader.goto(origin + "/login");
@@ -851,11 +943,14 @@ export async function verifyEntryFlow(origin: string) {
     await verifyTeamTasks(teamTaskPage, reader, origin, output);
     const teamNotePage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
     await verifyTeamNotes(teamNotePage, reader, origin, output);
-    await reader.close();
     const proposalPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
     await verifyMarkdownProposal(proposalPage, origin, output);
     const graphPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
     await verifyWorkspaceGraphs(graphPage, origin, output);
+    const evidencePage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
+    await verifyScreenshotEvidence(evidencePage, reader, other, origin, output);
+    await reader.close();
+    await other.close();
   } catch (error) {
     journeyFailure = { error };
   }
@@ -877,5 +972,5 @@ export async function verifyEntryFlow(origin: string) {
       `${describe(journeyFailure.error)}\n${describe(shutdownError)}`, { cause: shutdownError });
   }
   if (journeyFailure) throw journeyFailure.error;
-  console.log(`${browserType.name()} entry, signed fixture setup, workspace, repository tasks, private drafts, simulated proposal publication, both graph modes, and browser shutdown passed.`);
+  console.log(`${browserType.name()} entry, signed fixture setup, workspace, repository tasks and notes, private drafts, simulated proposal publication, both graph modes, private screenshot evidence, and browser shutdown passed.`);
 }

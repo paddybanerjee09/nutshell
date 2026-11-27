@@ -8,7 +8,9 @@
     "./fixture-drafts": "./src/fixture-drafts.ts",
     "./fixture-onboarding": "./src/fixture-onboarding.ts",
     "./fixture-sync": "./src/fixture-sync.ts",
+    "./raster": "./src/raster.ts",
     "./runtime": "./src/runtime.ts",
+    "./screenshot-assets": "./src/screenshot-assets.ts",
     "./setup": "./src/setup.ts",
     "./team-notes": "./src/team-notes.ts",
     "./team-tasks": "./src/team-tasks.ts",
@@ -20,6 +22,7 @@
     "better-auth": "1.7.28",
     "drizzle-orm": "0.45.4",
     "pg": "8.23.1",
+    "sharp": "0.35.5",
     "zod": "4.6.7"
   },
   "devDependencies": {

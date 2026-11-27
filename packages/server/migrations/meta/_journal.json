@@ -50,6 +50,13 @@
       "when": 1795651200006,
       "tag": "0006_team_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795651200007,
+      "tag": "0007_screenshot_assets",
+      "breakpoints": true
     }
   ]
 }
