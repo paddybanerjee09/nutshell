@@ -36,7 +36,10 @@ async function verify() {
   await prepare(config.testDatabaseUrl);
   await runPnpm(["lint"]);
   await runPnpm(["typecheck"]);
-  await runPnpm(["test", "--no-file-parallelism"], env);
+  // The suites share synthetic PostgreSQL state. Windows workers use threads to avoid fork teardown delays.
+  const testArgs = ["test", "--no-file-parallelism"];
+  if (process.platform === "win32") testArgs.push("--pool=threads");
+  await runPnpm(testArgs, env);
   await runPnpm(["--filter", "@nutshell/web", "build"], env);
   await runPnpm(["exec", "node", "scripts/fixture-onboarding-prepare.ts"], env);
   const services = await startServices(env, true);

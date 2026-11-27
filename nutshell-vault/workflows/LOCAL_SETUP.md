@@ -72,6 +72,8 @@ Install the browser for your platform with `pnpm exec playwright install firefox
 
 On this Windows host, Chromium's native child stayed alive after the browser connection closed, including with a synthetic page and a direct DevTools connection. Playwright Firefox exited successfully in the independent Windows probe. The verifier uses Firefox on Windows and reports a failed check if graceful browser shutdown cannot be confirmed. See the [acceptance ledger](../runs/ACCEPTANCE.md#decision) for the application checks.
 
+Verification runs the test files in sequence because PostgreSQL integration tests change shared fixture grants and connection epochs. On Windows, Vitest uses worker threads to avoid the observed fork shutdown timeouts.
+
 The pinned runtime uses Node 24.18.0, pnpm 11.25.0, PostgreSQL 18.7, Next.js 16.4.6, Better Auth 1.7.28, Drizzle 0.45.4, and pg-boss 12.40.0.
 
 ### Configure the product runtime separately
