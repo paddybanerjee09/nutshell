@@ -153,7 +153,7 @@ export function WorkspaceTeamNotesProvider({ repositoryId, children }: { reposit
   function resolveConflict(keep: boolean) {
     if (!editor?.conflict || operation.current === "mutate") return;
     const note = editor.conflict.note;
-    setEditor({ note, fields: { ...noteFields(note), ...(keep ? noteChanges(editor) : {}) }, conflict: null });
+    setEditor(keep ? { note, fields: { ...noteFields(note), ...noteChanges(editor) }, conflict: null } : null);
     setError("");
     setStatus(keep ? "Your edits are ready to save against the current version." : "The current saved note is loaded.");
   }

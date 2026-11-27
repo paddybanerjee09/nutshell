@@ -739,7 +739,11 @@ async function verifyTeamNotes(coordinator: Page, reader: Page, origin: string, 
   assert.ok((await body.textContent())?.includes(attemptedText));
   assert.deepEqual(bodyConflict.note, finalNote);
   await readerNotes.getByRole("button", { name: "Discard edits and load saved version", exact: true }).click();
-  await readerNotes.getByRole("heading", { name: revisedTitle, exact: true }).waitFor();
+  const saved = readerNotes.getByRole("region", { name: "Selected note", exact: true });
+  await saved.getByRole("heading", { name: revisedTitle, exact: true }).waitFor();
+  const savedBody = saved.getByRole("document", { name: "Saved note body", exact: true });
+  await savedBody.getByText(/Signed off by the reader/).waitFor();
+  assert.ok(!(await savedBody.textContent())?.includes(attemptedText));
   await coordinator.reload();
   await coordinatorNotes.getByRole("list", { name: "Repository notes" }).getByRole("button", { name: revisedTitle, exact: true }).click();
   await coordinatorNotes.getByText(/Signed off by the reader/).waitFor();
