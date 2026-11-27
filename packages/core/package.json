@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./change-validation": "./src/repository-change-validation.ts",
     "./context-retrieval": "./src/context-retrieval.ts",
     "./fixture-setup-tree": "./src/fixture-setup-tree.ts",
     "./frontmatter": "./src/frontmatter.ts",

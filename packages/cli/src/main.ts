@@ -1,21 +1,24 @@
 const help = `Usage:
   pnpm nutshell validate --working-tree [--json]
   pnpm nutshell validate --base <ref> --head <ref> [--json]
+  pnpm nutshell impact --base <ref> --head <ref> [--json]
   pnpm nutshell context --help
 
-Validate the local vault snapshot. Git mode resolves both refs and validates
-the vault at the resolved head. Scope: vault snapshot checks only.`;
+Git comparison resolves both refs to commits and applies trusted repository
+policy. Impact lists changed paths, entity and change IDs, and relevant notes.
+Scope: vault snapshot checks only for --working-tree or validation before repository setup.`;
 
 type Options =
   | { kind: "help" }
   | { kind: "working-tree"; json: boolean }
-  | { kind: "git"; json: boolean; base: string; head: string };
+  | { kind: "git"; command: "validate" | "impact"; json: boolean; base: string; head: string };
 
 function parseOptions(args: string[]): Options {
   if (args.length === 0 || (args.length === 1 && args[0] === "--help")) {
     return { kind: "help" };
   }
-  if (args[0] !== "validate") throw new Error("Expected validate or context. See --help.");
+  const command = args[0];
+  if (command !== "validate" && command !== "impact") throw new Error("Expected validate, impact, or context. See --help.");
   if (args.length === 2 && args[1] === "--help") return { kind: "help" };
 
   const seen = new Set<string>();
@@ -37,9 +40,57 @@ function parseOptions(args: string[]): Options {
   }
 
   const json = seen.has("--json");
-  if (seen.has("--working-tree") && !base && !head) return { kind: "working-tree", json };
-  if (!seen.has("--working-tree") && base && head) return { kind: "git", json, base, head };
+  if (command === "validate" && seen.has("--working-tree") && !base && !head) return { kind: "working-tree", json };
+  if (!seen.has("--working-tree") && base && head) return { kind: "git", command, json, base, head };
+  if (command === "impact") throw new Error("Impact requires both --base and --head. See --help.");
   throw new Error("Specify --working-tree or both --base and --head. See --help.");
+}
+
+type Source = { kind: "working-tree" } | { kind: "git"; base: string; head: string };
+
+async function reportVault(files: ReadonlyMap<string, string>, source: Source, json: boolean) {
+  const { validateVault } = await import("@nutshell/core/vault");
+  const issues = validateVault(files);
+  if (json) {
+    console.log(JSON.stringify({ scope: "vault-snapshot", source, issues }, null, 2));
+  } else {
+    const location = source.kind === "git" ? `head ${source.head} (base ${source.base})` : "the working tree";
+    console.log(`Vault snapshot checks for ${location}`);
+    for (const issue of issues) console.log(`${issue.path} [${issue.code}] ${issue.message}`);
+    console.log(issues.length === 0 ? "Passed." : `${issues.length} issue(s).`);
+  }
+  return issues.length === 0 ? 0 : 1;
+}
+
+async function reportGitComparison(options: Extract<Options, { kind: "git" }>, cwd: string) {
+  const { readGitComparison } = await import("./git-comparison.ts");
+  const comparison = await readGitComparison(cwd, options.base, options.head, options.command === "validate");
+  const { source } = comparison;
+  if (comparison.kind === "vault") return reportVault(comparison.files, source, options.json);
+
+  const { validateRepositoryChanges } = await import("@nutshell/core/change-validation");
+  const { baseFiles, headFiles, changedPaths } = comparison;
+  const report = validateRepositoryChanges({ baseFiles, headFiles, changedPaths });
+  if (options.json) {
+    const scope = options.command === "impact" ? "repository-impact" : "repository-change-validation";
+    console.log(JSON.stringify({ scope, source, ...report }, null, 2));
+  } else {
+    const heading = options.command === "impact" ? "Repository impact" : "Repository change checks";
+    console.log(`${heading} for head ${source.head} (base ${source.base}, policy ${report.policyVersion})`);
+    if (options.command === "impact") {
+      if (report.mappings.length === 0) console.log("No changed paths.");
+      for (const { path, covered, entityIds, changeIds, memoryPaths } of report.mappings) {
+        const coverage = covered ? "covered" : "outside coverage";
+        console.log(`${JSON.stringify(path)} [${coverage}]`);
+        if (entityIds.length) console.log(`  Entities ${entityIds.join(", ")}`);
+        if (changeIds.length) console.log(`  Changes ${changeIds.join(", ")}`);
+        if (memoryPaths.length) console.log(`  Memory ${memoryPaths.map((note) => JSON.stringify(note)).join(", ")}`);
+      }
+    }
+    for (const issue of report.issues) console.log(`${JSON.stringify(issue.path)} [${issue.severity} ${issue.code}] ${issue.message}`);
+    console.log(report.issues.length === 0 ? "Passed." : `${report.issues.length} issue(s).`);
+  }
+  return report.ok ? 0 : 1;
 }
 
 async function main(): Promise<number> {
@@ -54,25 +105,10 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const [{ validateVault }, { readGitSnapshot, readWorkingTree }] = await Promise.all([
-    import("@nutshell/core/vault"), import("./vault-files.ts"),
-  ]);
-  const snapshot = options.kind === "git"
-    ? await readGitSnapshot(process.cwd(), options.base, options.head)
-    : readWorkingTree(process.cwd());
-  const issues = validateVault(snapshot.files);
-  const source = snapshot.kind === "git"
-    ? { kind: snapshot.kind, base: snapshot.base, head: snapshot.head }
-    : { kind: snapshot.kind };
-  if (options.json) {
-    console.log(JSON.stringify({ scope: "vault-snapshot", source, issues }, null, 2));
-  } else {
-    const location = source.kind === "git" ? `head ${source.head} (base ${source.base})` : "the working tree";
-    console.log(`Vault snapshot checks for ${location}`);
-    for (const issue of issues) console.log(`${issue.path} [${issue.code}] ${issue.message}`);
-    console.log(issues.length === 0 ? "Passed." : `${issues.length} issue(s).`);
-  }
-  return issues.length === 0 ? 0 : 1;
+  if (options.kind === "git") return reportGitComparison(options, process.cwd());
+  const { readWorkingTree } = await import("./vault-files.ts");
+  const snapshot = readWorkingTree(process.cwd());
+  return reportVault(snapshot.files, { kind: snapshot.kind }, options.json);
 }
 
 try {

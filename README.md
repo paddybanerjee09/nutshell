@@ -91,7 +91,9 @@ pnpm typecheck
 pnpm test
 ```
 
-Use `pnpm nutshell validate --base <ref> --head <ref>` for the vault at the resolved Git head. Retrieve context from the checked-out Git revision with a query and optional comma-separated repository paths.
+Compare exact Git revisions with `pnpm nutshell validate --base <ref> --head <ref>`. A configured repository uses the selected base coverage policy and checks new semantic change records. Use `pnpm nutshell impact --base <ref> --head <ref>` to see changed paths, mapped entities, and related notes. Add `--json` for structured results.
+
+Retrieve context from the checked-out Git revision with a query and optional comma-separated repository paths.
 
 ```powershell
 pnpm nutshell context --query "fixture setup" --paths "packages/server/src/fixture-onboarding.ts" --budget 8192
