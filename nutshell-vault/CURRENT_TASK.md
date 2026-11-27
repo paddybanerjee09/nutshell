@@ -3,34 +3,34 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: private-screenshot-evidence-2026-11-27
-task_state: ready_for_review
-task_revision: 70
-repository_id: 1467144605
-branch: feature/private-screenshot-evidence
-base_branch: main
-pr_number: 13
-pr_url: https://github.com/paddybanerjee09/nutshell/pull/13
-last_verified_head: 0864c06f390aab810c7ba4790c63e461b0727856
-lead_agent: root
-integration_checkout: 'C:\Users\paddy\dev\nutshell'
+task_id: null
+task_state: idle
+task_revision: 71
+repository_id: null
+branch: null
+base_branch: null
+pr_number: null
+pr_url: null
+last_verified_head: null
+lead_agent: null
+integration_checkout: null
 cleanup_pr_url: null
 ---
-# Private screenshot evidence
+# Current task
 
 ## Context
 
-Implement repository-scoped raster upload and proxy delivery, observable unavailable evidence, and provenance that distinguishes declared images from controlled fixture captures.
+No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
 
 ## Decision
 
-The service delegate owns asset storage and authorization, the HTTP delegate owns the bounded raster decoder and proxy routes, and the UI delegate owns the related workspace controls and evidence display. The lead owns source integration, dependency lock, browser verification, and memory in this checkout.
+The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
 
 ## Consequences
 
-Migration 0007 passed on both databases. Eleven focused PostgreSQL, raster, and route tests passed. Lint, strict types, the optimized build, persisted worker, signed fixture flows, and real Firefox passed with private image delivery and distinct declared, fixture capture, and unavailable states. Next verify the exact GitHub head before merge and guarded cleanup.
+See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
 
 ## Affected files
 
-- [Product history and evidence context](features/product-history/CONTEXT.md).
-- [Acceptance ledger](runs/ACCEPTANCE.md).
+- [Task template](templates/TASK.md)
+- [Vault index](_INDEX.md)
