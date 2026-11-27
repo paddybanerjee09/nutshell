@@ -1,14 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { buildFixtureSetupTree } from "@nutshell/core/fixture-setup-tree";
 import { and, eq } from "drizzle-orm";
+import { validateFixtureProposedChanges } from "./fixture-change-validation.ts";
 import { projectFixtureHistoryCandidate } from "./fixture-history-store.ts";
 import {
-  fixturePolicyVersion, fixtureSchemaVersion, lockFixtureConnection, normalizeFixtureFiles,
+  fixtureSchemaVersion, lockFixtureConnection, normalizeFixtureFiles,
   readFixtureTree, storeFixtureTree, writeFixtureHead, type DeliveryInput, type FixtureFile,
 } from "./fixture-sync.ts";
 import { fixtureRepositories } from "./local-fixtures.ts";
 import { getFixtureDatabase, lockRepositoryGrant, resolveRepositoryActor, type FixtureTransaction } from "./runtime.ts";
 import { fixtureSetupProposal, fixtureState } from "./schema.ts";
+
+const setupProposalPolicyVersion = 2;
 
 type FixtureRepository = (typeof fixtureRepositories)[number];
 type StoredProposal = typeof fixtureSetupProposal.$inferSelect;
@@ -100,7 +103,8 @@ async function validates({ tx, fixture }: SetupContext, files: readonly FixtureF
 
 export async function readFixtureOnboarding(headers: Headers, repositoryId: string): Promise<FixtureOnboardingRead | null> {
   return withSetupAccess(headers, repositoryId, "share", async (context) => {
-    const proposal = await storedProposal(context);
+    const stored = await storedProposal(context);
+    const proposal = stored && (stored.mergedRevision || stored.policyVersion === setupProposalPolicyVersion) ? stored : undefined;
     const current = proposal ? undefined : await currentTree(context);
     return {
       canConfigure: context.canConfigure,
@@ -118,7 +122,7 @@ export async function openFixtureSetup(headers: Headers, repositoryId: string): 
     if (existing?.mergedRevision) return { status: "merged", proposal: publicProposal(existing) };
 
     const base = await currentTree(context) ?? initialTree(fixture);
-    if (existing?.baseRevision === base.revision && existing.schemaVersion === fixtureSchemaVersion && existing.policyVersion === fixturePolicyVersion) {
+    if (existing?.baseRevision === base.revision && existing.schemaVersion === fixtureSchemaVersion && existing.policyVersion === setupProposalPolicyVersion) {
       return { status: "open", proposal: publicProposal(existing) };
     }
     if (await validates(context, base.files)) return { status: "conflict" };
@@ -131,13 +135,13 @@ export async function openFixtureSetup(headers: Headers, repositoryId: string): 
     } catch {
       return { status: "conflict" };
     }
-    if (!await validates(context, files)) return { status: "conflict" };
+    if (!(await validateFixtureProposedChanges(tx, fixture.id, base.files, files)).ok) return { status: "conflict" };
 
     const headRevision = revisionFor("fixture setup head", fixture.id, base.revision, files);
     await storeFixtureTree(tx, fixture.id, base.revision, base.files);
     await storeFixtureTree(tx, fixture.id, headRevision, files);
 
-    const check = { schemaVersion: fixtureSchemaVersion, policyVersion: fixturePolicyVersion, checkedRevision: headRevision };
+    const check = { schemaVersion: fixtureSchemaVersion, policyVersion: setupProposalPolicyVersion, checkedRevision: headRevision };
     const revisions = { baseRevision: base.revision, headRevision, ...check };
     const [proposal] = await tx.insert(fixtureSetupProposal).values({
       repositoryId: fixture.id, connectionEpoch: epoch, id: randomUUID(), deliveryId: randomUUID(), ...revisions,
@@ -159,9 +163,10 @@ export async function simulateFixtureSetupMerge(headers: Headers, repositoryId: 
     if (!mergedRevision) {
       const base = await currentTree(context) ?? initialTree(fixture);
       if (base.revision !== proposal.baseRevision || proposal.checkedRevision !== expectedHead ||
-          proposal.schemaVersion !== fixtureSchemaVersion || proposal.policyVersion !== fixturePolicyVersion) return { status: "conflict" };
+          proposal.schemaVersion !== fixtureSchemaVersion || proposal.policyVersion !== setupProposalPolicyVersion) return { status: "conflict" };
       const files = await readFixtureTree(tx, fixture.id, expectedHead);
-      if (!files || revisionFor("fixture setup head", fixture.id, base.revision, files) !== expectedHead || !await validates(context, files)) {
+      if (!files || revisionFor("fixture setup head", fixture.id, base.revision, files) !== expectedHead ||
+          !(await validateFixtureProposedChanges(tx, fixture.id, base.files, files)).ok) {
         return { status: "conflict" };
       }
 

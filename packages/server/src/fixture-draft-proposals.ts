@@ -4,7 +4,7 @@ import {
   draftFilter, fixtureDraftSourceBlob, isFixtureDraftPath, readEditableSource, readPublishedSource, readStoredDraft, serializeDraft,
   withDraftAccess, type DraftScope, type FixtureMarkdownDraft,
 } from "./fixture-drafts.ts";
-import { projectFixtureHistoryCandidate } from "./fixture-history-store.ts";
+import { validateFixtureProposedChanges } from "./fixture-change-validation.ts";
 import {
   fixturePolicyVersion, fixtureSchemaVersion, isFixtureRevision, normalizeFixtureFiles, readFixtureTree,
   storeFixtureTree, writeFixtureHead, type DeliveryInput, type FixtureFile,
@@ -81,9 +81,12 @@ function invalidCandidate(path: string, code: string, message: string): InvalidC
   return { status: "invalid_candidate", issues: [{ path, code, message }] };
 }
 
-async function validateCandidate({ tx, repositoryId }: DraftScope, files: FixtureFile[]): Promise<InvalidCandidate | null> {
-  const { projection } = await projectFixtureHistoryCandidate(tx, repositoryId, files);
-  return projection.ok ? null : { status: "invalid_candidate", issues: projection.issues.slice(0, maxIssues) };
+async function validateCandidate({ tx, repositoryId }: DraftScope, base: FixtureFile[], files: FixtureFile[]): Promise<InvalidCandidate | null> {
+  const validation = await validateFixtureProposedChanges(tx, repositoryId, base, files);
+  if (validation.ok) return null;
+  const issues = validation.issues.filter(({ severity }) => severity === "error").slice(0, maxIssues)
+    .map(({ path, code, message }) => ({ path, code, message }));
+  return { status: "invalid_candidate", issues };
 }
 
 function candidateHead(scope: DraftScope, base: CandidateBase, files: FixtureFile[]) {
@@ -146,7 +149,7 @@ export async function proposeFixtureDraft(headers: Headers, repositoryId: string
     } catch {
       return invalidCandidate(path, "draft-tree-limit", "The proposed tree exceeds the fixture provider text limits.");
     }
-    const invalid = await validateCandidate(scope, files);
+    const invalid = await validateCandidate(scope, baseFiles, files);
     if (invalid) return invalid;
 
     const base = { path, baseRevision, sourceBlob, draftVersion: version };
@@ -194,7 +197,7 @@ export async function mergeFixtureDraftProposal(headers: Headers, repositoryId: 
         !files.every((file, index) => file.path === baseFiles[index]?.path && (file.path === path || file.body === baseFiles[index]?.body))) {
       return invalidCandidate(path, "draft-candidate-integrity", "The exact checked tree no longer matches the proposed file replacement.");
     }
-    const invalid = await validateCandidate(scope, files);
+    const invalid = await validateCandidate(scope, baseFiles, files);
     if (invalid) return invalid;
 
     const revision = createHash("sha256").update(JSON.stringify(["fixture draft merge", repositoryId, proposalId, proposal.baseRevision, expectedHead])).digest("hex");

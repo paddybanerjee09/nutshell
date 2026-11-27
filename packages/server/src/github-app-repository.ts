@@ -45,8 +45,8 @@ const blob = z.object({ sha: objectId, size: z.number().int().nonnegative().max(
   content: z.string().max(Math.ceil(maxBlobBytes / 3) * 5), });
 const pullEndpoint = z.object({
   number: numericId, state: z.enum(["open", "closed"]),
-  head: z.object({ sha: objectId, repo: z.object({ id: numericId }).nullable() }),
-  base: z.object({ ref: gitBranch, repo: z.object({ id: numericId }) }),
+  head: z.object({ sha: objectId, ref: gitBranch.optional(), repo: z.object({ id: numericId }).nullable() }),
+  base: z.object({ sha: objectId.optional(), ref: gitBranch, repo: z.object({ id: numericId }) }),
 });
 const checkRun = z.object({
   id: numericId, name: z.string().max(100), head_sha: objectId, app: z.object({ id: numericId }).nullable(),
@@ -71,7 +71,16 @@ export type GitHubRepositoryAccess = {
   canConfigure: boolean;
 };
 type GitHubImmutableTree = { treeSha: string; paths: readonly string[]; files: readonly { path: string; body: string }[] };
-type GitHubCheckInput = { pullNumber: number; expectedHead: string; conclusion: "success" | "failure"; summary: string };
+type TrackedTreeEntry = z.infer<typeof treeEntry>;
+type GitHubPullTarget = { pullNumber: number; expectedHead: string; expectedBase?: string };
+type GitHubCheckInput = GitHubPullTarget & { conclusion: "success" | "failure"; summary: string };
+export type GitHubPullComparison = {
+  baseRevision: string;
+  headRevision: string;
+  baseFiles: ReadonlyMap<string, string>;
+  headFiles: ReadonlyMap<string, string>;
+  changedPaths: readonly string[];
+};
 type GitHubValidationStatus = { id: number; head: string; status: z.infer<typeof checkRun>["status"]; conclusion: z.infer<typeof checkRun>["conclusion"] };
 type GitHubBranchCheckEnforcement = { rule: "required" | "unknown"; bypass: "unknown" };
 
@@ -124,8 +133,8 @@ function isManagedArea(path: string) {
   return isManaged(path) || path === ".nutshell" || path === "nutshell-vault" || path.startsWith("nutshell-vault/");
 }
 
-function listTracked(tree: readonly z.infer<typeof treeEntry>[]) {
-  const entries = new Map<string, z.infer<typeof treeEntry>>();
+function listTracked(tree: readonly TrackedTreeEntry[]) {
+  const entries = new Map<string, TrackedTreeEntry>();
   for (const entry of tree) {
     const { path, type, mode } = entry;
     if (entries.has(path) || (type === "tree" && mode !== "040000") || (type === "commit" && mode !== "160000")
@@ -148,6 +157,25 @@ function listTracked(tree: readonly z.infer<typeof treeEntry>[]) {
     const entry = entries.get(path)!;
     return entry.type === "tree" ? [] : [entry];
   });
+}
+
+function compareTrackedPaths(base: readonly TrackedTreeEntry[], head: readonly TrackedTreeEntry[]) {
+  const original = new Map(base.map((entry) => [entry.path, entry]));
+  const changed: string[] = [];
+  for (const entry of head) {
+    const before = original.get(entry.path);
+    if (!before || before.sha !== entry.sha || before.mode !== entry.mode || before.type !== entry.type) changed.push(entry.path);
+    original.delete(entry.path);
+  }
+  // Rename endpoints both participate in coverage, the same as a removal plus an addition.
+  return [...changed, ...original.keys()].sort();
+}
+
+function comparisonFiles(tracked: readonly TrackedTreeEntry[], files: GitHubImmutableTree["files"]) {
+  // Keep inventory keys for coverage and glob matching without reading unmanaged blobs.
+  const result = new Map(tracked.map(({ path }) => [path, ""]));
+  for (const { path, body } of files) result.set(path, body);
+  return result;
 }
 
 function decodeBlob(value: unknown, sha: string, size: number): string {
@@ -217,20 +245,23 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
     return { base, archived: current.archived };
   }
 
-  async function readDefaultRevision(identity: GitHubRepositoryIdentity): Promise<string> {
-    const branch = parseInput(gitBranch, identity.defaultBranch);
-    const { base } = await verifyInstallationRepository(identity);
+  async function readDefaultRef(identity: GitHubRepositoryIdentity, base: string, branch: string, signal?: AbortSignal): Promise<string> {
     const path = branch.split("/").map(encodeURIComponent).join("/");
     const result = parseResponse(revisionReference,
-      await transport.installationRequest(scope(identity, { contents: "read" }), `${base}/git/ref/heads/${path}`));
+      await transport.installationRequest(scope(identity, { contents: "read" }), `${base}/git/ref/heads/${path}`, { signal }));
     if (result.ref !== `refs/heads/${branch}`) throw new GitHubRepositoryError("invalid_response", "GitHub returned a different default branch.");
     return result.object.sha;
   }
 
-  async function readImmutableTree(identity: GitHubRepositoryIdentity, revisionInput: string): Promise<GitHubImmutableTree> {
-    const revision = parseInput(objectId, revisionInput);
-    const signal = AbortSignal.timeout(120_000);
-    const { base } = await verifyInstallationRepository(identity, signal);
+  async function readDefaultRevision(identity: GitHubRepositoryIdentity): Promise<string> {
+    const branch = parseInput(gitBranch, identity.defaultBranch);
+    const { base } = await verifyInstallationRepository(identity);
+    return readDefaultRef(identity, base, branch);
+  }
+
+  async function readVerifiedTree(
+    identity: GitHubRepositoryIdentity, base: string, revision: string, signal: AbortSignal, reads: Map<string, Promise<string>>,
+  ) {
     const contents = scope(identity, { contents: "read" });
     const selected = parseResponse(commit, await transport.installationRequest(contents, `${base}/git/commits/${revision}`, { signal }));
     if (selected.sha !== revision) throw new GitHubRepositoryError("invalid_response", "GitHub returned a different Git commit.");
@@ -250,8 +281,7 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
       }
     }
 
-    const reads = new Map<string, Promise<string>>();
-    function readFile({ sha, size, path }: z.infer<typeof treeEntry>) {
+    function readFile({ sha, size, path }: TrackedTreeEntry) {
       const expectedSize = size!;
       let existing = reads.get(sha);
       if (!existing) {
@@ -266,19 +296,77 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
     }
     const files: { path: string; body: string }[] = [];
     for (let start = 0; start < managed.length; start += 8) files.push(...await Promise.all(managed.slice(start, start + 8).map(readFile)));
-    return { treeSha: tree.sha, paths: tracked.map(({ path }) => path), files };
+    return { treeSha: tree.sha, tracked, files };
+  }
+
+  async function readImmutableTree(identity: GitHubRepositoryIdentity, revisionInput: string): Promise<GitHubImmutableTree> {
+    const revision = parseInput(objectId, revisionInput);
+    const signal = AbortSignal.timeout(120_000);
+    const { base } = await verifyInstallationRepository(identity, signal);
+    const { treeSha, tracked, files } = await readVerifiedTree(identity, base, revision, signal, new Map());
+    return { treeSha, paths: tracked.map(({ path }) => path), files };
+  }
+
+  async function observePull(identity: GitHubRepositoryIdentity, base: string, pullNumber: number, signal?: AbortSignal) {
+    const observed = parseResponse(pullEndpoint, await transport.installationRequest(
+      scope(identity, { pull_requests: "read" }), `${base}/pulls/${pullNumber}`, { signal },
+    ));
+    if (observed.number !== pullNumber || observed.state !== "open" || observed.base.ref !== identity.defaultBranch
+      || observed.base.repo.id !== identity.id || observed.head.repo?.id !== identity.id) {
+      throw new GitHubRepositoryError("unsupported", "Validation requires an open same-repository pull request targeting the current default branch.");
+    }
+    if (observed.head.ref && /^(?:refs\/heads\/)?gh-readonly-queue(?:\/|$)/u.test(observed.head.ref)) {
+      throw new GitHubRepositoryError("unsupported", "Merge queue heads require a different validation flow.");
+    }
+    return observed;
   }
 
   async function observePullRequestHead(identity: GitHubRepositoryIdentity, pullNumberInput: number, publishing = false): Promise<string> {
     const pullNumber = parseInput(numericId, pullNumberInput);
     const { base, archived } = await verifyInstallationRepository(identity);
     if (publishing && archived) throw new GitHubRepositoryError("unsupported", "Checks cannot be published to an archived repository.");
-    const observed = parseResponse(pullEndpoint, await transport.installationRequest(scope(identity, { pull_requests: "read" }), `${base}/pulls/${pullNumber}`));
-    if (observed.number !== pullNumber || observed.state !== "open" || observed.base.ref !== identity.defaultBranch
-      || observed.base.repo.id !== identity.id || observed.head.repo?.id !== identity.id) {
-      throw new GitHubRepositoryError("unsupported", "Validation requires an open same-repository pull request targeting the current default branch.");
+    return (await observePull(identity, base, pullNumber)).head.sha;
+  }
+
+  async function observeExactPull(
+    identity: GitHubRepositoryIdentity, base: string, input: GitHubPullTarget, signal?: AbortSignal,
+  ) {
+    const observed = await observePull(identity, base, input.pullNumber, signal);
+    if (!observed.base.sha || !observed.head.ref) {
+      throw new GitHubRepositoryError("invalid_response", "GitHub did not report both exact pull request targets.");
     }
-    return observed.head.sha;
+    if (observed.head.sha !== input.expectedHead) throw new GitHubRepositoryError("conflict", "The pull request head changed.");
+    if ((input.expectedBase !== undefined && observed.base.sha !== input.expectedBase) ||
+      observed.base.sha !== await readDefaultRef(identity, base, observed.base.ref, signal)) {
+      throw new GitHubRepositoryError("conflict", "The pull request base no longer matches the current default branch revision.");
+    }
+    return { baseRevision: observed.base.sha, headRevision: observed.head.sha, headBranch: observed.head.ref };
+  }
+
+  async function readPullRequestComparison(identity: GitHubRepositoryIdentity, input: GitHubPullTarget): Promise<GitHubPullComparison> {
+    const pullNumber = parseInput(numericId, input.pullNumber);
+    const expectedHead = parseInput(objectId, input.expectedHead);
+    const expectedBase = input.expectedBase === undefined ? undefined : parseInput(objectId, input.expectedBase);
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]);
+    try {
+      const { base } = await verifyInstallationRepository(identity, signal);
+      const { baseRevision, headRevision, headBranch } = await observeExactPull(identity, base, { pullNumber, expectedHead, expectedBase }, signal);
+      const reads = new Map<string, Promise<string>>();
+      const [original, candidate] = await Promise.all([
+        readVerifiedTree(identity, base, baseRevision, signal, reads),
+        readVerifiedTree(identity, base, headRevision, signal, reads),
+      ]);
+      await verifyInstallationRepository(identity, signal);
+      const later = await observeExactPull(identity, base, { pullNumber, expectedHead: headRevision, expectedBase: baseRevision }, signal);
+      if (later.headBranch !== headBranch) throw new GitHubRepositoryError("conflict", "The pull request head branch changed.");
+      return { baseRevision, headRevision,
+        baseFiles: comparisonFiles(original.tracked, original.files),
+        headFiles: comparisonFiles(candidate.tracked, candidate.files),
+        changedPaths: compareTrackedPaths(original.tracked, candidate.tracked) };
+    } finally {
+      controller.abort();
+    }
   }
 
   function isOwnCheck(run: z.infer<typeof checkRun>, head: string) {
@@ -291,12 +379,18 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
 
   async function publishPullRequestCheck(identity: GitHubRepositoryIdentity, input: GitHubCheckInput): Promise<GitHubValidationStatus> {
     const head = parseInput(objectId, input.expectedHead);
+    const expectedBase = input.expectedBase === undefined ? undefined : parseInput(objectId, input.expectedBase);
     const conclusion = parseInput(z.enum(["success", "failure"]), input.conclusion);
     const summary = parseInput(z.string().min(1).max(4_000), input.summary);
-    if (await observePullRequestHead(identity, input.pullNumber, true) !== head) {
+    const pullNumber = parseInput(numericId, input.pullNumber);
+    const { base, archived } = await verifyInstallationRepository(identity);
+    if (archived) throw new GitHubRepositoryError("unsupported", "Checks cannot be published to an archived repository.");
+    if (expectedBase !== undefined) {
+      // Check creation binds the head SHA. GitHub has no atomic expected-base condition for this write.
+      await observeExactPull(identity, base, { pullNumber, expectedHead: head, expectedBase });
+    } else if ((await observePull(identity, base, pullNumber)).head.sha !== head) {
       throw new GitHubRepositoryError("conflict", "The pull request head changed before validation could be published.");
     }
-    const base = repositoryPath(identity.owner, identity.name);
     const run = parseResponse(checkRun, await transport.installationRequest(scope(identity, { checks: "write" }), `${base}/check-runs`, {
       method: "POST", body: { name: githubValidationCheckName, head_sha: head, status: "completed", conclusion,
         output: { title: githubValidationCheckName, summary } },
@@ -328,7 +422,7 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
     return { rule: required ? "required" : "unknown", bypass: "unknown" };
   }
 
-  return { verifyCurrentUserAccess, readDefaultRevision, readImmutableTree, observePullRequestHead, publishPullRequestCheck,
+  return { verifyCurrentUserAccess, readDefaultRevision, readImmutableTree, observePullRequestHead, readPullRequestComparison, publishPullRequestCheck,
     readValidationStatus, readBranchCheckEnforcement };
 }
 

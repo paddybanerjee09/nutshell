@@ -149,6 +149,8 @@ describe("GitHub App immutable repository reads", () => {
       { path: "src/large.png", type: "blob", mode: "100644", size: 50_000_000, sha: metadataOnly },
       { path: "vendor", type: "commit", mode: "160000", sha: metadataOnly }];
     const { repo, requests } = fakeGitHub((request) => gitResponses(request, fixtures, new Map([[gitOwner.sha, gitOwner], [index.sha, index]])));
+    await expect(repo.readDefaultRevision({ ...identity, defaultBranch: "../invalid" })).rejects.toMatchObject({ code: "invalid_request" });
+    expect(requests).toHaveLength(0);
     expect(await repo.readDefaultRevision(identity)).toBe(revision);
     expect(await repo.readImmutableTree(identity, revision)).toEqual({ treeSha,
       paths: ["AGENTS.md", "README.md", "nutshell-vault/_INDEX.md", "src/large.png", "vendor"],
@@ -183,6 +185,133 @@ describe("GitHub App immutable repository reads", () => {
       const { repo } = fakeGitHub((request) => gitResponses(request, [file("AGENTS.md", managed)], new Map([[managed.sha, returned]])));
       await expect(repo.readImmutableTree(identity, revision)).rejects.toMatchObject({ code });
     }
+  });
+});
+
+describe("GitHub App exact pull request comparisons", () => {
+  const originalTree = "d".repeat(40);
+  const syntheticMerge = "e".repeat(40);
+  const pull = {
+    number: 37, state: "open", merge_commit_sha: syntheticMerge,
+    head: { sha: revision, ref: "feature/trusted-candidate", repo: { id: repositoryId } },
+    base: { sha: otherRevision, ref: defaultBranch, repo: { id: repositoryId } },
+  };
+  const input = { pullNumber: 37, expectedHead: revision, expectedBase: otherRevision };
+  const owner = gitBlob("# Keep these owner instructions.\r\n");
+  const originalConfig = gitBlob('{"coverage":{"include":["src/**"]}}\n');
+  const candidateConfig = gitBlob('{"coverage":{"include":[]}}\n');
+  const oldSource = gitBlob("old source");
+  const newSource = gitBlob("new source");
+  const baseEntries = [
+    file("AGENTS.md", owner), file(".nutshell/config.json", originalConfig),
+    { path: "src", mode: "040000", type: "tree", sha: originalTree }, file("src/changed.ts", oldSource),
+    file("src/deleted.ts", oldSource), file("src/mode.ts", oldSource), file("src/old-name.ts", newSource),
+    { path: "vendor/module", mode: "160000", type: "commit", sha: syntheticMerge },
+  ];
+  const headEntries = [
+    file("AGENTS.md", owner), file(".nutshell/config.json", candidateConfig),
+    { path: "src", mode: "040000", type: "tree", sha: treeSha }, file("src/changed.ts", newSource),
+    { ...file("src/mode.ts", oldSource), mode: "100755" }, file("src/new-name.ts", newSource),
+    file("vendor/module", oldSource),
+  ];
+
+  function comparisonFixture({
+    pulls = [pull], refs = [otherRevision], truncated = false, candidate = headEntries,
+  }: { pulls?: readonly object[]; refs?: readonly string[]; truncated?: boolean; candidate?: readonly object[] } = {}) {
+    let pullReads = 0;
+    let refReads = 0;
+    const blobs = new Map([owner, originalConfig, candidateConfig].map((entry) => [entry.sha, entry]));
+    return fakeGitHub((request) => {
+      const { pathname } = request.url;
+      if (pathname === repoPath) return Response.json(metadata);
+      if (pathname === repoPath + "/pulls/37") return Response.json(pulls[Math.min(pullReads++, pulls.length - 1)]);
+      if (pathname === repoPath + "/check-runs") {
+        expect(request.permissions).toEqual({ checks: "write" });
+        expect(request.body).toMatchObject({ head_sha: revision });
+        return Response.json(ownCheck, { status: 201 });
+      }
+      expect(request.permissions).toEqual({ contents: "read" });
+      if (pathname === repoPath + "/git/ref/heads/release/main") return Response.json({
+        ref: "refs/heads/release/main", object: { type: "commit", sha: refs[Math.min(refReads++, refs.length - 1)] },
+      });
+      if (pathname === repoPath + "/git/commits/" + otherRevision) return Response.json({ sha: otherRevision, tree: { sha: originalTree } });
+      if (pathname === repoPath + "/git/commits/" + revision) return Response.json({ sha: revision, tree: { sha: treeSha } });
+      if (pathname === repoPath + "/git/trees/" + originalTree) return Response.json({ sha: originalTree, tree: baseEntries, truncated: false });
+      if (pathname === repoPath + "/git/trees/" + treeSha) return Response.json({ sha: treeSha, tree: candidate, truncated });
+      const data = blobs.get(pathname.slice(pathname.lastIndexOf("/") + 1));
+      if (data && pathname.startsWith(repoPath + "/git/blobs/")) return Response.json(data);
+      throw new Error("Unexpected fixture comparison request " + pathname);
+    });
+  }
+
+  it("uses immutable base and head trees for changed blobs, modes, types, removals and both rename paths", async () => {
+    const { repo, requests } = comparisonFixture();
+    const result = await repo.readPullRequestComparison(identity, { pullNumber: 37, expectedHead: revision.toUpperCase() });
+    expect(result).toEqual({
+      baseRevision: otherRevision, headRevision: revision,
+      baseFiles: new Map([["AGENTS.md", "# Keep these owner instructions.\r\n"], [".nutshell/config.json", '{"coverage":{"include":["src/**"]}}\n'],
+        ["src/changed.ts", ""], ["src/deleted.ts", ""], ["src/mode.ts", ""], ["src/old-name.ts", ""], ["vendor/module", ""]]),
+      headFiles: new Map([["AGENTS.md", "# Keep these owner instructions.\r\n"], [".nutshell/config.json", '{"coverage":{"include":[]}}\n'],
+        ["src/changed.ts", ""], ["src/mode.ts", ""], ["src/new-name.ts", ""], ["vendor/module", ""]]),
+      changedPaths: [".nutshell/config.json", "src/changed.ts", "src/deleted.ts", "src/mode.ts", "src/new-name.ts", "src/old-name.ts", "vendor/module"],
+    });
+    expect(requests.filter(({ url }) => url.pathname === repoPath + "/pulls/37")).toHaveLength(2);
+    expect(requests.filter(({ url }) => url.pathname === repoPath + "/git/ref/heads/release/main")).toHaveLength(2);
+    expect(requests.filter(({ url }) => url.pathname.includes("/git/blobs/"))).toHaveLength(3);
+    expect(requests.some(({ url }) => url.pathname.includes("/pulls/37/files") || url.pathname.endsWith(syntheticMerge))).toBe(false);
+  });
+
+  it("rejects unsupported forks, merge queue refs and non-default bases before reading candidate files", async () => {
+    for (const observed of [
+      { ...pull, head: { ...pull.head, repo: { id: repositoryId + 1 } } },
+      { ...pull, head: { ...pull.head, repo: null } },
+      { ...pull, head: { ...pull.head, ref: "gh-readonly-queue/release/main/pr-37" } },
+      { ...pull, base: { ...pull.base, ref: "feature/another-base" } },
+      { ...pull, base: { ...pull.base, repo: { id: repositoryId + 1 } } },
+    ]) {
+      const { repo, requests } = comparisonFixture({ pulls: [observed] });
+      await expect(repo.readPullRequestComparison(identity, input)).rejects.toMatchObject({ code: "unsupported" });
+      expect(requests.some(({ url }) => url.pathname.includes("/git/commits/"))).toBe(false);
+    }
+  });
+
+  it("fails closed on missing exact pull evidence, truncated trees, or movement during immutable reads", async () => {
+    const missing = comparisonFixture({ pulls: [{ ...pull, base: { ...pull.base, sha: undefined } }] });
+    await expect(missing.repo.readPullRequestComparison(identity, input)).rejects.toMatchObject({ code: "invalid_response" });
+    const truncated = comparisonFixture({ truncated: true });
+    await expect(truncated.repo.readPullRequestComparison(identity, input)).rejects.toMatchObject({ code: "limit" });
+    for (const unsafe of [
+      { ...file("nutshell-vault/linked.md", owner), mode: "120000" },
+      { path: ".nutshell/config.json", mode: "160000", type: "commit", sha: syntheticMerge },
+    ]) {
+      const { repo } = comparisonFixture({ candidate: [unsafe] });
+      await expect(repo.readPullRequestComparison(identity, input)).rejects.toMatchObject({ code: "unsupported" });
+    }
+    for (const fixture of [
+      comparisonFixture({ pulls: [pull, { ...pull, head: { ...pull.head, sha: syntheticMerge } }] }),
+      comparisonFixture({ pulls: [pull, { ...pull, head: { ...pull.head, ref: "changed-head-branch" } }] }),
+      comparisonFixture({ pulls: [pull, { ...pull, base: { ...pull.base, sha: syntheticMerge } }] }),
+      comparisonFixture({ refs: [otherRevision, syntheticMerge] }),
+    ]) {
+      await expect(fixture.repo.readPullRequestComparison(identity, input)).rejects.toMatchObject({ code: "conflict" });
+      expect(fixture.requests.filter(({ url }) => url.pathname.includes("/git/commits/"))).toHaveLength(2);
+    }
+  });
+
+  it("rechecks an exact observed base before acquiring write authority to publish the head Check", async () => {
+    const check = { ...input, conclusion: "success", summary: "Validated an exact base and head." } as const;
+    for (const fixture of [
+      comparisonFixture({ pulls: [{ ...pull, base: { ...pull.base, sha: syntheticMerge } }] }),
+      comparisonFixture({ refs: [syntheticMerge] }),
+    ]) {
+      await expect(fixture.repo.publishPullRequestCheck(identity, check)).rejects.toMatchObject({ code: "conflict" });
+      expect(fixture.requests.some(({ url, body }) => url.pathname.endsWith("/check-runs")
+        || (body as { permissions?: { checks?: string } })?.permissions?.checks === "write")).toBe(false);
+    }
+    const accepted = comparisonFixture();
+    await expect(accepted.repo.publishPullRequestCheck(identity, check)).resolves.toMatchObject({ head: revision, conclusion: "success" });
+    expect(accepted.requests.findIndex(({ url }) => url.pathname.includes("/git/ref/heads/")))
+      .toBeLessThan(accepted.requests.findIndex(({ url }) => url.pathname.endsWith("/check-runs")));
   });
 });
 
