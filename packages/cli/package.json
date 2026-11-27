@@ -1,0 +1,8 @@
+{
+  "name": "@nutshell/cli",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@nutshell/core": "workspace:*"
+  }
+}

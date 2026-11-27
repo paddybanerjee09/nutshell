@@ -4,7 +4,7 @@
 - **Slogan:** Your codebase. In a Nutshell.
 - **Specification date:** 26 November 2026
 - **Delivery target:** a working, tested alpha built and run locally.
-- **Current state:** starter instructions and reference assets only; application implementation and application tests have not started.
+- **State at handoff:** starter instructions and reference assets only.
 
 ## 1. Mission and source of truth
 

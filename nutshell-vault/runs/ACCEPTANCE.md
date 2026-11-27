@@ -7,7 +7,7 @@ tags: [verification, acceptance, evidence]
 
 ## Context
 
-No application checks have run. [SPEC.md](../../SPEC.md#17-acceptance-matrix) owns the acceptance gates. This operational ledger records evidence and does not duplicate CURRENT_TASK or imply implementation progress.
+[SPEC.md](../../SPEC.md#17-acceptance-matrix) owns the acceptance gates. This operational ledger records observed setup and verification. Infrastructure checks cover tool readiness.
 
 ## Decision
 
@@ -15,8 +15,8 @@ Record the exact command or reproducible action, relevant paths/revision, observ
 
 | Gate | Area | Status | Evidence |
 | --- | --- | --- | --- |
-| A01 | Local setup and startup | Not run | No application run |
-| A02 | Lint, typecheck, tests, optimized build | Not run | No application run |
+| A01 | Local setup and startup | Partial | Node 24.18.0 and pnpm 11.25.0 ran. PostgreSQL 18.7 authenticated on 127.0.0.1:55432 and preserved a test row through restart. Alpha setup, migrations, web, and worker remain unrun. See [local setup](../workflows/LOCAL_SETUP.md#observed-on-the-windows-development-machine). |
+| A02 | Lint, typecheck, tests, optimized build | Partial | `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed for the vault validator and CLI. Optimized web build remains unrun. |
 | A03 | Test database and reset isolation | Not run | No application run |
 | A04 | Sessions and protected surfaces | Not run | No application run |
 | A05 | Revocation, delayed work, token authority | Not run | No application run |
@@ -38,14 +38,14 @@ Record the exact command or reproducible action, relevant paths/revision, observ
 | A21 | Marketing and synthetic preview | Not run | No application run |
 | A22 | Mode and exposure guards | Not run | No application run |
 | A23 | Live-adapter controlled contract tests | Not run | No application run |
-| A24 | Complete local browser journey | Not run | No application run |
-| A25 | Truthful memory, commits, and handoff | Not run | Build has not started |
-| A26 | Exact active index coverage and routed body reads | Not run | No application validator or retrieval run |
+| A24 | Complete local browser journey | Not run | Playwright 1.65.1 launched Chrome Headless Shell 159.0.8154.6 and exercised a test form. No application browser journey. |
+| A25 | Truthful memory, commits, and handoff | Partial | Starter and validator use source [PR #1](https://github.com/paddybanerjee09/nutshell/pull/1). The web/worker handoff remains outstanding. |
+| A26 | Exact active index coverage and routed body reads | Partial | `pnpm nutshell validate --working-tree` checked the current catalog. Vitest fixtures exercised missing, duplicate, stale, and inactive entries. Query-based body selection remains unrun. |
 | A27 | One lead-owned task and guarded revisions | Not run | No task lifecycle implementation run |
-| A28 | Relevant decisions, unique keys, and supersession | Not run | No application validator or retrieval run |
-| A29 | Metadata, four headings, and length policy | Not run | No application validator run |
+| A28 | Relevant decisions, unique keys, and supersession | Partial | Validator fixtures reject duplicate accepted keys and broken supersession links. The starter's mismatched backlink was corrected. Decision retrieval remains unrun. |
+| A29 | Metadata, four headings, and length policy | Pass | `pnpm test` exercised note metadata, exact H2 headings including fenced examples, and length policy; `pnpm nutshell validate --working-tree` passed the managed vault. |
 | A30 | Default archive exclusion and explicit history | Not run | No application retrieval or graph run |
-| A31 | Real source PR proof and guarded canonical cleanup | Not run | No source feature PR or cleanup exercised |
+| A31 | Real source PR proof and guarded canonical cleanup | Partial | Authenticated push and [draft source PR #1](https://github.com/paddybanerjee09/nutshell/pull/1) observed at `ecd6576e5cdce6e14eb0d0838c51a70ed00efa46`. Main was unprotected and had no applicable rulesets or required checks. Merge, canonical cleanup, and negative lifecycle fixtures remain unrun. |
 | Live | Actual GitHub and external acceptance | Not run | No live setup or acceptance |
 
 ## Consequences

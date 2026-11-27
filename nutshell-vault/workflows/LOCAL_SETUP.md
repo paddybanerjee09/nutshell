@@ -7,7 +7,7 @@ tags: [workflow, setup, preflight, local-alpha, pull-requests]
 
 ## Context
 
-This is the planned local setup procedure. No application environment has been installed or tested by creating this starter. [SPEC.md](../../SPEC.md) owns the required commands and acceptance gates.
+This note records the local infrastructure preflight and tracks application startup as implementation proceeds. [SPEC.md](../../SPEC.md) owns the required commands and acceptance gates.
 
 Two GitHub relationships are distinct: the real development source repository requires authentication and feature-PR capability before feature work; Nutshell's optional live product GitHub App connects customer/test repositories. Local product fixtures do not satisfy the development PR gate.
 
@@ -32,6 +32,25 @@ If source-repository access, authentication, or required PR capability is unavai
 - Keep the machine awake and session online during the run. Use PowerShell-compatible or cross-platform scripts for Windows.
 
 Resolve allowed preflight problems. Client permissions are separate from these documents; a no-prompt setting does not supply missing capability. Do not evade a denied operation.
+
+### Observed on the Windows development machine
+
+- Git 2.54.0.windows.1 and Git Credential Manager 2.7.3 authenticated to the source repository. GitHub reported repository ID 1467144605, default branch `main`, and push authority. The first branch push and [draft PR #1](https://github.com/paddybanerjee09/nutshell/pull/1) succeeded. Branch protection, applicable rulesets, required status checks, and Actions workflows were absent at preflight. The owner authorized verified feature merges and expected-head, task-file-only cleanup on `main`.
+- Node 24.18.0, npm 11.16.0, and pnpm 11.25.0 ran locally. The npm registry and GitHub API returned HTTP 200 when reached through approved host execution. Next.js lists Windows and Node 20.9 or later in its [system requirements](https://nextjs.org/docs/app/getting-started/installation#system-requirements).
+- Playwright 1.65.1 installed Chrome Headless Shell 159.0.8154.6 under `.local/playwright-preflight/browsers`. A headless smoke test filled a form, clicked a button, and verified the DOM update. See the [Playwright browser installation guide](https://playwright.dev/docs/browsers).
+- PostgreSQL 18.7 ran from the official Windows binaries in `.local/postgres-18.7` after a SHA-256 check. A SCRAM-authenticated query connected over loopback on port 55432, inserted a test row, and verified its value after restart. The probe removed its table and stopped PostgreSQL. The host execution was approved after the default sandbox could not create the Windows restricted token for `pg_ctl`. See the [PostgreSQL Windows distributions](https://www.postgresql.org/download/windows/).
+
+Start, connect to, and stop that existing project-scoped PostgreSQL instance from the workspace in PowerShell:
+
+```powershell
+$pg = (Resolve-Path ./.local/postgres-18.7).Path
+& "$pg/pgsql/bin/pg_ctl.exe" -D "$pg/data" -l "$pg/postgres.log" -w start
+$env:PGPASSFILE = "$pg/pgpass.conf"
+& "$pg/pgsql/bin/psql.exe" -X -w -h 127.0.0.1 -p 55432 -U nutshell_local -d postgres
+& "$pg/pgsql/bin/pg_ctl.exe" -D "$pg/data" -w -m fast stop
+```
+
+These checks cover the database and browser prerequisites. Application migration, browser journeys, and worker startup have their own acceptance gates.
 
 ### Implement and document commands
 

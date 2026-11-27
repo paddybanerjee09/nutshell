@@ -4,7 +4,7 @@
 
 A web app for individuals or teams to visualize, understand, and collaborate on AI-assisted GitHub projects.
 
-This starter workspace contains the supplied logo, agent instructions, the full local-alpha build specification, and the revised memory vault. It is ready to hand to a coding agent; the application and its test suite have not been implemented yet.
+This workspace contains the supplied logo, agent instructions, the local-alpha specification, and the managed memory vault. The vault validation CLI is available. Web and worker startup are planned.
 
 ## Start locally
 
@@ -66,9 +66,20 @@ Finish with exact startup commands and an honest acceptance ledger.
 
 The index is the only active router; old nested indexes and the former run checkpoint have been archived. Notes target fewer than 200 lines. Replacing a decision requires marking the previous note superseded, archiving it, and updating the active index and references together.
 
-## What is and is not prepared
+## Validate the vault locally
 
-The `alpha:*`, `nutshell context`, and memory-validation commands are implementation requirements in the specification. This starter does not supply a package manifest, application runtime, installed dependencies, credentials, remote branch rules, or a post-merge bot. The first build must implement and verify those applicable requirements.
+Use Node 24.18.0 and pnpm 11.25.0 from the repository root.
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm nutshell --help
+pnpm nutshell validate --working-tree
+pnpm lint
+pnpm typecheck
+pnpm test
+```
+
+Use `pnpm nutshell validate --base <ref> --head <ref>` for the vault at the resolved Git head. Setup, web, worker, and context retrieval commands are tracked in [the specification](SPEC.md).
 
 The product's local-alpha mode uses real persistence and application logic with a simulated external GitHub provider. It does not require live product GitHub App credentials. **Building Nutshell still requires the real source PR workflow above.** Simulated product merges cannot clear the development task or prove a source PR was merged. Report the two evidence classes separately.
 

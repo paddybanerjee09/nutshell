@@ -4,7 +4,6 @@ date: "2026-11-26"
 status: accepted
 tags: [decision, workflow, memory, retrieval]
 decision_key: workflow.memory.single-task
-supersedes: nutshell-vault/archive/2026-11-26-workflow-migration/workflows/MEMORY_PROTOCOL.md
 ---
 
 ## Context
