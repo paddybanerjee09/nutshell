@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: markdown-drafts-2026-11-27
 task_state: pr_open
-task_revision: 39
+task_revision: 40
 repository_id: 1467144605
 branch: feature/markdown-drafts
 base_branch: main
@@ -28,7 +28,7 @@ Decorations are a view over Markdown source. Read remains the default view. Savi
 
 ## Consequences
 
-Source PR #8 has the draft API and CodeMirror workspace. The optimized build, persisted-worker probe, and focused editor and PostgreSQL checks passed. The optimized Firefox walkthrough verified source decorations, undo and redo, shared edits, persistence after reload, conflict preservation, reader denial, and shutdown. Keep draft status and Save visible while scrolling. Next, rerun the complete gate against the exact code and tests.
+Source PR #8 has the draft API and CodeMirror workspace. The optimized build, persisted-worker probe, and focused editor and PostgreSQL checks passed. The optimized Firefox walkthrough verified source decorations, undo and redo, shared edits, persistence after reload, conflict preservation, reader denial, and shutdown. The first rerun reached all 124 tests and found that a retained browser draft collided with the database test path. A new indexed test note isolated each run and passed against the same database. The complete gate is running against that repair and the visible draft controls.
 
 ## Affected files
 

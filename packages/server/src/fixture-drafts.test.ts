@@ -11,15 +11,23 @@ import { migrateAndSeed } from "./setup.ts";
 const repositoryId = 1001;
 const repositoryKey = String(repositoryId);
 const installationId = 2001;
-const path = "nutshell-vault/features/nutshell-setup/CONTEXT.md";
 
 describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL private Markdown drafts", { timeout: 20_000 }, () => {
   const [revision, invalidRevision, newerRevision] = Array.from({ length: 3 }, () => randomBytes(20).toString("hex")) as [string, string, string];
   const revisions = [revision, invalidRevision, newerRevision];
   const delivered: string[] = [];
   const sessions: string[] = [];
-  const tree = buildFixtureSetupTree([], { name: "Field Notes", description: "A synthetic draft test fixture.", entityId: "ent_draft_test" });
-  const source = tree.find((file) => file.path === path)!.body;
+  const path = `nutshell-vault/features/nutshell-setup/draft-${revision}.md`;
+  const source = [
+    "---", "id: draft-test", 'date: "2026-11-27"', "status: active", "tags: [drafts]", "---", "",
+    "# Draft test", "", "## Context", "", "Write against a unique path in the shared verification repository.", "",
+    "## Decision", "", "Exercise the same source and draft checks as the workspace.", "",
+    "## Consequences", "", "Other verification drafts remain in their original paths.", "",
+    "## Affected files", "", "This fixture note.", "",
+  ].join("\n");
+  const tree = buildFixtureSetupTree([{ path, body: source }], {
+    name: "Field Notes", description: "A synthetic draft test fixture.", entityId: "ent_draft_test",
+  });
   const originalStateQuery = "SELECT head_revision, indexed_revision, indexed_epoch, indexed_schema_version, indexed_policy_version FROM fixture_state WHERE repository_id = $1";
   type RepositoryState = {
     head_revision: string; indexed_revision: string | null; indexed_epoch: number | null;
