@@ -99,7 +99,7 @@ async function verifyWorkspace(page: Page, origin: string, output: string) {
   const reading = activePane.locator(".workspace-reading");
   assert.deepEqual(await reading.evaluate((node) => {
     const style = getComputedStyle(node);
-    return [style.fontSize, style.lineHeight, style.maxWidth];
+    return [style.fontSize, style.lineHeight, style.maxInlineSize];
   }), ["16px", "25.6px", "700px"]);
   assert.match(await workspaceStatus.innerText(), /Indexed[\s\S]*\d+ backlinks?[\s\S]*\d+ words/u);
 
@@ -119,6 +119,15 @@ async function verifyWorkspace(page: Page, origin: string, output: string) {
   await page.keyboard.press("Enter");
   await activePane.getByRole("heading", { name: "Field Notes", exact: true }).waitFor();
 
+  await page.keyboard.press("Control+P");
+  await search.fill("Move active tab left");
+  await palette.getByRole("option", { name: "Move active tab left", exact: true }).waitFor();
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => {
+    const tabs = document.querySelectorAll(".workspace-pane[data-focused='true'] [role='tab']");
+    return tabs.length === 3 && tabs[1]?.getAttribute("aria-selected") === "true";
+  });
+
   async function paneAction(name: string) {
     await activePane.locator("summary[aria-label='Pane actions']").click();
     await activePane.getByRole("button", { name, exact: true }).click();
@@ -132,11 +141,16 @@ async function verifyWorkspace(page: Page, origin: string, output: string) {
   const originalRatio = await separator.getAttribute("aria-valuenow");
   await separator.focus();
   await separator.press("ArrowRight");
+  await page.waitForFunction((before) => document.querySelector("[aria-label='Resize pane split']")?.getAttribute("aria-valuenow") !== before, originalRatio);
   assert.notEqual(await separator.getAttribute("aria-valuenow"), originalRatio);
   await explorer.getByRole("button", { name: "nutshell-vault/CURRENT_TASK.md", exact: true }).click();
   await activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true }).waitFor();
+  const sourcePane = await activePane.getAttribute("data-pane-id");
+  assert.ok(sourcePane);
   await paneAction("Move tab to next pane");
+  await page.waitForFunction((source) => document.querySelector(".workspace-pane[data-focused='true']")?.getAttribute("data-pane-id") !== source, sourcePane);
   await activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true }).waitFor();
+  assert.equal(await page.locator(`[data-pane-id='${sourcePane}']`).getByRole("tab", { name: "CURRENT_TASK.md", exact: true }).count(), 0);
   const left = page.getByRole("complementary", { name: "Left sidebar" });
   const right = page.getByRole("complementary", { name: "Right sidebar" });
   await left.getByRole("button", { name: "Move Explorer to right sidebar" }).click();

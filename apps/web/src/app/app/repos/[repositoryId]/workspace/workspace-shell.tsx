@@ -277,6 +277,15 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
     }
     if (pane.activeTabId) {
       const tabId = pane.activeTabId;
+      const index = pane.tabs.indexOf(tabId);
+      for (const [offset, direction] of [[-1, "left"], [1, "right"]] as const) {
+        const next = index + offset;
+        if (index < 0 || next < 0 || next >= pane.tabs.length) continue;
+        commands.push({ id: "reorder-tab-" + direction, label: "Move active tab " + direction, run: () => {
+          dispatch({ type: "move-tab", fromPaneId: pane.id, toPaneId: pane.id, tabId, index: next });
+          focusPane(pane.id);
+        } });
+      }
       commands.push({ id: "close-tab", label: "Close active tab", shortcut: "Delete", run: () => closeTab(pane.id, tabId) });
     }
     return commands;
