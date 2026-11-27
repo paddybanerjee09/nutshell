@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./context-retrieval": "./src/context-retrieval.ts",
     "./fixture-setup-tree": "./src/fixture-setup-tree.ts",
     "./frontmatter": "./src/frontmatter.ts",
     "./snapshot": "./src/repo-snapshot.ts",

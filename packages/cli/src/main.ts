@@ -1,9 +1,7 @@
-import { validateVault } from "@nutshell/core/vault";
-import { readGitSnapshot, readWorkingTree } from "./vault-files.ts";
-
 const help = `Usage:
   pnpm nutshell validate --working-tree [--json]
   pnpm nutshell validate --base <ref> --head <ref> [--json]
+  pnpm nutshell context --help
 
 Validate the local vault snapshot. Git mode resolves both refs and validates
 the vault at the resolved head. Scope: vault snapshot checks only.`;
@@ -17,7 +15,7 @@ function parseOptions(args: string[]): Options {
   if (args.length === 0 || (args.length === 1 && args[0] === "--help")) {
     return { kind: "help" };
   }
-  if (args[0] !== "validate") throw new Error("Expected the validate command. See --help.");
+  if (args[0] !== "validate") throw new Error("Expected validate or context. See --help.");
   if (args.length === 2 && args[1] === "--help") return { kind: "help" };
 
   const seen = new Set<string>();
@@ -45,12 +43,20 @@ function parseOptions(args: string[]): Options {
 }
 
 async function main(): Promise<number> {
-  const options = parseOptions(process.argv.slice(2));
+  const args = process.argv.slice(2);
+  if (args[0] === "context") {
+    const { runContextCommand } = await import("./context-command.ts");
+    return runContextCommand(args.slice(1), process.cwd());
+  }
+  const options = parseOptions(args);
   if (options.kind === "help") {
     console.log(help);
     return 0;
   }
 
+  const [{ validateVault }, { readGitSnapshot, readWorkingTree }] = await Promise.all([
+    import("@nutshell/core/vault"), import("./vault-files.ts"),
+  ]);
   const snapshot = options.kind === "git"
     ? await readGitSnapshot(process.cwd(), options.base, options.head)
     : readWorkingTree(process.cwd());

@@ -83,7 +83,15 @@ pnpm typecheck
 pnpm test
 ```
 
-Use `pnpm nutshell validate --base <ref> --head <ref>` for the vault at the resolved Git head. Query-based context retrieval is tracked in [the specification](SPEC.md).
+Use `pnpm nutshell validate --base <ref> --head <ref>` for the vault at the resolved Git head. Retrieve context from the checked-out Git revision with a query and optional comma-separated repository paths.
+
+```powershell
+pnpm nutshell context --query "fixture setup" --paths "packages/server/src/fixture-onboarding.ts" --budget 8192
+pnpm nutshell context --query "workspace panes" --ref main --json
+pnpm nutshell context --query "memory protocol" --working-tree --json
+```
+
+The budget estimates tokens from UTF-8 bytes and includes the complete index and current task. A budget below their combined size produces an error. Use `--include-archive` when investigating historical notes. Details are in the [memory context](nutshell-vault/features/memory-vault/CONTEXT.md).
 
 The product's local-alpha mode uses real persistence and application logic with a simulated external GitHub provider. It does not require live product GitHub App credentials. **Building Nutshell still requires the real source PR workflow above.** Simulated product merges cannot clear the development task or prove a source PR was merged. Report the two evidence classes separately.
 
