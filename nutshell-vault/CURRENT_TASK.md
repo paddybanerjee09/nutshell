@@ -1,37 +1,36 @@
 ---
 id: control-current-task
-date: "2026-11-26"
+date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: snapshot-workspace-2026-11-26
-task_state: ready_for_review
-task_revision: 29
-repository_id: 1467144605
-branch: feature/snapshot-workspace
-base_branch: main
-pr_number: 6
-pr_url: https://github.com/paddybanerjee09/nutshell/pull/6
+task_id: null
+task_state: idle
+task_revision: 30
+repository_id: null
+branch: null
+base_branch: null
+pr_number: null
+pr_url: null
 last_verified_head: null
-lead_agent: codex-lead
-integration_checkout: 'C:\Users\paddy\dev\nutshell'
+lead_agent: null
+integration_checkout: null
 cleanup_pr_url: null
 ---
 # Current task
 
 ## Context
 
-Open the authorized indexed repository documents and records in a read-only workspace with the specified ribbon, status bar, and responsive pane layout.
+No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
 
 ## Decision
 
-Use the published snapshot for document and record content. Keep tabs and split state in a versioned, bounded user and repository preference. Apply the canonical UI guide and preserve the original logo.
+The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
 
 ## Consequences
 
-Windows `pnpm alpha:setup` and the final `pnpm alpha:verify` passed. The gate ran 99 tests, the optimized app, the PostgreSQL worker, Firefox with real workspace controls at six viewports, and signed fixture publication and shutdown. Confirm GitHub's trusted check and the exact PR #6 merge before guarded cleanup.
+See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
 
 ## Affected files
 
-- [Workspace context](features/workspace-editor/CONTEXT.md)
-- [UI guide](design/UI_GUIDE.md)
-- [Acceptance ledger](runs/ACCEPTANCE.md)
+- [Task template](templates/TASK.md)
+- [Vault index](_INDEX.md)
