@@ -1,7 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import type { FixtureDraftProposal } from "@nutshell/server/fixture-draft-proposals";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useWorkspaceProposals } from "./workspace-proposals";
 
 type SavedDraft = { markdown: string; sourceRevision: string; version: number };
 type ReadyResponse = { status: "ready"; source: string; sourceRevision: string; draft: SavedDraft | null };
@@ -25,6 +27,9 @@ type WorkspaceDrafts = {
   change: (path: string, markdown: string) => void;
   save: (path: string) => Promise<void>;
   acceptVersion: (path: string) => void;
+  proposals: ReturnType<typeof useWorkspaceProposals>;
+  propose: (path: string, indexedRevision?: string) => Promise<void>;
+  acceptPublication: (proposal: FixtureDraftProposal, source: string) => void;
 };
 
 const maxMarkdownBytes = 256 * 1024;
@@ -55,6 +60,7 @@ export function WorkspaceDraftProvider({ repositoryId, canEdit, children }: {
   const entriesRef = useRef(new Map<string, DraftEntry>());
   const [entries, setEntries] = useState<ReadonlyMap<string, DraftEntry>>(entriesRef.current);
   const endpoint = "/api/repos/" + encodeURIComponent(repositoryId) + "/draft";
+  const proposals = useWorkspaceProposals(repositoryId, canEdit);
   const hasUnsaved = [...entries.values()].some((entry) =>
     entry.kind === "editing" && (entry.saving || entry.markdown !== entry.baseline));
 
@@ -68,12 +74,20 @@ export function WorkspaceDraftProvider({ repositoryId, canEdit, children }: {
     return () => window.removeEventListener("beforeunload", protect);
   }, [hasUnsaved]);
 
-  function set(path: string, entry: DraftEntry) {
+  const set = useCallback((path: string, entry: DraftEntry) => {
     const next = new Map(entriesRef.current);
     next.set(path, entry);
     entriesRef.current = next;
     setEntries(next);
-  }
+  }, []);
+
+  const acceptPublication = useCallback((proposal: FixtureDraftProposal, source: string) => {
+    const current = entriesRef.current.get(proposal.path);
+    if (proposal.status !== "merged" || !proposal.mergeRevision || current?.kind !== "editing" || current.saving ||
+        current.sourceRevision !== proposal.baseRevision || current.version !== proposal.draftVersion ||
+        current.markdown !== current.baseline || current.markdown !== source) return;
+    set(proposal.path, fromSaved({ markdown: source, sourceRevision: proposal.mergeRevision, version: 0 }));
+  }, [set]);
 
   function updateEditing(path: string, update: (entry: Editing) => Editing) {
     const current = entriesRef.current.get(path);
@@ -151,5 +165,13 @@ export function WorkspaceDraftProvider({ repositoryId, canEdit, children }: {
     set(path, { ...entry, conflict: null, baseline: saved.markdown, version: saved.version });
   }
 
-  return <DraftContext.Provider value={{ canEdit, entries, begin, change, save, acceptVersion }}>{children}</DraftContext.Provider>;
+  async function propose(path: string, indexedRevision?: string) {
+    const entry = entriesRef.current.get(path);
+    if (!canEdit || entry?.kind !== "editing" || !entry.version || entry.saving || entry.conflict || entry.markdown !== entry.baseline) return;
+    await proposals.submit(path, { action: "propose", version: entry.version }, indexedRevision);
+  }
+
+  return <DraftContext.Provider value={{
+    canEdit, entries, begin, change, save, acceptVersion, proposals, propose, acceptPublication,
+  }}>{children}</DraftContext.Provider>;
 }

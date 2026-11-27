@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useId, useMemo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { MarkdownEditor } from "./markdown-editor";
@@ -19,6 +19,24 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
 }) {
   const resolve = useMemo(() => documentResolver(items.filter(({ kind }) => kind === "document")), [items]);
   const drafts = useWorkspaceDrafts();
+  const document = item?.kind === "document" ? item : null;
+  const proposalPath = document?.path;
+  const source = document?.source;
+  const proposalEntry = drafts?.canEdit && proposalPath ? drafts.proposals.entries.get(proposalPath) : undefined;
+  const proposal = proposalEntry?.proposal;
+  const loadProposal = drafts?.proposals.load;
+  const acceptPublication = drafts?.acceptPublication;
+  const proposalRevisionId = useId();
+
+  useEffect(() => {
+    if (proposalPath) void loadProposal?.(proposalPath, indexedRevision);
+  }, [proposalPath, indexedRevision, loadProposal]);
+
+  const isIndexed = Boolean(proposal?.mergeRevision && proposal.mergeRevision === indexedRevision);
+  useEffect(() => {
+    if (isIndexed && proposal && source !== undefined) acceptPublication?.(proposal, source);
+  }, [isIndexed, proposal, source, acceptPublication]);
+
   if (!item) return <p className="workspace-reading workspace-pane-empty">Open a document or product record from the explorer.</p>;
 
   if (item.kind === "entity") {
@@ -51,6 +69,17 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
   const stored = conflict?.draft;
   const canAcceptVersion = drafts?.canEdit && conflict?.reason === "version" && stored &&
     showingDraft && conflict.currentRevision === showingDraft.sourceRevision && stored.sourceRevision === showingDraft.sourceRevision;
+  const canPropose = drafts?.canEdit && showingDraft && showingDraft.version > 0 && !dirty && !showingDraft.saving && !conflict &&
+    (proposal?.draftVersion !== showingDraft.version || proposal.baseRevision !== showingDraft.sourceRevision);
+  const proposalBusy = proposalEntry?.phase !== undefined && proposalEntry.phase !== "idle";
+  const publication = proposalEntry?.publication;
+  const retryDelivery = !isIndexed && (publication === "delivery-pending" || publication === "paused");
+  const syncMessage = isIndexed ? "Change indexed"
+    : publication === "invalid" ? "Indexing the merged change failed"
+      : publication === "superseded" ? "The repository has moved to a different revision"
+        : publication === "refreshing" ? "Refreshing the published snapshot"
+          : publication === "unavailable" ? "The published snapshot is unavailable"
+            : retryDelivery ? "Change indexing is pending" : "Waiting for indexing";
 
   const reading = <article className="workspace-reading" aria-label={item.title}>
     {item.properties && <details className="workspace-properties"><summary>Properties</summary><pre>{item.properties}</pre></details>}
@@ -96,8 +125,46 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
             Save draft
           </button>
         )}
+        {canPropose && <button type="button" aria-disabled={proposalBusy}
+          onClick={() => void drafts.propose(item.path, indexedRevision)}>
+          Propose change
+        </button>}
       </div>
     </div>}
+    {proposalEntry && (proposal || proposalEntry.error || proposalEntry.phase === "proposing") && (
+      <div className="workspace-change-proposal" role="group" aria-label="Change proposal">
+        <div className="workspace-proposal-summary">
+          <span role="status">{proposalEntry.phase === "proposing" ? "Opening simulated PR…"
+            : proposalEntry.phase === "merging" ? "Sending simulated merge…"
+              : proposal?.status === "open" ? "Simulated PR open" : proposal ? "Simulated PR merged" : ""}</span>
+          {proposal && <>
+            <span>Draft version {proposal.draftVersion}</span>
+            <span id={proposalRevisionId}>Proposal revision <code title={proposal.headRevision}>{proposal.headRevision.slice(0, 12)}</code></span>
+            <code title={proposal.branch}>{proposal.branch}</code>
+          </>}
+          {proposal?.status === "merged" && <span role="status">{syncMessage}</span>}
+          {proposal && (proposal.status === "open" || retryDelivery || (!isIndexed && publication === "refreshing")) &&
+            <div className="workspace-draft-actions">
+              {(proposal.status === "open" || retryDelivery) ? (
+                <button type="button" aria-describedby={proposalRevisionId} aria-disabled={proposalBusy}
+                  onClick={() => void drafts?.proposals.submit(item.path, { action: "merge" }, indexedRevision)}>
+                  {retryDelivery ? "Retry change indexing" : "Simulate change merge"}
+                </button>
+              ) : <button type="button" onClick={() => drafts?.proposals.refresh()}>Refresh snapshot</button>}
+            </div>}
+        </div>
+        {proposalEntry.error && <p role="alert">{proposalEntry.error}</p>}
+        {proposalEntry.conflict?.currentRevision && <p>
+          Current repository revision <code>{proposalEntry.conflict.currentRevision}</code>
+        </p>}
+        {proposalEntry.conflict?.draftVersion && <p>Latest saved draft version {proposalEntry.conflict.draftVersion}</p>}
+        {proposalEntry.issues.length > 0 && <ul aria-label="Validation issues">
+          {proposalEntry.issues.map(({ path, code, message }, index) => (
+            <li key={path + ":" + code + ":" + index}><code>{path}</code> {message}</li>
+          ))}
+        </ul>}
+      </div>
+    )}
     {entry?.kind === "loading" && <p className="workspace-draft-feedback" role="status">Opening draft…</p>}
     {entry?.kind === "unavailable" && <p className="workspace-draft-feedback" role="alert">{entry.message}</p>}
     {showingDraft?.error && <p className="workspace-draft-feedback" role="alert">{showingDraft.error}</p>}
