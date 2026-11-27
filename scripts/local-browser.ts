@@ -1053,6 +1053,12 @@ async function verifyMarketingPreview(page: Page, browser: Browser, origin: stri
         assert.ok(size >= 48 && size <= 64);
         if (width === 390) await mobile.screenshot({ path: output + "/entry-mobile.png" });
       }
+      // A 1440 × 900 window presents this CSS viewport at 200% zoom.
+      await mobile.setViewportSize({ width: 720, height: 450 });
+      await mobile.evaluate(() => window.scrollTo(0, 0));
+      assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      assert.ok(await mobile.getByRole("link", { name: "Open local alpha", exact: true }).isVisible());
+      await mobile.screenshot({ path: output + "/entry-reflow-720x450.png" });
     } finally {
       mobile.off("request", trackRequest);
       await mobile.close();
