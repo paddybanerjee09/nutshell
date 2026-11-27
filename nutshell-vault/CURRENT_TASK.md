@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: durable-product-history-2026-11-27
-task_state: in_progress
-task_revision: 72
+task_state: pr_open
+task_revision: 74
 repository_id: 1467144605
 branch: feature/durable-product-history
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 14
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/14
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ The store delegate owns database history, publication, and authorized reads. The
 
 ## Consequences
 
-Private screenshot evidence merged and canonical cleanup was confirmed at idle revision 71. Next open the draft source PR and integrate history validation, storage, and the workspace.
+Private screenshot evidence merged and canonical cleanup was confirmed at idle revision 71. Draft PR #14 is open. The shared parser distinguishes unchanged accepted payloads from new declarations and rejects silent history rewrites or deletions. Twenty-nine parser and setup compatibility tests passed. Next integrate PostgreSQL publication, authorized reads, and the workspace browser journey.
 
 ## Affected files
 
