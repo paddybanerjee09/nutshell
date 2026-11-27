@@ -19,7 +19,7 @@ The Team tasks tab shows a filterable list and a detail editor. Conflict recover
 
 ## Consequences
 
-Do not imply that links synchronize records, assignments send notifications, or agents automatically receive database notes. Relevant gates: A18, A19. Record actual persistence and stale-save evidence when available.
+Do not imply that links synchronize records, assignments send notifications, or agents automatically receive database notes. The task workflow is verified in the acceptance ledger. Structured team-note storage and editing are pending.
 
 ## Affected files
 
