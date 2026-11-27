@@ -146,7 +146,6 @@ function checkPartOf(entities: ReadonlyMap<string, RepositoryEntity>, report: Re
 function checkReferences(
   config: RepositoryProjection["config"],
   entities: ReadonlyMap<string, RepositoryEntity>,
-  changes: ReadonlyMap<string, RepositoryChange>,
   documents: ReadonlyMap<string, string>,
   report: Report,
 ) {
@@ -169,9 +168,41 @@ function checkReferences(
     }
   }
   checkPartOf(entities, report);
+}
 
+export function canonicalRepositoryChange(change: RepositoryChange): string {
+  return JSON.stringify(change, (_key, value: unknown) => (
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, (value as Record<string, unknown>)[key]]))
+      : value
+  ));
+}
+
+function checkChanges(
+  entities: ReadonlyMap<string, RepositoryEntity>,
+  changes: ReadonlyMap<string, RepositoryChange>,
+  documents: ReadonlyMap<string, string>,
+  accepted: ReadonlyMap<string, RepositoryChange> | undefined,
+  report: Report,
+) {
+  if (accepted) {
+    for (const id of [...accepted.keys()].sort()) {
+      if (!changes.has(id)) {
+        report(".nutshell/changes/" + id + ".json", "change-removed", "Keep the published record and add a new correction or reversal.");
+      }
+    }
+  }
+
+  const targetChanges = accepted ?? changes;
+  const targetDescription = accepted ? "previously accepted" : "existing";
   for (const change of changes.values()) {
     const path = ".nutshell/changes/" + change.id + ".json";
+    const original = accepted?.get(change.id);
+    if (original) {
+      // The accepted tree already validated the original entity and memory references.
+      if (canonicalRepositoryChange(original) === canonicalRepositoryChange(change)) continue;
+      report(path, "change-rewritten", "Keep the published payload and add a new correction or reversal.");
+    }
     if (change.product_impact === "user_visible" && !change.entity_ids.length) {
       report(path, "change-impact", "A user-visible change must name an affected entity.");
     }
@@ -186,17 +217,19 @@ function checkReferences(
     }
     const { change_type, reverses_change_id, corrects_change_id } = change;
     if ((change_type === "reverted") !== Boolean(reverses_change_id) ||
-        (reverses_change_id && (reverses_change_id === change.id || !changes.has(reverses_change_id)))) {
-      report(path, "change-reversal", "A reversal must reference a different existing change.");
+        (reverses_change_id && (reverses_change_id === change.id || !targetChanges.has(reverses_change_id)))) {
+      report(path, "change-reversal", "A reversal must reference a different " + targetDescription + " change.");
     }
     if ((change_type === "corrected") !== Boolean(corrects_change_id) ||
-        (corrects_change_id && (corrects_change_id === change.id || !changes.has(corrects_change_id)))) {
-      report(path, "change-correction", "A correction must reference a different existing change.");
+        (corrects_change_id && (corrects_change_id === change.id || !targetChanges.has(corrects_change_id)))) {
+      report(path, "change-correction", "A correction must reference a different " + targetDescription + " change.");
     }
   }
 }
 
-export function projectRepositoryTree(files: ReadonlyMap<string, string>): ProjectionResult {
+type ProjectionOptions = { acceptedChanges?: ReadonlyMap<string, RepositoryChange> };
+
+export function projectRepositoryTree(files: ReadonlyMap<string, string>, options: ProjectionOptions = {}): ProjectionResult {
   if (files.size > 5_000) {
     return { ok: false, issues: [{ path: ".", code: "tree-size", message: "A snapshot may contain up to 5,000 paths." }] };
   }
@@ -263,7 +296,10 @@ export function projectRepositoryTree(files: ReadonlyMap<string, string>): Proje
   }
   for (const issue of validateVault(vaultFiles)) report(issue.path, issue.code, issue.message);
   if (!files.has(configPath)) report(configPath, "config-missing", "The repository must include a configuration record.");
-  if (config) checkReferences(config, entities, changes, documents, report);
+  if (config) {
+    checkReferences(config, entities, documents, report);
+    checkChanges(entities, changes, documents, options.acceptedChanges, report);
+  }
   if (!config || issues.length) return { ok: false, issues };
 
   return { ok: true, snapshot: {

@@ -1,5 +1,6 @@
-import { projectRepositoryTree, type RepositoryProjection } from "@nutshell/core/snapshot";
+import type { RepositoryProjection } from "@nutshell/core/snapshot";
 import { and, eq, exists, inArray, lte, sql } from "drizzle-orm";
+import { projectFixtureHistoryCandidate, recordFixtureHistory } from "./fixture-history-store.ts";
 import { fixtureRepositories } from "./local-fixtures.ts";
 import { getFixtureDatabase, lockRepositoryGrant, resolveRepositoryActor, resolveRepositoryReadFilter, type FixtureTransaction } from "./runtime.ts";
 import { fixtureDelivery, fixtureDraftProposal, fixtureSetupProposal, fixtureSnapshot, fixtureState, fixtureTree, installation, repository } from "./schema.ts";
@@ -164,10 +165,14 @@ async function publishFixtureDelivery(tx: FixtureTransaction, job: FixtureDelive
   const tree = await readFixtureTree(tx, repositoryId, revision);
   if (!tree) return { status: "invalid", failureCode: "missing_tree" } as const;
 
-  const projected = projectRepositoryTree(new Map(tree.map(({ path, body }) => [path, body])));
-  if (!projected.ok) return { status: "invalid", failureCode: "invalid_tree" } as const;
+  const { projection, accepted } = await projectFixtureHistoryCandidate(tx, repositoryId, tree);
+  if (!projection.ok) {
+    const breaksHistory = projection.issues.some(({ code }) => code === "change-removed" || code === "change-rewritten");
+    return { status: "invalid", failureCode: breaksHistory ? "invalid_history" : "invalid_tree" } as const;
+  }
 
-  await tx.insert(fixtureSnapshot).values({ repositoryId, revision, schemaVersion, policyVersion, projection: projected.snapshot })
+  await recordFixtureHistory(tx, repositoryId, revision, projection.snapshot, accepted, "indexed");
+  await tx.insert(fixtureSnapshot).values({ repositoryId, revision, schemaVersion, policyVersion, projection: projection.snapshot })
     .onConflictDoNothing();
   await tx.update(fixtureState).set({
     indexedRevision: revision, indexedEpoch: connectionEpoch, indexedSchemaVersion: schemaVersion, indexedPolicyVersion: policyVersion,
@@ -224,6 +229,10 @@ export async function readFixtureSnapshot(headers: Headers, repositoryId: string
   if (!row) return null;
 
   const { headRevision, revision, snapshot } = row;
-  const status = revision && revision === headRevision ? "current" : row.invalidHead ? "invalid" : revision ? "stale" : "pending";
+  const status = fixtureSnapshotStatus(headRevision, revision, Boolean(row.invalidHead));
   return { status, headRevision, revision, snapshot };
+}
+
+export function fixtureSnapshotStatus(headRevision: string | null, revision: string | null, invalidHead: boolean): FixtureSnapshotRead["status"] {
+  return revision && revision === headRevision ? "current" : invalidHead ? "invalid" : revision ? "stale" : "pending";
 }

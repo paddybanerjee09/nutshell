@@ -846,6 +846,83 @@ async function verifyScreenshotEvidence(coordinator: Page, reader: Page, other: 
   await coordinator.close();
 }
 
+async function verifyProductHistory(coordinator: Page, reader: Page, other: Page, origin: string, output: string) {
+  const workspace = origin + "/app/repos/1001/workspace";
+  const snapshotUrl = origin + "/api/repos/1001/snapshot";
+  const historyUrl = origin + "/api/repos/1001/history";
+  const before = await coordinator.request.get(snapshotUrl);
+  assert.equal(before.status(), 200);
+  const { revision: sourceRevision } = await before.json() as { revision: string };
+  const { stdout } = await promisify(execFile)(process.execPath, [
+    "scripts/fixture-product-history.ts", sourceRevision,
+  ], {
+    // The child performs six independently bounded publications.
+    timeout: 420_000, env: { ...process.env, NUTSHELL_VERIFY: "1", NUTSHELL_ORIGIN: origin },
+  });
+  const proof = JSON.parse(stdout) as {
+    originalRevision: string; correctedRevision: string; reversedRevision: string;
+    latestValid: string; rejectedRevision: string; notePath: string; originalText: string;
+  };
+  const snapshot = await reader.request.get(snapshotUrl);
+  assert.equal(snapshot.status(), 200);
+  const indexed = await snapshot.json() as { status: string; revision: string; headRevision: string };
+  assert.deepEqual([indexed.status, indexed.revision, indexed.headRevision], ["invalid", proof.latestValid, proof.rejectedRevision]);
+  const historyResponse = await reader.request.get(historyUrl);
+  assert.equal(historyResponse.status(), 200);
+  assert.equal(historyResponse.headers()["cache-control"], "private, no-store");
+  type Entry = { id: string; sourceRevision: string; change: { summary: string }; entities: { id: string; title: string }[] };
+  const read = await historyResponse.json() as { revision: string; status: string; entries: Entry[] };
+  assert.deepEqual([read.status, read.revision], ["invalid", proof.latestValid]);
+  const entries = read.entries.filter(({ id }) => id.startsWith("chg_observation_history_"));
+  assert.equal(entries.length, 3);
+  const revisions = new Map(entries.map(({ id, sourceRevision }) => [id, sourceRevision]));
+  assert.deepEqual(revisions, new Map([
+    ["chg_observation_history_start", proof.originalRevision],
+    ["chg_observation_history_correct", proof.correctedRevision],
+    ["chg_observation_history_reverse", proof.reversedRevision],
+  ]));
+  const original = entries.find(({ id }) => id === "chg_observation_history_start");
+  assert.equal(original?.change.summary, "Start observation history");
+  assert.equal(original?.entities.find(({ id }) => id === "feat_observation_capture")?.title, "Observation capture");
+  const originalUrl = historyUrl + "/chg_observation_history_start?" + new URLSearchParams({ path: proof.notePath });
+  const oldNote = await reader.request.get(originalUrl);
+  assert.equal(oldNote.status(), 200);
+  const originalContent = await oldNote.json() as { sourceRevision: string; markdown: string; path: string };
+  assert.equal(originalContent.sourceRevision, proof.originalRevision);
+  assert.equal(originalContent.path, proof.notePath);
+  assert.ok(originalContent.markdown.includes(proof.originalText));
+  assert.equal((await other.request.get(historyUrl)).status(), 404);
+  assert.equal((await other.request.get(originalUrl)).status(), 404);
+
+  await coordinator.goto(workspace);
+  await coordinator.getByRole("navigation", { name: "Workspace controls" }).getByRole("button", { name: "History", exact: true }).click();
+  const history = coordinator.getByRole("region", { name: "Product history", exact: true });
+  await history.getByText(/last valid|source.*invalid/i).first().waitFor();
+  await history.getByRole("combobox", { name: "Group history by", exact: true }).selectOption("kind");
+  await history.getByRole("combobox", { name: "History entity", exact: true }).selectOption("feat_observation_capture");
+  const events = history.getByRole("navigation", { name: "History events", exact: true });
+  await events.getByRole("button", { name: "Retire the observation workflow", exact: true }).click();
+  const selected = history.getByRole("region", { name: "Selected change", exact: true });
+  await selected.getByText("Fixture observation", { exact: true }).waitFor();
+  await selected.getByText("Deployment unknown", { exact: true }).waitFor();
+  await selected.getByRole("button", { name: "Reverses Clarify the observation workflow", exact: true }).click();
+  await selected.getByRole("button", { name: "Corrects Start observation history", exact: true }).click();
+  await selected.getByText(proof.originalRevision, { exact: true }).first().waitFor();
+  await selected.getByRole("button", { name: proof.notePath, exact: true }).click();
+  const note = history.getByRole("region", { name: "Original note", exact: true });
+  await note.getByText(proof.originalText, { exact: true }).waitFor();
+  const link = await note.getByRole("link", { name: "Link to original note", exact: true }).getAttribute("href");
+  assert.ok(link);
+  const linkedNote = new URL(link, workspace);
+  assert.equal(linkedNote.origin, origin);
+  assert.equal(linkedNote.searchParams.get("history"), "chg_observation_history_start");
+  assert.equal(linkedNote.searchParams.get("note"), proof.notePath);
+  await coordinator.goto(linkedNote.href);
+  await note.getByText(proof.originalText, { exact: true }).waitFor();
+  await coordinator.screenshot({ path: output + "/workspace-product-history.png" });
+  await coordinator.close();
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -949,6 +1026,8 @@ export async function verifyEntryFlow(origin: string) {
     await verifyWorkspaceGraphs(graphPage, origin, output);
     const evidencePage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
     await verifyScreenshotEvidence(evidencePage, reader, other, origin, output);
+    const historyPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
+    await verifyProductHistory(historyPage, reader, other, origin, output);
     await reader.close();
     await other.close();
   } catch (error) {
@@ -972,5 +1051,5 @@ export async function verifyEntryFlow(origin: string) {
       `${describe(journeyFailure.error)}\n${describe(shutdownError)}`, { cause: shutdownError });
   }
   if (journeyFailure) throw journeyFailure.error;
-  console.log(`${browserType.name()} entry, signed fixture setup, workspace, repository tasks and notes, private drafts, simulated proposal publication, both graph modes, private screenshot evidence, and browser shutdown passed.`);
+  console.log(`${browserType.name()} entry, signed fixture setup, workspace, repository tasks and notes, private drafts, simulated proposal publication, both graph modes, private screenshot evidence, durable product history, and browser shutdown passed.`);
 }

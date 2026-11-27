@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent, ReactNode } from "react";
-import { ArrowLeft, Box, Boxes, ChevronRight, FileText, FolderClosed, FolderTree, ListTodo, Network, NotebookText, PanelRight, Search, X } from "lucide-react";
+import { ArrowLeft, Box, Boxes, ChevronRight, FileText, FolderClosed, FolderTree, History, ListTodo, Network, NotebookText, PanelRight, Search, X } from "lucide-react";
 import {
   canSplitPane,
   createWorkspaceLayout,
@@ -26,6 +26,8 @@ import type { DocumentMode } from "./workspace-content";
 import type { WorkspaceData, WorkspaceItem } from "./workspace-data";
 import { WorkspaceDraftProvider } from "./workspace-drafts";
 import { graphTitles, WorkspaceGraphPanel } from "./workspace-graph-panel";
+import { WorkspaceHistoryPanel, type HistoryFocus } from "./workspace-history-panel";
+import { historyTabId, WorkspaceHistoryProvider } from "./workspace-history";
 import { WorkspaceTaskPanel } from "./workspace-task-panel";
 import { WorkspaceTasksProvider } from "./workspace-tasks";
 import { WorkspaceTeamNotePanel } from "./workspace-team-note-panel";
@@ -38,6 +40,7 @@ const dockWidthBounds = { min: 160, max: 420 };
 const workspaceTabs = [
   { id: "view:memory-graph", title: graphTitles.memory, kind: "graph", mode: "memory", icon: Network },
   { id: "view:product-map", title: graphTitles.product, kind: "graph", mode: "product", icon: Boxes },
+  { id: historyTabId, title: "History", kind: "history", icon: History },
   { id: "view:team-tasks", title: "Team tasks", kind: "tasks", icon: ListTodo },
   { id: "view:team-notes", title: "Team notes", kind: "notes", icon: NotebookText },
 ] as const;
@@ -114,7 +117,7 @@ function ExplorerItem({ item, active, open }: { item: WorkspaceItem; active: boo
   );
 }
 
-export function WorkspaceShell({ data }: { data: WorkspaceData }) {
+export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; initialHistory?: HistoryFocus }) {
   const instanceId = useId();
   const main = useRef<HTMLDivElement>(null);
   const center = useRef<HTMLDivElement>(null);
@@ -122,12 +125,14 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
   const paletteTrigger = useRef<HTMLElement | null>(null);
   const drawerTrigger = useRef<DockModule | null>(null);
   const dragged = useRef<DraggedTab | null>(null);
+  const historyRequest = useRef(0);
   const [layout, setLayout] = useState(() => createWorkspaceLayout(data.initialItemId ?? undefined));
   const [restoredKey, setRestoredKey] = useState<string | null>(null);
   const [size, setSize] = useState({ width: 0, center: { width: 0, height: 0 } });
   const [drawer, setDrawer] = useState<DockSide | null>(null);
   const [notice, setNotice] = useState("");
   const [documentModes, setDocumentModes] = useState<Record<string, { itemId: string; mode: DocumentMode }>>({});
+  const [historyTargets, setHistoryTargets] = useState<Record<string, { focus: HistoryFocus; request: number }>>({});
   const itemsById = useMemo(() => new Map(data.items.map((item) => [item.id, item])), [data.items]);
   const folders = useMemo(() => explorerFolders(data.items), [data.items]);
   const entities = useMemo(() => data.items.filter((item) => item.kind === "entity"), [data.items]);
@@ -153,9 +158,14 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
     } catch {
       // The workspace also works when browser preferences are disabled.
     }
-    setLayout(restoreWorkspaceLayout(saved, new Set([...itemsById.keys(), ...workspaceTabsById.keys()]), data.initialItemId ?? undefined));
+    const restored = restoreWorkspaceLayout(saved, new Set([...itemsById.keys(), ...workspaceTabsById.keys()]), data.initialItemId ?? undefined);
+    if (initialHistory) {
+      const paneId = restored.activePaneId;
+      setHistoryTargets((current) => current[paneId] ? current : { ...current, [paneId]: { focus: initialHistory, request: 0 } });
+      setLayout(workspaceLayoutReducer(restored, { type: "open-tab", paneId, tabId: historyTabId }));
+    } else setLayout(restored);
     setRestoredKey(data.layoutKey);
-  }, [data.initialItemId, data.layoutKey, itemsById]);
+  }, [data.initialItemId, data.layoutKey, initialHistory, itemsById]);
 
   useEffect(() => {
     if (restoredKey !== data.layoutKey) return;
@@ -237,6 +247,13 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
     dispatch({ type: "open-tab", tabId: id, paneId });
     setDrawer(null);
     focusPane(paneId);
+  }
+
+  function openEntityHistory(paneId: string, entityId: string, changeId?: string) {
+    const request = ++historyRequest.current;
+    const focus = { entityId, ...(changeId ? { changeId } : {}) };
+    setHistoryTargets((current) => ({ ...current, [paneId]: { focus, request } }));
+    openItem(historyTabId, paneId);
   }
 
   function nextPane(paneId: string) {
@@ -446,7 +463,9 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
           aria-label={selectedIndex < 0 ? "Empty pane" : undefined}
           tabIndex={0}
         >
-          {workspaceTab?.kind === "notes" ? <WorkspaceTeamNotePanel />
+          {workspaceTab?.kind === "history" ? <WorkspaceHistoryPanel key={historyTargets[node.id]?.request ?? 0}
+            data={data} focus={historyTargets[node.id]?.focus} onOpenEntity={(id) => openItem("entity:" + id, node.id)} />
+            : workspaceTab?.kind === "notes" ? <WorkspaceTeamNotePanel />
             : workspaceTab?.kind === "tasks" ? <WorkspaceTaskPanel data={data} onOpen={(id) => openItem(id, node.id)} />
             : workspaceTab?.kind === "graph" ? <WorkspaceGraphPanel key={workspaceTab.id} data={data} mode={workspaceTab.mode}
               active={node.id === activePane.id} onOpen={(id) => openItem(id, node.id)} /> : <WorkspaceContent
@@ -456,6 +475,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
             indexedRevision={data.revision}
             onModeChange={(mode) => { if (item) setDocumentMode(node.id, item.id, mode); }}
             onOpen={(id) => openItem(id, node.id)}
+            onOpenHistory={(entityId, changeId) => openEntityHistory(node.id, entityId, changeId)}
           />}
         </div>
       </section>
@@ -574,6 +594,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
   return <WorkspaceDraftProvider repositoryId={data.repositoryId} canEdit={data.canEdit}>
     <WorkspaceTasksProvider repositoryId={data.repositoryId}>
     <WorkspaceTeamNotesProvider repositoryId={data.repositoryId}>
+    <WorkspaceHistoryProvider repositoryId={data.repositoryId} snapshotKey={`${data.revision}:${data.status}:${data.headRevision ?? ""}`}>
     <main className="workspace-shell" id="content" tabIndex={-1}>
       <h1 className="sr-only">{data.repositoryName} workspace</h1>
       <div className="workspace-main" ref={main} data-compact={compact} onKeyDown={(event) => {
@@ -626,6 +647,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
         paletteTrigger.current = null;
       }} />
     </main>
+    </WorkspaceHistoryProvider>
     </WorkspaceTeamNotesProvider>
     </WorkspaceTasksProvider>
   </WorkspaceDraftProvider>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { projectRepositoryTree, type RepositoryChange, type RepositoryEntity } from "./repo-snapshot.ts";
+import { canonicalRepositoryChange, projectRepositoryTree, type RepositoryChange, type RepositoryEntity } from "./repo-snapshot.ts";
 
 const configPath = ".nutshell/config.json";
 const indexPath = "nutshell-vault/_INDEX.md";
@@ -68,8 +68,8 @@ function fixture() {
   ]);
 }
 
-function codes(files: ReadonlyMap<string, string>) {
-  const result = projectRepositoryTree(files);
+function codes(files: ReadonlyMap<string, string>, acceptedChanges?: ReadonlyMap<string, RepositoryChange>) {
+  const result = projectRepositoryTree(files, { acceptedChanges });
   expect(result.ok).toBe(false);
   return result.ok ? [] : result.issues.map(({ code }) => code);
 }
@@ -176,6 +176,79 @@ describe("repository projection", () => {
       ...change, id: "reversal", change_type: "reverted", reverses_change_id: change.id,
     }));
     expect(projectRepositoryTree(next).ok).toBe(true);
+  });
+
+  it("matches accepted payloads across JSON key order while preserving array order", () => {
+    const screenshot = {
+      kind: "screenshot", asset_id: "asset_welcome", source_revision: "f".repeat(40), route: "/welcome",
+      state: "empty", viewport: { width: 1440, height: 900 }, environment: "local-alpha", captured_at: "2026-11-26T12:00:00Z",
+    } as const;
+    const original: RepositoryChange = { ...change, evidence: [screenshot] };
+    const reordered: RepositoryChange = { ...original, evidence: [{ ...screenshot, viewport: { height: 900, width: 1440 } }] };
+    expect(canonicalRepositoryChange(reordered)).toBe(canonicalRepositoryChange(original));
+    const additionalPath = "nutshell-vault/features/welcome/DETAILS.md";
+    expect(canonicalRepositoryChange({ ...original, memory_paths: [additionalPath, memoryPath] }))
+      .not.toBe(canonicalRepositoryChange({ ...original, memory_paths: [memoryPath, additionalPath] }));
+
+    const files = fixture();
+    const reorderedFile = JSON.stringify(Object.fromEntries(Object.entries(reordered).reverse()), null, 2);
+    files.set(".nutshell/changes/" + change.id + ".json", "\n" + reorderedFile + "\n");
+    expect(projectRepositoryTree(files, { acceptedChanges: new Map([[change.id, original]]) }).ok).toBe(true);
+  });
+
+  it("rejects deleting or rewriting an accepted record", () => {
+    const files = fixture();
+    const accepted = new Map([[change.id, change]]);
+    const path = ".nutshell/changes/" + change.id + ".json";
+    files.set(path, JSON.stringify({ ...change, summary: "Replaced the original narrative." }));
+    expect(codes(files, accepted)).toEqual(["change-rewritten"]);
+    files.delete(path);
+    expect(codes(files, accepted)).toEqual(["change-removed"]);
+  });
+
+  it("retains exact accepted memory and entity references while requiring current links for new changes", () => {
+    const files = fixture();
+    const acceptedChanges = new Map([[change.id, change]]);
+    const entityPath = ".nutshell/entities/" + entity.id + ".json";
+    files.delete(memoryPath);
+    files.set(archivePath, note("welcome", "", "archived"));
+    const index = files.get(indexPath)!;
+    files.set(indexPath, index.split("\n").filter((line) => !line.includes("[" + memoryPath + "]")).join("\n"));
+    expect(codes(files, acceptedChanges)).toEqual(["memory-target"]);
+
+    files.set(entityPath, JSON.stringify({ ...entity, title: "Workshop introduction", lifecycle: "removed", memory_paths: [] }));
+    const renamed = projectRepositoryTree(files, { acceptedChanges });
+    expect(renamed.ok && renamed.snapshot.changes).toEqual([change]);
+    expect(renamed.ok && renamed.snapshot.documents.some(({ path }) => path === memoryPath)).toBe(false);
+
+    files.delete(entityPath);
+    expect(projectRepositoryTree(files, { acceptedChanges }).ok).toBe(true);
+    expect(codes(files)).toEqual(["change-entity", "memory-target"]);
+
+    const newId = "chg_new_event";
+    files.set(".nutshell/changes/" + newId + ".json", JSON.stringify({ ...change, id: newId }));
+    expect(codes(files, acceptedChanges)).toEqual(["change-entity", "memory-target"]);
+  });
+
+  it("requires distinct previously accepted correction and reversal targets when a baseline is known", () => {
+    const files = fixture();
+    const correction: RepositoryChange = { ...change, id: "chg_correction", change_type: "corrected", corrects_change_id: change.id };
+    const reversal: RepositoryChange = { ...change, id: "chg_reversal", change_type: "reverted", reverses_change_id: change.id };
+    const reversalPath = ".nutshell/changes/" + reversal.id + ".json";
+    files.set(".nutshell/changes/" + correction.id + ".json", JSON.stringify(correction));
+    files.set(reversalPath, JSON.stringify(reversal));
+    const acceptedChanges = new Map<string, RepositoryChange>([[change.id, change]]);
+    expect(projectRepositoryTree(files).ok).toBe(true);
+    expect(codes(files, new Map())).toEqual(["change-correction", "change-reversal"]);
+    expect(projectRepositoryTree(files, { acceptedChanges }).ok).toBe(true);
+
+    files.set(reversalPath, JSON.stringify({ ...reversal, reverses_change_id: correction.id }));
+    expect(codes(files, acceptedChanges)).toEqual(["change-reversal"]);
+    acceptedChanges.set(correction.id, correction);
+    expect(projectRepositoryTree(files, { acceptedChanges }).ok).toBe(true);
+
+    files.set(reversalPath, JSON.stringify({ ...reversal, reverses_change_id: reversal.id }));
+    expect(codes(files, acceptedChanges)).toEqual(["change-reversal"]);
   });
 
   it("rejects oversized managed input before JSON or Markdown parsing", () => {

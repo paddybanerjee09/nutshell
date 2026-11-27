@@ -1,4 +1,4 @@
-import type { RepositoryProjection } from "@nutshell/core/snapshot";
+import type { RepositoryChange, RepositoryProjection } from "@nutshell/core/snapshot";
 import type { TeamNoteContent } from "@nutshell/core/team-note-content";
 import { sql } from "drizzle-orm";
 import { bigint, boolean, date, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
@@ -89,6 +89,20 @@ export const fixtureSnapshot = pgTable("fixture_snapshot", {
   primaryKey({ columns: [table.repositoryId, table.revision, table.schemaVersion, table.policyVersion] }),
   foreignKey({ columns: [table.repositoryId, table.revision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] })
     .onDelete("cascade"),
+]);
+
+export const fixtureHistoryEntry = pgTable("fixture_history_entry", {
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  id: text("id").notNull(),
+  sourceRevision: text("source_revision").notNull(),
+  payload: jsonb("payload").$type<RepositoryChange>().notNull(),
+  payloadSha256: text("payload_sha256").notNull(),
+  entityLabels: jsonb("entity_labels").$type<{ id: string; title: string; kind: string; kindLabel: string }[]>().notNull(),
+  observedAt: time("observed_at").notNull().defaultNow(),
+  observation: text("observation", { enum: ["baseline", "indexed"] }).notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.repositoryId, table.id] }),
+  index("fixture_history_recent_idx").on(table.repositoryId, table.observedAt.desc(), table.id),
 ]);
 
 export const fixtureState = pgTable("fixture_state", {

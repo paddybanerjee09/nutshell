@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { loadConfig } from "@nutshell/server/config";
-import { setFixtureHead } from "@nutshell/server/fixture-sync";
 import { closeRuntime, getFixtureDatabase } from "@nutshell/server/runtime";
 import type { RepositoryEntity } from "../packages/core/src/repo-snapshot.ts";
+import { setVerificationFieldNotesHead } from "./verification-fixture-head.ts";
 
 if (process.env.NUTSHELL_VERIFY !== "1") throw new Error("Onboarding preparation requires the isolated verification database.");
 const config = loadConfig();
@@ -32,8 +32,7 @@ const archivedNote = [
 ].join("\n");
 
 try {
-  const repositoryId = 1001;
-  await setFixtureHead(repositoryId, randomBytes(20).toString("hex"), [
+  await setVerificationFieldNotesHead(randomBytes(20).toString("hex"), [
     { path: "AGENTS.md", body: "# Field Notes owner instructions\r\n\r\nKeep field observation coordinates in the project records.\r\n" },
     { path: "README.md", body: "# Field Notes\n\nSynthetic repository for the local verification flow.\n" },
     { path: "SPEC.md", body: "# Field Notes scope\n\nRecord synthetic field observations.\n" },

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { buildFixtureSetupTree } from "@nutshell/core/fixture-setup-tree";
-import { projectRepositoryTree } from "@nutshell/core/snapshot";
 import { and, eq } from "drizzle-orm";
+import { projectFixtureHistoryCandidate } from "./fixture-history-store.ts";
 import {
   fixturePolicyVersion, fixtureSchemaVersion, lockFixtureConnection, normalizeFixtureFiles,
   readFixtureTree, storeFixtureTree, writeFixtureHead, type DeliveryInput, type FixtureFile,
@@ -94,8 +94,8 @@ function initialTree(fixture: FixtureRepository) {
   return { revision: revisionFor("fixture initial tree", fixture.id, files), files };
 }
 
-function validates(files: readonly FixtureFile[]) {
-  return projectRepositoryTree(new Map(files.map(({ path, body }) => [path, body]))).ok;
+async function validates({ tx, fixture }: SetupContext, files: readonly FixtureFile[]) {
+  return (await projectFixtureHistoryCandidate(tx, fixture.id, files)).projection.ok;
 }
 
 export async function readFixtureOnboarding(headers: Headers, repositoryId: string): Promise<FixtureOnboardingRead | null> {
@@ -104,7 +104,7 @@ export async function readFixtureOnboarding(headers: Headers, repositoryId: stri
     const current = proposal ? undefined : await currentTree(context);
     return {
       canConfigure: context.canConfigure,
-      configured: current !== undefined && validates(current.files),
+      configured: current !== undefined && await validates(context, current.files),
       proposal: proposal ? publicProposal(proposal) : null,
     };
   });
@@ -121,7 +121,7 @@ export async function openFixtureSetup(headers: Headers, repositoryId: string): 
     if (existing?.baseRevision === base.revision && existing.schemaVersion === fixtureSchemaVersion && existing.policyVersion === fixturePolicyVersion) {
       return { status: "open", proposal: publicProposal(existing) };
     }
-    if (validates(base.files)) return { status: "conflict" };
+    if (await validates(context, base.files)) return { status: "conflict" };
 
     let files: FixtureFile[];
     try {
@@ -131,6 +131,7 @@ export async function openFixtureSetup(headers: Headers, repositoryId: string): 
     } catch {
       return { status: "conflict" };
     }
+    if (!await validates(context, files)) return { status: "conflict" };
 
     const headRevision = revisionFor("fixture setup head", fixture.id, base.revision, files);
     await storeFixtureTree(tx, fixture.id, base.revision, base.files);
@@ -160,7 +161,7 @@ export async function simulateFixtureSetupMerge(headers: Headers, repositoryId: 
       if (base.revision !== proposal.baseRevision || proposal.checkedRevision !== expectedHead ||
           proposal.schemaVersion !== fixtureSchemaVersion || proposal.policyVersion !== fixturePolicyVersion) return { status: "conflict" };
       const files = await readFixtureTree(tx, fixture.id, expectedHead);
-      if (!files || revisionFor("fixture setup head", fixture.id, base.revision, files) !== expectedHead || !validates(files)) {
+      if (!files || revisionFor("fixture setup head", fixture.id, base.revision, files) !== expectedHead || !await validates(context, files)) {
         return { status: "conflict" };
       }
 

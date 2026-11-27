@@ -3,6 +3,8 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
 import { localSetupConnectionTimeout, requireLocalDatabaseUrl } from "./config.ts";
+import { baselineFixtureHistory } from "./fixture-history-store.ts";
+import { lockFixtureConnection } from "./fixture-sync.ts";
 import { fixtureGrants, fixtureRepositories, personas } from "./local-fixtures.ts";
 import { installation, membership, providerGrant, repository, user } from "./schema.ts";
 
@@ -24,6 +26,10 @@ export async function migrateAndSeed(databaseUrl: string): Promise<void> {
       await tx.insert(membership).values(fixtureGrants.map(({ userId, repositoryId }) => ({ userId, repositoryId })))
         .onConflictDoNothing();
       await tx.insert(providerGrant).values(fixtureGrants).onConflictDoNothing();
+      for (const fixture of fixtureRepositories) {
+        const connection = await lockFixtureConnection(tx, fixture.id, fixture.installationId);
+        if (connection) await baselineFixtureHistory(tx, fixture.id, connection.epoch);
+      }
     });
   } finally {
     await client.end();

@@ -1,22 +1,23 @@
 "use client";
 
 import { useEffect, useId, useMemo } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { MarkdownEditor } from "./markdown-editor";
 import type { WorkspaceData, WorkspaceItem } from "./workspace-data";
 import { useWorkspaceDrafts } from "./workspace-drafts";
-import { documentResolver, remarkWorkspaceWikilinks } from "./workspace-markdown";
+import { WorkspaceEntityHistoryLinks } from "./workspace-history";
+import { documentResolver } from "./workspace-markdown";
+import { WorkspaceReadMarkdown } from "./workspace-read-markdown";
 import { WorkspaceDeclaredScreenshots, WorkspaceScreenshotUpload } from "./workspace-screenshot-evidence";
 
 type Selection = { item: WorkspaceItem | null; items: WorkspaceItem[]; onOpen: (id: string) => void };
 export const documentModeLabels = { read: "Read", live: "Live preview", source: "Source" } as const;
 export type DocumentMode = keyof typeof documentModeLabels;
 
-export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, indexedRevision, onModeChange }: Selection & {
+export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, indexedRevision, onModeChange, onOpenHistory }: Selection & {
   mode?: DocumentMode;
   indexedRevision?: string;
   onModeChange?: (mode: DocumentMode) => void;
+  onOpenHistory?: (entityId: string, changeId?: string) => void;
 }) {
   const resolve = useMemo(() => documentResolver(items.filter(({ kind }) => kind === "document")), [items]);
   const drafts = useWorkspaceDrafts();
@@ -42,7 +43,7 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
 
   if (item.kind === "entity") {
     const { entity } = item;
-    return <article className="workspace-reading">
+    return <article className="workspace-reading" aria-label={item.title}>
       <h1>{item.title}</h1>
       <p>{entity.summary}</p>
       <dl>
@@ -58,6 +59,7 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
           {items.find(({ id }) => id === "entity:" + target)?.title ?? target}
         </button></li>
       ))}</ul></>}
+      {onOpenHistory && <WorkspaceEntityHistoryLinks entityId={entity.id} onOpen={(changeId) => onOpenHistory(entity.id, changeId)} />}
     </article>;
   }
 
@@ -84,20 +86,7 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
 
   const reading = <article className="workspace-reading" aria-label={item.title}>
     {item.properties && <details className="workspace-properties"><summary>Properties</summary><pre>{item.properties}</pre></details>}
-    <Markdown
-      skipHtml
-      remarkPlugins={[remarkGfm, remarkWorkspaceWikilinks]}
-      components={{
-        a: ({ href, children }) => {
-          const target = href && resolve(item.path, href);
-          if (target) return <button type="button" className="workspace-wikilink" onClick={() => onOpen(target)}>{children}</button>;
-          if (href && /^(?:https?:\/\/|mailto:)/iu.test(href)) return <a href={href} target="_blank" rel="noreferrer noopener">{children}</a>;
-          return <span title="Link target unavailable in this snapshot">{children}</span>;
-        },
-        img: ({ alt }) => <span>{alt ? `Image unavailable. ${alt}` : "Image unavailable."}</span>,
-        input: ({ checked }) => <input type="checkbox" checked={Boolean(checked)} disabled aria-label="Checklist item" />,
-      }}
-    >{item.markdown}</Markdown>
+    <WorkspaceReadMarkdown markdown={item.markdown} resolve={(href) => resolve(item.path, href)} onOpen={onOpen} />
   </article>;
 
   return <>
