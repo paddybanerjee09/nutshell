@@ -13,6 +13,8 @@ The canonical folder is `nutshell-vault/`. The validator checks managed Markdown
 
 Follow [R-06 memory and retrieval](../../../SPEC.md#9-r-06-persistent-memory-and-selective-retrieval) and [MEMORY_PROTOCOL.md](../../workflows/MEMORY_PROTOCOL.md). After normal root AGENTS instructions, always read the single _INDEX router first, then CURRENT_TASK, then only relevant notes. Finalized decisions are dated; archive is excluded from default retrieval.
 
+`pnpm nutshell init` previews local repository setup. `--write` creates the verified managed files and directories and preserves existing owner instructions. `pnpm nutshell change add` validates noninteractive inputs against the current working tree and creates one fresh semantic record. `--help` describes its required fields, repeatable entity and memory references, and optional correction or reversal.
+
 Run `pnpm nutshell validate --working-tree` for the current vault or `pnpm nutshell validate --base <ref> --head <ref>` for an immutable comparison. The bounded reader supplies active notes and archived frontmatter to the shared index, metadata, and supersession validator. With product records present, the Git comparison also checks source coverage and new change declarations. Use `pnpm nutshell impact --base <ref> --head <ref>` for changed paths, mapped entities, related memory, and diagnostics. `--json` returns the scope, resolved source, and issues.
 
 Use `pnpm nutshell context --query <text> --budget <estimated tokens>` for Git HEAD. Add `--ref <ref>` or `--working-tree` to select a source explicitly, `--paths` for comma-separated repository paths, and `--json` for structured output. [The context budget decision](../../decisions/2026-11-27-vault-context-budget.md) defines whole-control budgeting and the history boundary.
@@ -28,5 +30,6 @@ The Git validator resolves both refs before reading either tree. Protected recor
 - [Shared vault validator](../../../packages/core/src/vault.ts).
 - [Shared changed-path policy](../../../packages/core/src/repository-change-validation.ts).
 - [Vault CLI](../../../packages/cli/src/main.ts) and [bounded checkout reader](../../../packages/cli/src/vault-files.ts).
+- [Repository initialization](../../../packages/cli/src/init-command.ts), [semantic change authoring](../../../packages/cli/src/change-command.ts), and [scoped local file operations](../../../packages/cli/src/authoring-files.ts).
 - [Context retrieval](../../../packages/core/src/context-retrieval.ts) and [revision source adapter](../../../packages/cli/src/context-source.ts).
 - [Source task policy](../../../packages/core/src/source-task.ts), [trusted runner](../../../packages/cli/src/source-check.ts), and [source workflow](../../../.github/workflows/source-task.yml).

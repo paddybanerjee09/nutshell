@@ -9,6 +9,7 @@ const taskPath = root + "CURRENT_TASK.md";
 const contextPath = root + "features/nutshell-setup/CONTEXT.md";
 const noteTemplatePath = root + "templates/NOTE.md";
 const taskTemplatePath = root + "templates/TASK.md";
+const configPath = ".nutshell/config.json";
 const start = "<!-- nutshell:managed:start -->";
 const finish = "<!-- nutshell:managed:end -->";
 const managedInstructions = [
@@ -33,7 +34,7 @@ const catalogMetadata = z.object({
 
 type SetupFile = { path: string; body: string };
 type SetupDetails = z.input<typeof setupDetails>;
-type SetupProvider = "fixture" | "github";
+type SetupVariant = "fixture" | "github" | "local";
 
 const setupCopy = {
   fixture: {
@@ -43,6 +44,7 @@ const setupCopy = {
     catalog: "The synthetic fixture setup context.",
     requirements: "This synthetic fixture exercises Nutshell's local repository setup.",
     rationale: "Give this synthetic fixture a versioned repository map and a shared vault.",
+    technicalSummary: "Add the initial configuration, product entity and vault catalog through a setup proposal.",
   },
   github: {
     tags: "setup, repository",
@@ -51,8 +53,20 @@ const setupCopy = {
     catalog: "The Nutshell repository setup context.",
     requirements: "Record this repository's product and implementation requirements here.",
     rationale: "Give this repository a versioned product map and a shared vault.",
+    technicalSummary: "Add the initial configuration, product entity and vault catalog through a setup proposal.",
+  },
+  local: {
+    tags: "setup, repository",
+    context: "This repository uses Nutshell for source-linked knowledge.",
+    consequences: "Update repository records and indexed notes as the project changes.",
+    catalog: "The Nutshell repository setup context.",
+    requirements: "Record this repository's product and implementation requirements here.",
+    rationale: "Give this repository a versioned product map and a shared vault.",
+    technicalSummary: "Add the initial configuration, product entity and vault catalog.",
   },
 } as const;
+
+type SetupCopy = (typeof setupCopy)[SetupVariant];
 
 function installInstructions(owner: string) {
   const markers = owner.match(/<!--\s*nutshell\s*(?::\s*|[-\s]+)managed\b/giu);
@@ -79,10 +93,10 @@ function installInstructions(owner: string) {
 
 type NoteSections = { context: string; decision: string; consequences: string; affectedFiles: string };
 
-function memoryNote(id: string, tags: string, sections: NoteSections, extra = "") {
+function memoryNote(date: string, id: string, tags: string, sections: NoteSections, extra = "") {
   return `---
 id: ${id}
-date: 2026-11-26
+date: ${date}
 status: active
 tags: [${tags}]
 ${extra}---
@@ -105,9 +119,9 @@ ${sections.affectedFiles}
 `;
 }
 
-function initialVault(copy: (typeof setupCopy)[SetupProvider]) {
+function initialVault(copy: SetupCopy, date: string) {
   return new Map([
-    [taskPath, memoryNote("control-current-task", "control, task", {
+    [taskPath, memoryNote(date, "control-current-task", "control, task", {
       context: "No feature task is active.",
       decision: "The lead records the next feature here when work begins.",
       consequences: "Durable project guidance belongs in the indexed vault notes.",
@@ -125,19 +139,19 @@ integration_checkout: null
 last_verified_head: null
 cleanup_pr_url: null
 `)],
-    [contextPath, memoryNote("feature-nutshell-setup", copy.tags, {
+    [contextPath, memoryNote(date, "feature-nutshell-setup", copy.tags, {
       context: copy.context,
       decision: "Keep repository instructions and handoff files with the project. Register active Markdown in one vault index.",
       consequences: copy.consequences,
       affectedFiles: "[Index](../../_INDEX.md), [current task](../../CURRENT_TASK.md), and [.nutshell configuration](../../../.nutshell/config.json).",
     })],
-    [noteTemplatePath, memoryNote("template-note", "template, note", {
+    [noteTemplatePath, memoryNote(date, "template-note", "template, note", {
       context: "State why the note is needed. Give new notes a unique ID, an actual date, a lifecycle status, and relevant tags.",
       decision: "Record the concrete choice or current guidance.",
       consequences: "Record tradeoffs, verification, and follow-up. Archive superseded notes.",
       affectedFiles: "Name the affected paths and update [the index](../_INDEX.md).",
     })],
-    [taskTemplatePath, memoryNote("template-current-task", "template, task", {
+    [taskTemplatePath, memoryNote(date, "template-current-task", "template, task", {
       context: "Describe the single active feature, its scope, and its lead.",
       decision: "Reuse the fields of [the current task](../CURRENT_TASK.md). Advance its revision on each overwrite and record the actual branch and PR.",
       consequences: "Record progress, checks and blockers. Clear the task only after confirming the matching merge and guarded cleanup.",
@@ -156,7 +170,7 @@ const catalogDescriptions = new Map([
   [taskTemplatePath, "Guidance for overwriting and clearing the current task."],
 ]);
 
-function makeCatalog(files: ReadonlyMap<string, string>, contextDescription: string) {
+function makeCatalog(files: ReadonlyMap<string, string>, contextDescription: string, date: string) {
   const rows = ["| Path | Description | Status | Tags |", "| --- | --- | --- | --- |"];
   for (const path of [...files.keys(), catalogPath].sort()) {
     const vaultDocument = path.startsWith(root) && /\.md$/iu.test(path) && !path.startsWith(root + "archive/");
@@ -178,7 +192,7 @@ function makeCatalog(files: ReadonlyMap<string, string>, contextDescription: str
     const description = path === contextPath ? contextDescription : catalogDescriptions.get(path) ?? "Repository note.";
     rows.push(`| [${path}](<${destination}>) | ${description} | ${status} | ${tags} |`);
   }
-  return memoryNote("control-vault-index", "control, index", {
+  return memoryNote(date, "control-vault-index", "control, index", {
     context: "Read this index before [the current task](CURRENT_TASK.md), then choose relevant notes.",
     decision: rows.join("\n"),
     consequences: "Keep one row per active managed Markdown file. Archive stays outside the active catalog.",
@@ -186,7 +200,7 @@ function makeCatalog(files: ReadonlyMap<string, string>, contextDescription: str
   });
 }
 
-function addSetupRecords(files: Map<string, string>, details: SetupDetails, rationale: string) {
+function addSetupRecords(files: Map<string, string>, details: SetupDetails, copy: SetupCopy) {
   const sourcePaths = [...files.keys()].some((path) => path.startsWith("src/")) ? ["src/**"] : [];
   const config: RepositoryProjection["config"] = {
     schema_version: 1,
@@ -217,13 +231,13 @@ function addSetupRecords(files: Map<string, string>, details: SetupDetails, rati
     change_type: "added",
     summary: "Initialized Nutshell repository knowledge for " + details.name + ".",
     product_impact: "internal",
-    rationale,
-    technical_summary: "Add the initial configuration, product entity and vault catalog through a setup proposal.",
+    rationale: copy.rationale,
+    technical_summary: copy.technicalSummary,
     memory_paths: [contextPath],
     evidence: [],
   };
   for (const [path, record] of [
-    [".nutshell/config.json", config],
+    [configPath, config],
     [".nutshell/entities/" + entity.id + ".json", entity],
     [".nutshell/changes/" + change.id + ".json", change],
   ] as const) {
@@ -235,10 +249,13 @@ function addSetupRecords(files: Map<string, string>, details: SetupDetails, rati
   }
 }
 
-export function buildRepositorySetupTree(files: readonly SetupFile[], info: SetupDetails, provider: SetupProvider): SetupFile[] {
-  const copy = setupCopy[provider];
+export function buildRepositorySetupTree(
+  files: readonly SetupFile[], info: SetupDetails, variant: SetupVariant, noteDate = "2026-11-26",
+): SetupFile[] {
+  const copy = setupCopy[variant];
   const details = setupDetails.safeParse(info);
   if (!details.success) throw new Error("Provide a valid repository name, description and stable entity ID before generating setup.");
+  if (!z.iso.date().safeParse(noteDate).success) throw new Error("Provide a valid setup note date.");
   if (files.length > 5_000) throw new Error("The repository tree exceeds the path limit.");
 
   const tree = new Map<string, string>();
@@ -246,16 +263,19 @@ export function buildRepositorySetupTree(files: readonly SetupFile[], info: Setu
     if (tree.has(path)) throw new Error("The repository tree contains a duplicate path: " + path + ".");
     tree.set(path, body);
   }
-  const owner = tree.get("AGENTS.md") ?? "";
-  if (owner.length > 256 * 1024) throw new Error("AGENTS.md exceeds the managed document size limit.");
-  tree.set("AGENTS.md", installInstructions(owner));
-  if (!tree.has("README.md")) tree.set("README.md", "# Repository overview\n\nSee [the vault index](nutshell-vault/_INDEX.md) for shared repository knowledge.\n");
-  if (!tree.has("SPEC.md")) tree.set("SPEC.md", "# Repository requirements\n\n" + copy.requirements + "\n");
-  for (const [path, body] of initialVault(copy)) {
-    if (!tree.has(path)) tree.set(path, body);
+  // Local initialization validates an existing configuration and its records in place.
+  if (variant !== "local" || !tree.has(configPath)) {
+    const owner = tree.get("AGENTS.md") ?? "";
+    if (owner.length > 256 * 1024) throw new Error("AGENTS.md exceeds the managed document size limit.");
+    tree.set("AGENTS.md", installInstructions(owner));
+    if (!tree.has("README.md")) tree.set("README.md", "# Repository overview\n\nSee [the vault index](nutshell-vault/_INDEX.md) for shared repository knowledge.\n");
+    if (!tree.has("SPEC.md")) tree.set("SPEC.md", "# Repository requirements\n\n" + copy.requirements + "\n");
+    for (const [path, body] of initialVault(copy, noteDate)) {
+      if (!tree.has(path)) tree.set(path, body);
+    }
+    if (!tree.has(catalogPath)) tree.set(catalogPath, makeCatalog(tree, copy.catalog, noteDate));
+    addSetupRecords(tree, details.data, copy);
   }
-  if (!tree.has(catalogPath)) tree.set(catalogPath, makeCatalog(tree, copy.catalog));
-  addSetupRecords(tree, details.data, copy.rationale);
 
   for (const path of tree.keys()) {
     for (let separator = path.lastIndexOf("/"); separator > 0; separator = path.lastIndexOf("/", separator - 1)) {

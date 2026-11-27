@@ -93,6 +93,21 @@ pnpm test
 
 Compare exact Git revisions with `pnpm nutshell validate --base <ref> --head <ref>`. A configured repository uses the selected base coverage policy and checks new semantic change records. Use `pnpm nutshell impact --base <ref> --head <ref>` to see changed paths, mapped entities, and related notes. Add `--json` for structured results.
 
+Run `pnpm nutshell init` to preview repository setup and `pnpm nutshell init --write` to apply it. Initialization preserves existing owner instructions and creates the vault, control files, templates, and initial records. Run `pnpm nutshell change add --help` for the noninteractive record fields.
+
+From another repository, invoke the same CLI entry point with that repository as the working directory.
+
+```powershell
+$NutshellCli = (Resolve-Path ./packages/cli/src/main.ts).Path
+$TargetRepository = 'C:\path\to\target-repository'
+Push-Location -LiteralPath $TargetRepository
+try {
+  node $NutshellCli init --json
+} finally {
+  Pop-Location
+}
+```
+
 Retrieve context from the checked-out Git revision with a query and optional comma-separated repository paths.
 
 ```powershell
