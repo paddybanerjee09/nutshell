@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
-import { requireLocalDatabaseUrl } from "./config.ts";
+import { localSetupConnectionTimeout, requireLocalDatabaseUrl } from "./config.ts";
 import { fixtureGrants, fixtureRepositories, personas } from "./local-fixtures.ts";
 import { installation, membership, providerGrant, repository, user } from "./schema.ts";
 
@@ -11,7 +11,7 @@ const setupLock = 1_746_207_811;
 
 export async function migrateAndSeed(databaseUrl: string): Promise<void> {
   const connectionString = requireLocalDatabaseUrl(databaseUrl, "Migration target");
-  const client = new pg.Client({ connectionString, connectionTimeoutMillis: 5000 });
+  const client = new pg.Client({ connectionString, connectionTimeoutMillis: localSetupConnectionTimeout });
   try {
     await client.connect();
     await client.query("SELECT pg_advisory_lock($1::bigint)", [setupLock]);

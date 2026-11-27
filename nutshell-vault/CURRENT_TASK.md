@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: snapshot-workspace-2026-11-26
 task_state: pr_open
-task_revision: 27
+task_revision: 28
 repository_id: 1467144605
 branch: feature/snapshot-workspace
 base_branch: main
@@ -28,7 +28,7 @@ Use the published snapshot for document and record content. Keep tabs and split 
 
 ## Consequences
 
-Draft PR #6 opened from canonical idle revision 25. Core workspace data, recursive layout, client controls, and token-based styles are in integration. Verify authorized document and record reads, workspace controls, reload, narrow layouts, and the full local gate before promotion.
+PR #6 remains open. The workspace passed the Windows gate with 95 tests and six browser viewports. The keyboard parity and web startup repairs passed an independent optimized journey. Follow-up runs exposed intermittent fixture startup and sign-in timing. Validate the hydration-safe controls and the scoped PostgreSQL connection changes on the final candidate before promotion.
 
 ## Affected files
 

@@ -4,7 +4,7 @@ import { loadConfig } from "./config.ts";
 import { closeRuntime, getAuth, getSession, healthCheck, listRepositories, readRepository } from "./runtime.ts";
 import { migrateAndSeed } from "./setup.ts";
 
-describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL session and repository access", () => {
+describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL session and repository access", { timeout: 20_000 }, () => {
   let origin: string;
   let db: pg.Pool;
   let databaseUrl: string;
@@ -14,7 +14,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL session and rep
     await migrateAndSeed(databaseUrl);
     db = new pg.Pool({ connectionString: databaseUrl });
     await healthCheck();
-  });
+  }, 20_000);
 
   afterAll(async () => {
     await closeRuntime();

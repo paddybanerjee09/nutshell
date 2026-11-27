@@ -74,7 +74,7 @@ On this Windows host, Chromium's native child stayed alive after the browser con
 
 Verification runs the test files in sequence because PostgreSQL integration tests change shared fixture grants and connection epochs. On Windows, Vitest uses worker threads to avoid the observed fork shutdown timeouts.
 
-Web startup reports the failed phase. PostgreSQL readiness allows up to three attempts for transient connection errors within the supervisor deadline. Permanent configuration and permission failures stop startup.
+Web startup reports the failed phase. PostgreSQL readiness allows up to three attempts for transient connection errors within the supervisor deadline. Permanent configuration and permission failures stop startup. Provisioning and migration each allow 15 seconds per local connection, and the three real PostgreSQL test suites have 20-second setup and test deadlines.
 
 The pinned runtime uses Node 24.18.0, pnpm 11.25.0, PostgreSQL 18.7, Next.js 16.4.6, Better Auth 1.7.28, Drizzle 0.45.4, and pg-boss 12.40.0.
 

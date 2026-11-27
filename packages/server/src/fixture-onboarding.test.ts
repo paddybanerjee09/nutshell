@@ -10,7 +10,7 @@ import { migrateAndSeed } from "./setup.ts";
 const repositoryId = 1001;
 const installationId = 2001;
 
-describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture onboarding", () => {
+describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture onboarding", { timeout: 20_000 }, () => {
   const first = randomBytes(20).toString("hex");
   const second = randomBytes(20).toString("hex");
   const testRevisions = new Set([first, second]);
@@ -32,7 +32,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture onboard
     const { rows } = await db.query<{ head_revision: string }>("SELECT head_revision FROM fixture_state WHERE repository_id = $1", [repositoryId]);
     originalHead = rows[0]?.head_revision;
     await renewConnection();
-  });
+  }, 20_000);
 
   afterAll(async () => {
     await closeRuntime();
