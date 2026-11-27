@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FixtureOnboardingRead, FixtureSetupProposal } from "@nutshell/server/fixture-onboarding";
 import type { FixtureSnapshotRead } from "@nutshell/server/fixture-sync";
+import { useHydrated } from "../../../use-hydrated";
 
 type SnapshotStatus = Pick<FixtureSnapshotRead, "status" | "headRevision" | "revision">;
 type SyncStatus = "pending" | "synced" | "invalid" | "superseded" | "paused";
@@ -28,6 +29,7 @@ export function RepositorySetup({ repositoryId, initialSetup, initialSnapshot }:
   initialSetup: FixtureOnboardingRead | null;
   initialSnapshot: SnapshotStatus | null;
 }) {
+  const hydrated = useHydrated();
   const [setup, setSetup] = useState(initialSetup);
   const [sync, setSync] = useState(() => syncStatus(initialSnapshot, initialSetup?.proposal?.mergeRevision ?? null));
   const [pending, setPending] = useState<SetupAction | null>(null);
@@ -181,6 +183,7 @@ export function RepositorySetup({ repositoryId, initialSetup, initialSnapshot }:
           className="setup-button"
           type="button"
           aria-describedby={displayedRevision ? "setup-revision" : undefined}
+          disabled={!hydrated}
           aria-disabled={pending !== null}
           onClick={() => void submit(action)}
         >

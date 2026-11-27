@@ -32,11 +32,14 @@ async function stopVerificationBrowser(server: BrowserServer) {
 }
 
 async function signIn(page: Page, button: RegExp) {
-  const response = page.waitForResponse((candidate) => {
-    return candidate.request().method() === "POST" && new URL(candidate.url()).pathname === personaPath;
-  });
-  await page.getByRole("button", { name: button }).click();
-  assert.equal((await response).status(), 200, "The local persona endpoint must accept the same-origin browser request.");
+  const control = page.getByRole("button", { name: button });
+  await control.click({ trial: true });
+  const [response] = await Promise.all([
+    page.waitForResponse((candidate) => candidate.request().method() === "POST" && new URL(candidate.url()).pathname === personaPath)
+      .catch((error: unknown) => { throw new Error(`Sign-in for ${button.source} did not return a response.`, { cause: error }); }),
+    control.click(),
+  ]);
+  assert.equal(response.status(), 200, "The local persona endpoint must accept the same-origin browser request.");
   await page.waitForURL("**/app");
 }
 
@@ -49,9 +52,9 @@ async function verifySetup(page: Page, origin: string) {
   const post = (data: object, requestOrigin = origin) => page.request.post(endpoint, { headers: { origin: requestOrigin }, data });
 
   assert.equal((await post({ action: "open" }, "https://untrusted.invalid")).status(), 403);
-  const creation = responseFor();
-  await setup.getByRole("button", { name: "Create setup proposal" }).click();
-  const result = await creation;
+  const create = setup.getByRole("button", { name: "Create setup proposal" });
+  await create.click({ trial: true });
+  const [result] = await Promise.all([responseFor(), create.click()]);
   assert.equal(result.status(), 200);
   const { proposal } = await result.json() as { proposal: { id: string; headRevision: string } };
   assert.ok(proposal.id);
@@ -62,9 +65,8 @@ async function verifySetup(page: Page, origin: string) {
   assert.deepEqual((await duplicate.json()).proposal, proposal);
   assert.equal((await post({ action: "merge", expectedHead: "0".repeat(40) })).status(), 409);
 
-  const merge = responseFor();
-  await setup.getByRole("button", { name: "Simulate setup merge" }).click();
-  const merged = await merge;
+  const merge = setup.getByRole("button", { name: "Simulate setup merge" });
+  const [merged] = await Promise.all([responseFor(), merge.click()]);
   assert.equal(merged.status(), 200);
   const { proposal: mergedProposal } = await merged.json() as { proposal: { mergeRevision: string } };
   assert.match(mergedProposal.mergeRevision, /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
@@ -189,6 +191,10 @@ export async function verifyEntryFlow(origin: string) {
   const server = await browserType.launchServer({ headless: true, host: "127.0.0.1", timeout: 30_000 });
   try {
     const browser = await browserType.connect(server.wsEndpoint(), { timeout: 10_000 });
+    const withoutJavaScript = await browser.newPage({ javaScriptEnabled: false });
+    await withoutJavaScript.goto(origin + "/login");
+    assert.ok(await withoutJavaScript.getByRole("button", { name: /^Coordinator/ }).isDisabled());
+    await withoutJavaScript.close();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const output = ".local/verification";
     await mkdir(output, { recursive: true });
