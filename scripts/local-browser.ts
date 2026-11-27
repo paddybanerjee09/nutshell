@@ -834,6 +834,7 @@ async function verifyTeamNotes(coordinator: Page, reader: Page, origin: string, 
 }
 
 async function verifyScreenshotEvidence(coordinator: Page, reader: Page, other: Page, origin: string, output: string) {
+  coordinator.setDefaultTimeout(30_000);
   const workspace = origin + "/app/repos/1001/workspace";
   const endpoint = origin + "/api/repos/1001/screenshots";
   const snapshotUrl = origin + "/api/repos/1001/snapshot";
@@ -906,19 +907,14 @@ async function verifyScreenshotEvidence(coordinator: Page, reader: Page, other: 
     } else await delay(250);
   }
   assert.equal(indexed, true, "Signed screenshot fixture must reach the indexed workspace.");
+  console.log("Indexed the signed screenshot evidence and verified its exact asset reference.");
 
-  const browser = coordinator.context().browser();
-  assert.ok(browser);
-  const withoutJavaScript = await browser.newPage({
-    javaScriptEnabled: false, storageState: await coordinator.context().storageState(),
-  });
-  try {
-    const served = await withoutJavaScript.goto(workspace);
-    assert.equal(served?.status(), 200);
-    await withoutJavaScript.locator("main.workspace-shell[aria-busy='true'] .workspace-main[inert]").waitFor({ state: "attached" });
-  } finally {
-    await withoutJavaScript.close();
-  }
+  const served = await coordinator.request.get(workspace, { timeout: 15_000, maxRedirects: 0 });
+  assert.equal(served.status(), 200);
+  const isInitiallyInert = await coordinator.evaluate((html) => new DOMParser().parseFromString(html, "text/html")
+    .querySelector("main.workspace-shell[aria-busy='true'] .workspace-main[inert]") !== null, await served.text());
+  assert.equal(isInitiallyInert, true, "The server-rendered workspace must be busy and inert before hydration.");
+  console.log("Verified the initial workspace markup before hydration.");
   await coordinator.reload();
   await readyWorkspace.waitFor();
   await readyWorkspace.getByTestId("workspace-status").locator(`.workspace-status-state[title="${evidenceRevision}"]`)
@@ -945,11 +941,7 @@ async function verifyScreenshotEvidence(coordinator: Page, reader: Page, other: 
   for (const alt of ["Screenshot for Uploaded workspace image", "Screenshot for workspace-indexed"]) {
     const element = evidence.getByRole("img", { name: alt, exact: true });
     await element.waitFor();
-    assert.equal(await element.evaluate(async (node) => {
-      if (!(node instanceof HTMLImageElement)) return 0;
-      await node.decode();
-      return node.naturalWidth;
-    }), 1440);
+    assert.equal(await element.evaluate((node) => node instanceof HTMLImageElement && node.complete ? node.naturalWidth : 0), 1440);
   }
   assert.equal(await evidence.getByRole("img").count(), 2);
   await evidence.scrollIntoViewIfNeeded();

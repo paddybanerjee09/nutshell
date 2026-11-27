@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: local-repository-authoring-2026-11-27
 task_state: pr_open
-task_revision: 103
+task_revision: 104
 repository_id: 1467144605
 branch: feature/local-repository-authoring
 base_branch: main
@@ -28,7 +28,7 @@ The filesystem delegate owns bounded managed reads and targeted writes. The init
 
 ## Consequences
 
-The scratch Git authoring journey and 261-test Windows suite passed. The bounded build and persisted worker passed. The focused browser reruns exposed a layout readiness race and a mobile graph refit issue. Controls now wait for restoration and the graph fits measured dimensions. The verification uses a JavaScript-disabled initial render and checks the exact selected evidence and mobile node bounds. Finish the optimized run and source checks.
+The scratch Git authoring journey and 261-test Windows suite passed. The bounded build, persisted worker, and mobile graph bounds check passed. Controls now wait for layout restoration and the graph fits measured dimensions. Late Firefox context creation stalled after evidence publication. Verification now checks the authenticated server markup without executing it and retains the browser selection and exact asset checks. Finish the optimized run and source checks.
 
 ## Affected files
 

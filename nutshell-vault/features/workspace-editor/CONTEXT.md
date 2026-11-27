@@ -15,7 +15,7 @@ Follow [R-04 shell](../../../SPEC.md#7-r-04-workspace-shell-and-navigation), [R-
 
 Use the [versioned workspace preference](../../decisions/2026-11-27-workspace-layout-preferences.md) for recursive panes and docks. Open actual accessible items and pane commands through the keyboard palette. Render Markdown with raw HTML disabled, internal links restricted to the current snapshot, and unavailable media labeled in the reading view.
 
-The displayed workspace stays busy during layout restoration. Its pane, dock, and explorer controls accept input after restoration, so an initial action cannot be overwritten by saved preferences.
+The displayed workspace stays busy during layout restoration. Its pane, dock, and explorer controls accept input after restoration, so an initial action cannot be overwritten by saved preferences. The optimized verification checks the authenticated server markup without executing its scripts, then checks selection and evidence after browser hydration in the current page. This avoids allocating another Firefox context during the evidence journey.
 
 The local draft API requires the current writer grant on every operation. Drafts are scoped by repository, connection epoch, author, and literal vault path. Saves require the exact current indexed commit and source digest with the expected draft version. PostgreSQL preserves the author's prior bytes on conflicts. Saving a draft leaves the published repository source unchanged.
 
