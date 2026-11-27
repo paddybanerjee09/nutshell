@@ -3,34 +3,35 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: null
-task_state: idle
-task_revision: 116
-repository_id: null
-branch: null
-base_branch: null
+task_id: managed-markdown-creation-2026-11-27
+task_state: in_progress
+task_revision: 117
+repository_id: 1467144605
+branch: feature/managed-markdown-creation
+base_branch: main
 pr_number: null
 pr_url: null
 last_verified_head: null
-lead_agent: null
-integration_checkout: null
+lead_agent: root
+integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
 ---
-# Current task
+# Managed Markdown creation
 
 ## Context
 
-No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
+Create a managed Markdown note as a private draft from an explicitly absent source, then publish it with its index row through a checked simulated proposal.
 
 ## Decision
 
-The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
+Reuse workspace editing and the current repository grants, guard the expected base and absent path, and preserve catalog bytes outside the new row. Reuse source and fixture checks for canonical publication.
 
 ## Consequences
 
-See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
+Canonical idle revision 116 is confirmed. The server delegate owns absent-source storage, draft creation/listing and proposal integration. The lead owns the shared index-row helper, workspace controls, browser verification and source workflow.
 
 ## Affected files
 
-- [Task template](templates/TASK.md)
-- [Vault index](_INDEX.md)
+- [Workspace context](features/workspace-editor/CONTEXT.md).
+- [UI guide](design/UI_GUIDE.md).
+- [Provider contract](architecture/GITHUB_CONTRACT.md).
