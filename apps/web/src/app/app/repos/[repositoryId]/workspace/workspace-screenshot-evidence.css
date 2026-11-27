@@ -1,0 +1,59 @@
+.workspace-screenshot-upload {
+  min-inline-size: 0;
+  padding-block-start: 6px;
+  border-block-start: var(--ns-border-width) solid var(--ns-border);
+}
+
+.workspace-screenshot-upload :is(form, label, .workspace-screenshot-upload-result) {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  min-inline-size: 0;
+  inline-size: 100%;
+}
+
+.workspace-screenshot-upload-result { margin-block-start: 8px; }
+
+.workspace-screenshot-upload input {
+  box-sizing: border-box;
+  min-inline-size: 0;
+  inline-size: 100%;
+  min-block-size: var(--ns-control-hit-size);
+  padding: 3px 5px;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-input);
+  background: var(--ns-modal-input);
+  color: var(--ns-text);
+  font: inherit;
+}
+
+.workspace-screenshot-upload button, .workspace-screenshot-upload input::file-selector-button {
+  min-block-size: var(--ns-control-hit-size);
+  padding: 3px 6px;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-button);
+  background: var(--ns-hover);
+  color: var(--ns-text);
+  font: inherit;
+}
+
+.workspace-screenshot-upload button:hover:not(:disabled) { background: var(--ns-selection); }
+.workspace-screenshot-upload input::file-selector-button { margin-inline-end: 6px; }
+
+.workspace-declared-evidence { border-block-start: var(--ns-border-width) solid var(--ns-border); }
+.workspace-details .workspace-declared-evidence ul { padding-inline-start: 0; list-style: none; }
+.workspace-declared-screenshot + .workspace-declared-screenshot { border-block-start: var(--ns-border-width) solid var(--ns-border); }
+.workspace-declared-screenshot > p:first-child { font-weight: 650; }
+
+.workspace-private-screenshot {
+  display: block;
+  max-inline-size: 100%;
+  block-size: auto;
+  border: var(--ns-border-width) solid var(--ns-border);
+}
+
+.workspace-private-screenshot[hidden] { display: none; }
+
+@media (pointer: coarse) {
+  .workspace-screenshot-upload :is(button, input) { min-block-size: 44px; }
+}

@@ -17,11 +17,11 @@ For [R-09 media](../../../SPEC.md#media-and-screenshots), writers upload single-
 
 Every asset has a database-owned repository, opaque key, MIME type, dimensions, size, digest, and provenance. Reads recheck current repository access and verify private bytes before delivery. A referenced asset with absent or invalid bytes is unavailable.
 
-Values declared in Git remain declarations. The fixture capture label requires a controlled local browser run, matching stored capture metadata, a current indexed fixture source at capture time, and successful authorized image loading.
+The Details dock gives current writers an asset ID to reference in a Git change record. Values declared in Git remain declarations. The fixture capture label requires a controlled local browser run, matching stored capture metadata, a current indexed fixture source at capture time, and successful authorized image loading.
 
 ## Consequences
 
-Do not invent past changes or label generated descriptions or fixture captures as human-reviewed or deployed. The single-task memory workflow does not convert CURRENT_TASK into a product event log. The [acceptance ledger](../../runs/ACCEPTANCE.md) records graph, history, and media evidence.
+Human review and deployment each require separate evidence. Product events come from repository change records. The [acceptance ledger](../../runs/ACCEPTANCE.md) records graph, history, and media evidence.
 
 ## Affected files
 
@@ -30,3 +30,4 @@ Do not invent past changes or label generated descriptions or fixture captures a
 - [Repository schemas and projection](../../../packages/core/src/repo-snapshot.ts).
 - [Workspace relationship model](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/workspace-graph-model.ts).
 - [Raster validation](../../../packages/server/src/raster.ts), [asset service](../../../packages/server/src/screenshot-assets.ts), and [asset migration](../../../packages/server/migrations/0007_screenshot_assets.sql).
+- [Workspace evidence panel](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/workspace-screenshot-evidence.tsx) and [controlled capture verification](../../../scripts/fixture-screenshot-evidence.ts).

@@ -18,6 +18,8 @@ pnpm alpha:dev
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Sign in as Coordinator and open Field Notes to create a setup proposal and simulate its merge. Once the repository is indexed, select **Open workspace** to browse the snapshot. A Markdown note’s pane actions offer **Read**, **Live preview**, and **Source**. Use **Edit draft** and **Save draft** to save private Markdown for your account. **Propose change** prepares a checked simulated proposal. **Simulate change merge** publishes it through the worker, and the workspace confirms the indexed revision. Open **Memory Graph**, **Product Map**, **Team tasks**, or **Team notes** from the workspace ribbon or command palette. Team tasks include a copyable brief with the indexed source revision. Team notes use a separate structured editor and save to the repository's collaboration database.
 
+Repository writers can upload a PNG, JPEG, or WebP from **Screenshot evidence** in the **Details** dock. Copy the returned ID into the evidence entry of the Git change record. The dock shows each screenshot's provenance and labels unavailable evidence.
+
 Run `pnpm alpha:verify` on the separate test database and `pnpm alpha:stop` to stop the web and worker. The setup guide gives the Playwright installation command for your platform.
 
 ## Start the first megarun
