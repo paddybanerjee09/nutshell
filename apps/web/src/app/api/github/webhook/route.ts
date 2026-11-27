@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { loadConfig } from "@nutshell/server/config";
 import { acceptFixtureDelivery } from "@nutshell/server/fixture-sync";
+import { readBoundedBody } from "../../request-body";
 
 export const runtime = "nodejs";
 
@@ -8,29 +9,6 @@ const maxBodyBytes = 64 * 1024;
 
 function outcome(status: string, code: number) {
   return Response.json({ status }, { status: code, headers: { "Cache-Control": "no-store" } });
-}
-
-async function rawPayload(request: Request): Promise<Buffer | null> {
-  if (Number(request.headers.get("content-length")) > maxBodyBytes) return null;
-  if (!request.body) return Buffer.alloc(0);
-
-  const payload = Buffer.alloc(maxBodyBytes);
-  const reader = request.body.getReader();
-  let size = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return payload.subarray(0, size);
-      if (value.byteLength > maxBodyBytes - size) {
-        void reader.cancel().catch(() => {});
-        return null;
-      }
-      payload.set(value, size);
-      size += value.byteLength;
-    }
-  } finally {
-    reader.releaseLock();
-  }
 }
 
 function readId(value: unknown) {
@@ -68,7 +46,7 @@ export async function POST(request: Request): Promise<Response> {
 
   let payload: Buffer | null;
   try {
-    payload = await rawPayload(request);
+    payload = await readBoundedBody(request, maxBodyBytes);
   } catch {
     return outcome("invalid", 400);
   }

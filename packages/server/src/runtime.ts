@@ -3,7 +3,7 @@ import { betterAuth } from "better-auth";
 import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
-import { and, asc, eq, exists } from "drizzle-orm";
+import { and, asc, eq, exists, gt, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { z } from "zod";
@@ -100,25 +100,55 @@ export function getFixtureDatabase() {
   return db;
 }
 
+type FixtureDatabase = ReturnType<typeof getFixtureDatabase>;
+export type FixtureTransaction = Parameters<Parameters<FixtureDatabase["transaction"]>[0]>[0];
+
+function activeInstallation() {
+  return and(eq(installation.id, repository.installationId), eq(installation.active, true));
+}
+
+function activeMembership(userId: string) {
+  return and(eq(membership.repositoryId, repository.id), eq(membership.userId, userId), eq(membership.active, true));
+}
+
+function readableGrant(userId: string) {
+  return and(eq(providerGrant.repositoryId, repository.id), eq(providerGrant.userId, userId), eq(providerGrant.canRead, true));
+}
+
 function repositoryAccessFilter(userId: string, id?: number) {
   const { db } = getRuntime();
   return and(
     eq(repository.active, true),
     id === undefined ? undefined : eq(repository.id, id),
-    exists(db.select({ id: installation.id }).from(installation)
-      .where(and(eq(installation.id, repository.installationId), eq(installation.active, true)))),
-    exists(db.select({ id: membership.repositoryId }).from(membership)
-      .where(and(eq(membership.repositoryId, repository.id), eq(membership.userId, userId), eq(membership.active, true)))),
-    exists(db.select({ id: providerGrant.repositoryId }).from(providerGrant)
-      .where(and(eq(providerGrant.repositoryId, repository.id), eq(providerGrant.userId, userId), eq(providerGrant.canRead, true)))),
+    exists(db.select({ id: installation.id }).from(installation).where(activeInstallation())),
+    exists(db.select({ id: membership.repositoryId }).from(membership).where(activeMembership(userId))),
+    exists(db.select({ id: providerGrant.repositoryId }).from(providerGrant).where(readableGrant(userId))),
   );
+}
+
+export async function resolveRepositoryActor(headers: Headers) {
+  const auth = await getSession(headers);
+  return auth ? { userId: auth.user.id, sessionId: auth.session.id } : null;
+}
+
+export type RepositoryActor = NonNullable<Awaited<ReturnType<typeof resolveRepositoryActor>>>;
+
+export async function lockRepositorySetupGrant(tx: FixtureTransaction, actor: RepositoryActor, repositoryId: number) {
+  // Lock authorization facts so a concurrent revocation cannot commit before this operation.
+  const [grant] = await tx.select({ canWrite: providerGrant.canWrite, canConfigure: providerGrant.canConfigure }).from(repository)
+    .innerJoin(installation, activeInstallation()).innerJoin(membership, activeMembership(actor.userId))
+    .innerJoin(providerGrant, readableGrant(actor.userId))
+    .innerJoin(session, and(eq(session.userId, actor.userId), eq(session.id, actor.sessionId), gt(session.expiresAt, sql`now()`)))
+    .where(and(eq(repository.id, repositoryId), eq(repository.active, true)))
+    .for("share", { of: [session, membership, providerGrant] });
+  return grant ? { canConfigure: grant.canWrite && grant.canConfigure } : null;
 }
 
 export async function resolveRepositoryReadFilter(headers: Headers, id: string) {
   const numericId = Number(id);
   if (!/^[1-9]\d{0,15}$/u.test(id) || !Number.isSafeInteger(numericId)) return undefined;
-  const auth = await getSession(headers);
-  return auth ? repositoryAccessFilter(auth.user.id, numericId) : undefined;
+  const actor = await resolveRepositoryActor(headers);
+  return actor ? repositoryAccessFilter(actor.userId, numericId) : undefined;
 }
 
 async function authorizedRepositories(userId: string, id?: number): Promise<Repository[]> {

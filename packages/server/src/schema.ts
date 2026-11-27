@@ -127,4 +127,24 @@ export const providerGrant = pgTable("local_provider_grant", {
   repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
   canRead: boolean("can_read").notNull().default(false),
   canWrite: boolean("can_write").notNull().default(false),
+  canConfigure: boolean("can_configure").notNull().default(false),
 }, (table) => [primaryKey({ columns: [table.userId, table.repositoryId] })]);
+
+export const fixtureSetupProposal = pgTable("fixture_setup_proposal", {
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  connectionEpoch: integer("connection_epoch").notNull(),
+  id: text("id").notNull().unique(),
+  provider: text("provider", { enum: ["fixture"] }).notNull().default("fixture"),
+  baseRevision: text("base_revision").notNull(),
+  headRevision: text("head_revision").notNull(),
+  checkedRevision: text("checked_revision").notNull(),
+  schemaVersion: integer("schema_version").notNull(),
+  policyVersion: integer("policy_version").notNull(),
+  mergedRevision: text("merged_revision"),
+  deliveryId: text("delivery_id").notNull().unique(),
+}, (table) => [
+  primaryKey({ columns: [table.repositoryId, table.connectionEpoch] }),
+  foreignKey({ columns: [table.repositoryId, table.baseRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
+  foreignKey({ columns: [table.repositoryId, table.headRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
+  foreignKey({ columns: [table.repositoryId, table.mergedRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
+]);
