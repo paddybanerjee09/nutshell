@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: team-notes-2026-11-27
-task_state: pr_open
-task_revision: 63
+task_state: ready_for_review
+task_revision: 64
 repository_id: "1467144605"
 branch: feature/team-notes
 base_branch: main
 pr_number: 12
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/12
-last_verified_head: null
+last_verified_head: e0afb8d1a1720c0384257318448cea9ce00dba9c
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ The service delegate owns collaboration storage and PostgreSQL tests. The HTTP d
 
 ## Consequences
 
-Team tasks merged and canonical cleanup was confirmed at revision 60. Draft PR #12 is open. The notes database service, JSON schema, and API are implemented. Isolated PostgreSQL authorization and revision tests passed after a transient connection timeout. The editor integration and full Windows alpha verification are next.
+Migration 0006 applied to both local databases. Windows pnpm alpha:verify passed its 151 tests and exposed a discard-view problem in Firefox. The repaired head passed lint, optimized build, persisted worker, signed fixtures, and the complete two-session Firefox journey with scoped shutdown. Next check the exact GitHub head before merge and guarded cleanup.
 
 ## Affected files
 
