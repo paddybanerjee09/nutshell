@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: local-repository-authoring-2026-11-27
 task_state: pr_open
-task_revision: 99
+task_revision: 100
 repository_id: 1467144605
 branch: feature/local-repository-authoring
 base_branch: main
@@ -28,7 +28,7 @@ The filesystem delegate owns bounded managed reads and targeted writes. The init
 
 ## Consequences
 
-Draft PR #19 is open. Scoped filesystem tests verified managed reads, archive metadata, scoped writes, exact owner bytes, and refusal of unsafe paths. The CLI passed initialization and authoring tests in isolated scratch repositories, including an actual immutable Git comparison. Next rerun the full Windows alpha workflow.
+The scratch CLI journey passed. The first full Windows rerun passed 259 tests and exposed two supervisor failures because their mock still used the old configuration export. The repaired mock passed both original teardown assertions. Rerun the full workflow at the repaired code head, then verify the source check, merge, and canonical cleanup.
 
 ## Affected files
 
