@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./config": "./src/config.ts",
+    "./fixture-drafts": "./src/fixture-drafts.ts",
     "./fixture-onboarding": "./src/fixture-onboarding.ts",
     "./fixture-sync": "./src/fixture-sync.ts",
     "./runtime": "./src/runtime.ts",
