@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: interactive-marketing-preview-2026-11-27
-task_state: pr_open
-task_revision: 80
+task_state: ready_for_review
+task_revision: 81
 repository_id: 1467144605
 branch: feature/interactive-marketing-preview
 base_branch: main
 pr_number: 15
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/15
-last_verified_head: null
+last_verified_head: 7550a857335ff33458696aa9fe4bf57f06fef117
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ The public-entry delegate owns the hero and navigation. The preview delegate own
 
 ## Consequences
 
-Durable history merged and canonical cleanup was confirmed at idle revision 77. Draft PR #15 is open. The bundled demo data passed two focused Markdown, graph, and isolation tests. Next verify the integrated page, keyboard controls, original logo response, and public isolation in Firefox.
+The focused dataset tests, lint, strict types, optimized build, persisted worker, Firefox entry and full app journey, signed fixtures, and scoped shutdown passed. Firefox confirmed the repair for clipped selected-graph actions and checked the unchanged served PNG, demo interactions, reduced and offscreen graph motion, mobile dialog focus, and public isolation. Native zoom remains unrun after Windows automation timeouts. Next verify the exact GitHub head before merge and guarded cleanup.
 
 ## Affected files
 
