@@ -20,6 +20,8 @@ Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Sign in as Coordinator and 
 
 Repository writers can upload a PNG, JPEG, or WebP from **Screenshot evidence** in the **Details** dock. Copy the returned ID into the evidence entry of the Git change record. The dock shows each screenshot's provenance and labels unavailable evidence.
 
+Open **History** to browse accepted product changes by entity or kind. Follow corrections, reversals, and links to the notes as they appeared at the indexed source revision.
+
 Run `pnpm alpha:verify` on the separate test database and `pnpm alpha:stop` to stop the web and worker. The setup guide gives the Playwright installation command for your platform.
 
 ## Start the first megarun

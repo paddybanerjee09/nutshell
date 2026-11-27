@@ -11,7 +11,10 @@ import "./workspace.css";
 export const metadata: Metadata = { title: "Workspace" };
 export const dynamic = "force-dynamic";
 
-export default async function WorkspacePage({ params }: { params: Promise<{ repositoryId: string }> }) {
+export default async function WorkspacePage({ params, searchParams }: {
+  params: Promise<{ repositoryId: string }>;
+  searchParams: Promise<{ history?: string | string[]; note?: string | string[] }>;
+}) {
   const { repositoryId } = await params;
   const request = await headers();
   const [session, repository, snapshot] = await Promise.all([
@@ -27,5 +30,10 @@ export default async function WorkspacePage({ params }: { params: Promise<{ repo
 
   const canEdit = await canEditFixtureMarkdown(request, repositoryId);
   const data = workspaceData(repository, session.user.id, snapshot, canEdit);
-  return <WorkspaceShell key={data.layoutKey} data={data} />;
+  const { history, note } = await searchParams;
+  const initialHistory = typeof history === "string" && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/u.test(history) ? {
+    changeId: history,
+    ...(typeof note === "string" && note.length <= 512 ? { path: note } : {}),
+  } : undefined;
+  return <WorkspaceShell key={data.layoutKey} data={data} initialHistory={initialHistory} />;
 }

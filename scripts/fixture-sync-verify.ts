@@ -4,6 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "@nutshell/server/config";
 import { setFixtureHead } from "@nutshell/server/fixture-sync";
 import { closeRuntime } from "@nutshell/server/runtime";
+import { setVerificationFieldNotesHead } from "./verification-fixture-head.ts";
 
 type CurrentSnapshot = {
   status: string;
@@ -137,7 +138,7 @@ async function verifyFixtureSync() {
   const harbor = fixtureTree("Harbor Atlas", "harbor-atlas");
   const fieldRevision = randomBytes(20).toString("hex");
   const harborRevision = randomBytes(20).toString("hex");
-  await setFixtureHead(1001, fieldRevision, field);
+  await setVerificationFieldNotesHead(fieldRevision, field);
   await setFixtureHead(1002, harborRevision, harbor);
   const delivery = randomUUID();
   assert.equal((await deliver(1001, fieldRevision, delivery, false)).status, 401);

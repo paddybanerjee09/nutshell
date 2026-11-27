@@ -1,0 +1,102 @@
+.workspace-panel[data-kind="history"] { padding: 0; }
+
+.workspace-history-panel {
+  container-type: inline-size;
+  min-inline-size: 0;
+  min-block-size: 100%;
+  font-size: var(--ns-font-size-ui);
+  overflow-wrap: anywhere;
+}
+
+.workspace-history-header { padding: 12px 16px; }
+.workspace-history-header h1 { margin: 0 0 4px; font-size: 18px; }
+.workspace-history-header p { margin: 0; color: var(--ns-muted); }
+.workspace-history-header code, .workspace-history-change code { font-family: var(--ns-font-mono); }
+
+.workspace-history-filters, .workspace-history-provenance, .workspace-history-original > header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.workspace-history-filters, .workspace-history-message {
+  margin: 0;
+  padding: 6px 12px;
+  border-block: var(--ns-border-width) solid var(--ns-border);
+  background: var(--ns-chrome-alt);
+}
+
+.workspace-history-filters select {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  min-block-size: var(--ns-control-hit-size);
+  padding: 4px 8px;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-input);
+  background: var(--ns-modal-input);
+  color: var(--ns-text);
+  font: inherit;
+}
+
+.workspace-history-main { display: grid; grid-template-columns: minmax(150px, 34%) minmax(0, 1fr); min-block-size: 260px; }
+.workspace-history-list { min-inline-size: 0; padding: 4px; border-inline-end: var(--ns-border-width) solid var(--ns-border); background: var(--ns-chrome-alt); }
+.workspace-history-list h2 { margin: 8px 4px 4px; color: var(--ns-muted); font-size: inherit; }
+.workspace-history-list p { margin: 6px; }
+.workspace-history-list ul { margin: 0; padding: 0; list-style: none; }
+
+.workspace-history-list button {
+  display: grid;
+  inline-size: 100%;
+  min-block-size: 40px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--ns-radius-button);
+  background: transparent;
+  text-align: start;
+}
+
+.workspace-history-list button:hover { background: var(--ns-hover); }
+.workspace-history-list button[aria-pressed="true"] { background: var(--ns-accent-tint); }
+.workspace-history-list small, .workspace-history-provenance, .workspace-history-facts dt { color: var(--ns-muted); }
+.workspace-history-change { min-inline-size: 0; padding: 12px 16px; }
+.workspace-history-change > h2 { margin: 0 0 6px; font-size: 19px; }
+.workspace-history-change > section > h3 { margin: 10px 0 6px; font-size: 14px; }
+.workspace-history-change :is(ul, dl, p) { margin-block: 6px 12px; }
+.workspace-history-change ul { padding-inline-start: 18px; }
+.workspace-history-facts { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 4px 10px; }
+.workspace-history-facts dd { margin: 0; }
+
+.workspace-history-rationale, .workspace-history-original {
+  margin-block: 8px;
+  padding: 8px;
+  border: var(--ns-border-width) solid var(--ns-border);
+  background: var(--ns-chrome-alt);
+}
+
+.workspace-history-rationale summary { cursor: pointer; }
+.workspace-history-original .workspace-reading { padding-inline: 0; }
+.workspace-history-original > header { justify-content: space-between; }
+.workspace-history-original > header h3 { margin: 0; }
+.workspace-history-original > p > a { color: var(--ns-text); text-decoration: underline; }
+
+.workspace-history-panel :is(.workspace-history-message, .workspace-history-original > header) button {
+  min-block-size: var(--ns-control-hit-size);
+  padding: 4px 8px;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-button);
+  background: var(--ns-hover);
+  color: var(--ns-text);
+}
+
+.workspace-history-panel :is(.workspace-history-message, .workspace-history-original > header) button:hover { background: var(--ns-selection); }
+.workspace-history-change .workspace-declared-evidence ul { padding-inline-start: 0; list-style: none; }
+
+@container (max-width: 560px) {
+  .workspace-history-main { display: block; }
+  .workspace-history-list { max-block-size: 220px; overflow: auto; border-inline-end: 0; border-block-end: var(--ns-border-width) solid var(--ns-border); }
+}
+
+@media (pointer: coarse) {
+  .workspace-history-panel :is(button, select, summary) { min-block-size: 44px; }
+}
