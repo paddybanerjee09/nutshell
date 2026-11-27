@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: vault-context-2026-11-27
-task_state: in_progress
-task_revision: 31
+task_state: pr_open
+task_revision: 32
 repository_id: 1467144605
 branch: feature/vault-context
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 7
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/7
 last_verified_head: null
 lead_agent: codex-lead
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Reuse the shared index parser and bounded source readers. Default to the exact c
 
 ## Consequences
 
-GitHub confirmed PR #6 merged and canonical cleanup reached idle revision 30. Open the next source draft and verify selection, budget, revision isolation, path safety, and archive boundaries.
+Draft PR #7 opened from canonical idle revision 30. Core owns index routing, budgets, and section selection. The CLI owns bounded revision sources and readable and JSON output. Exercise both revision modes and archive isolation before promotion.
 
 ## Affected files
 

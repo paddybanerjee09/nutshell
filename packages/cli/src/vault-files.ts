@@ -13,23 +13,22 @@ import { join } from "node:path";
 
 const rootNotes = ["AGENTS.md", "README.md", "SPEC.md"];
 const vaultDirectory = "nutshell-vault";
-const archivePrefix = `${vaultDirectory}/archive/`;
+export const archivePrefix = `${vaultDirectory}/archive/`;
 const maxEntries = 4096;
 const maxDocuments = 512;
-const maxFileBytes = 256 * 1024;
+export const maxFileBytes = 256 * 1024;
 const maxArchiveHeaderBytes = 16 * 1024;
-const maxSnapshotBytes = 4 * 1024 * 1024;
-const gitTimeout = 15_000;
-const gitEnvironment = { ...process.env, GIT_NO_LAZY_FETCH: "1", GIT_NO_REPLACE_OBJECTS: "1" };
+export const maxSnapshotBytes = 4 * 1024 * 1024;
+export const gitTimeout = 15_000;
+export const gitEnvironment = { ...process.env, GIT_NO_LAZY_FETCH: "1", GIT_NO_REPLACE_OBJECTS: "1" };
 const objectId = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 type SnapshotFiles = {
-  entries: number;
   bytes: number;
   files: Map<string, string>;
 };
 
-function unpackUtf8(bytes: Buffer, path: string): string {
+export function unpackUtf8(bytes: Buffer, path: string): string {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
@@ -37,21 +36,32 @@ function unpackUtf8(bytes: Buffer, path: string): string {
   }
 }
 
-function checkEntry(snapshot: SnapshotFiles, path: string): void {
-  snapshot.entries += 1;
-  if (snapshot.entries > maxEntries) throw new Error(`Vault input exceeds ${maxEntries} entries.`);
+function checkVaultPath(path: string): void {
   const parts = path.split("/");
   if (parts.length > 16 || Buffer.byteLength(path) > 512) {
     throw new Error("Vault path exceeds the depth or byte limit.");
   }
   if (parts.some((part) => {
-    return !part || part === "." || part === ".." || part.endsWith(".") || part.endsWith(" ")
+    return !part || part.endsWith(".") || part.endsWith(" ")
       || /[\\:<>"|?*]/.test(part)
       || [...part].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+      || /^(?:\.git|git~1)$/iu.test(part)
       || /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(part);
   })) {
     throw new Error(`Unsafe vault path ${JSON.stringify(path)}.`);
   }
+}
+
+export function checkVaultDocumentPath(path: string): void {
+  checkVaultPath(path);
+  if (!rootNotes.includes(path) && !(path.startsWith(vaultDirectory + "/") && /\.md$/iu.test(path))) {
+    throw new Error(`Path is outside the managed vault: ${JSON.stringify(path)}.`);
+  }
+}
+
+function checkEntry(count: number, path: string): void {
+  if (count > maxEntries) throw new Error(`Vault input exceeds ${maxEntries} entries.`);
+  checkVaultPath(path);
 }
 
 function record(snapshot: SnapshotFiles, path: string, contents: string): void {
@@ -61,8 +71,8 @@ function record(snapshot: SnapshotFiles, path: string, contents: string): void {
   snapshot.files.set(path, contents);
 }
 
-function checkDocumentLimit(snapshot: SnapshotFiles): void {
-  if (snapshot.files.size >= maxDocuments) throw new Error(`Vault input exceeds ${maxDocuments} documents.`);
+function checkDocumentLimit(count: number): void {
+  if (count > maxDocuments) throw new Error(`Vault input exceeds ${maxDocuments} documents.`);
 }
 
 // Interpret only ASCII delimiters, then decode the header without decoding an archive body.
@@ -92,7 +102,7 @@ function localArchiveHeader(file: number, path: string): string {
   throw new Error(`Archive frontmatter exceeds ${maxArchiveHeaderBytes} bytes in ${JSON.stringify(path)}.`);
 }
 
-function readLocalDocument(fullPath: string, path: string): string {
+function readLocalDocument(fullPath: string, path: string, archiveHeaderOnly: boolean, consumeBytes?: (bytes: number) => void): string {
   const before = lstatSync(fullPath);
   if (!before.isFile() || realpathSync.native(fullPath) !== fullPath) {
     throw new Error(`Expected a regular file at ${JSON.stringify(path)}.`);
@@ -103,35 +113,46 @@ function readLocalDocument(fullPath: string, path: string): string {
     if (!opened.isFile() || before.dev !== opened.dev || before.ino !== opened.ino) {
       throw new Error(`Vault file changed while opening ${JSON.stringify(path)}.`);
     }
-    if (path.startsWith(archivePrefix)) return localArchiveHeader(file, path);
+    if (archiveHeaderOnly) return localArchiveHeader(file, path);
     if (opened.size > maxFileBytes) throw new Error(`Vault file exceeds ${maxFileBytes} bytes: ${JSON.stringify(path)}.`);
+    consumeBytes?.(opened.size);
 
-    const bytes = Buffer.alloc(maxFileBytes + 1);
+    const bytes = Buffer.alloc(opened.size + 1);
     let length = 0;
     while (length < bytes.length) {
       const count = readSync(file, bytes, length, bytes.length - length, null);
       if (count === 0) return unpackUtf8(bytes.subarray(0, length), path);
       length += count;
     }
-    throw new Error(`Vault file exceeds ${maxFileBytes} bytes: ${JSON.stringify(path)}.`);
+    throw new Error(`Vault file grew while reading ${JSON.stringify(path)}.`);
   } finally {
     closeSync(file);
   }
 }
 
-export function readWorkingTree(cwd: string) {
-  const root = realpathSync.native(cwd);
-  const snapshot: SnapshotFiles = { entries: 0, bytes: 0, files: new Map() };
+function inspectWorkingEntry(fullPath: string, path: string) {
+  const entry = lstatSync(fullPath, { throwIfNoEntry: false });
+  if (!entry) return;
+  if (entry.isSymbolicLink()) throw new Error(`Symbolic link in vault input: ${JSON.stringify(path)}.`);
+  if (realpathSync.native(fullPath) !== fullPath) throw new Error(`Unsafe vault path ${JSON.stringify(path)}.`);
+  if (entry.isDirectory() && lstatSync(join(fullPath, ".git"), { throwIfNoEntry: false })) {
+    throw new Error(`Nested repository or submodule in vault input: ${JSON.stringify(path)}.`);
+  }
+  return entry;
+}
+
+function walkWorkingVault(root: string, includeArchive: boolean, visit: (path: string, fullPath: string) => void): void {
+  let entries = 0;
+  let documents = 0;
 
   function readEntry(path: string): void {
-    checkEntry(snapshot, path);
+    if (!includeArchive && path === archivePrefix.slice(0, -1)) return;
+    checkEntry(++entries, path);
     const fullPath = join(root, ...path.split("/"));
-    const entry = lstatSync(fullPath, { throwIfNoEntry: false });
+    const entry = inspectWorkingEntry(fullPath, path);
     if (!entry) return;
-    if (entry.isSymbolicLink()) throw new Error(`Symbolic link in vault input: ${JSON.stringify(path)}.`);
 
     if (entry.isDirectory() && (path === vaultDirectory || path.startsWith(`${vaultDirectory}/`))) {
-      if (realpathSync.native(fullPath) !== fullPath) throw new Error(`Unsafe vault directory ${JSON.stringify(path)}.`);
       const directory = opendirSync(fullPath);
       try {
         for (let item = directory.readSync(); item; item = directory.readSync()) {
@@ -142,13 +163,43 @@ export function readWorkingTree(cwd: string) {
         directory.closeSync();
       }
     } else if (path === vaultDirectory || path.toLowerCase().endsWith(".md")) {
-      checkDocumentLimit(snapshot);
       if (path === vaultDirectory) throw new Error(`Expected a directory at ${JSON.stringify(path)}.`);
-      record(snapshot, path, readLocalDocument(fullPath, path));
+      if (!entry.isFile()) throw new Error(`Expected a regular file at ${JSON.stringify(path)}.`);
+      checkDocumentLimit(++documents);
+      visit(path, fullPath);
     }
   }
 
   for (const path of [...rootNotes, vaultDirectory]) readEntry(path);
+}
+
+export function listWorkingVault(root: string, includeArchive: boolean): string[] {
+  const paths: string[] = [];
+  walkWorkingVault(root, includeArchive, (path) => { paths.push(path); });
+  return paths.sort();
+}
+
+export function readWorkingVaultDocument(root: string, path: string, consumeBytes: (bytes: number) => void): string | undefined {
+  checkVaultDocumentPath(path);
+  const parts = path.split("/");
+  let fullPath = root;
+  for (const [index, part] of parts.entries()) {
+    fullPath = join(fullPath, part);
+    const entry = inspectWorkingEntry(fullPath, parts.slice(0, index + 1).join("/"));
+    if (!entry) return;
+    if (index < parts.length - 1 && !entry.isDirectory()) {
+      throw new Error(`Expected a directory while opening ${JSON.stringify(path)}.`);
+    }
+  }
+  return readLocalDocument(fullPath, path, false, consumeBytes);
+}
+
+export function readWorkingTree(cwd: string) {
+  const root = realpathSync.native(cwd);
+  const snapshot: SnapshotFiles = { bytes: 0, files: new Map() };
+  walkWorkingVault(root, true, (path, fullPath) => {
+    record(snapshot, path, readLocalDocument(fullPath, path, path.startsWith(archivePrefix)));
+  });
   return { kind: "working-tree" as const, files: snapshot.files };
 }
 
@@ -162,7 +213,7 @@ function readGit(cwd: string, args: string[], maxBuffer: number, detail: string)
   }
 }
 
-function resolveCommit(cwd: string, ref: string): string {
+export function resolveCommit(cwd: string, ref: string): string {
   if (!ref || ref.length > 256 || ref.startsWith("-") || [...ref].some((char) => char.charCodeAt(0) < 32)) {
     throw new Error("Invalid Git revision argument.");
   }
@@ -197,37 +248,55 @@ async function gitArchiveHeader(cwd: string, hash: string, path: string): Promis
   }
 }
 
-export async function readGitSnapshot(cwd: string, baseRef: string, headRef: string) {
-  const base = resolveCommit(cwd, baseRef);
-  const head = resolveCommit(cwd, headRef);
+export function listGitVault(cwd: string, head: string, includeArchive: boolean): Map<string, { hash: string; size: number }> {
+  if (!objectId.test(head)) throw new Error("Expected a resolved Git commit ID.");
   const listing = readGit(
     cwd,
     ["ls-tree", "-r", "-t", "-z", "-l", "--full-tree", head, "--", ...rootNotes, vaultDirectory],
     maxSnapshotBytes,
     "list the resolved head vault tree",
   );
-  const entries = unpackUtf8(listing, "Git tree").split("\0");
-  if (entries.pop() !== "") throw new Error("Incomplete resolved head vault tree.");
-  const snapshot: SnapshotFiles = { entries: 0, bytes: 0, files: new Map() };
-
-  for (const entry of entries) {
+  const archivePath = Buffer.from(archivePrefix.slice(0, -1));
+  const archivedDescendant = Buffer.from(archivePrefix);
+  const files = new Map<string, { hash: string; size: number }>();
+  let entries = 0;
+  let start = 0;
+  while (start < listing.length) {
+    const end = listing.indexOf(0, start);
+    if (end === -1) throw new Error("Incomplete resolved head vault tree.");
+    const row = listing.subarray(start, end);
+    start = end + 1;
+    const pathBytes = row.subarray(row.indexOf(9) + 1);
+    if (!includeArchive && (pathBytes.equals(archivePath) || pathBytes.subarray(0, archivedDescendant.length).equals(archivedDescendant))) continue;
+    const entry = unpackUtf8(row, "Git tree");
     const [, mode, type, hash, size, path] = /^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64}) +(-|[0-9]+)\t([\s\S]+)$/.exec(entry) ?? [];
     if (!mode || !type || !hash || !size || !path) throw new Error("Invalid entry in resolved head vault tree.");
-    checkEntry(snapshot, path);
+    checkEntry(++entries, path);
     if (mode === "120000" || mode === "160000") {
       throw new Error(`Symbolic link or submodule in vault input: ${JSON.stringify(path)}.`);
     }
     if (type === "tree" && !rootNotes.includes(path)) continue;
     if (path !== vaultDirectory && !path.toLowerCase().endsWith(".md")) continue;
-    if (type !== "blob" || (mode !== "100644" && mode !== "100755") || path === vaultDirectory) {
+    if (type !== "blob" || (mode !== "100644" && mode !== "100755") || path === vaultDirectory || !Number.isSafeInteger(Number(size))) {
       throw new Error(`Unexpected Git entry at ${JSON.stringify(path)}.`);
     }
 
-    checkDocumentLimit(snapshot);
+    checkDocumentLimit(files.size + 1);
+    if (files.has(path)) throw new Error(`Duplicate vault path ${JSON.stringify(path)}.`);
+    files.set(path, { hash, size: Number(size) });
+  }
+  return files;
+}
+
+export async function readGitSnapshot(cwd: string, baseRef: string, headRef: string) {
+  const base = resolveCommit(cwd, baseRef);
+  const head = resolveCommit(cwd, headRef);
+  const snapshot: SnapshotFiles = { bytes: 0, files: new Map() };
+  for (const [path, { hash, size }] of listGitVault(cwd, head, true)) {
     if (path.startsWith(archivePrefix)) {
       record(snapshot, path, await gitArchiveHeader(cwd, hash, path));
     } else {
-      if (Number(size) > maxFileBytes) throw new Error(`Vault file exceeds ${maxFileBytes} bytes: ${JSON.stringify(path)}.`);
+      if (size > maxFileBytes) throw new Error(`Vault file exceeds ${maxFileBytes} bytes: ${JSON.stringify(path)}.`);
       record(snapshot, path, unpackUtf8(readGit(cwd, ["cat-file", "blob", hash], maxFileBytes, `read ${JSON.stringify(path)}`), path));
     }
   }
