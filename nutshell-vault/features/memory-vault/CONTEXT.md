@@ -7,7 +7,7 @@ tags: [feature, memory, retrieval, index]
 
 ## Context
 
-The canonical folder is `nutshell-vault/`. The first validation slice checks managed Markdown in an explicit working-tree or immutable Git snapshot. Selective retrieval is planned.
+The canonical folder is `nutshell-vault/`. The validator checks managed Markdown in an explicit working-tree or immutable Git snapshot. The source PR workflow also validates the lead-owned task and its GitHub PR association. Selective retrieval is planned.
 
 ## Decision
 
@@ -17,7 +17,7 @@ Run `pnpm nutshell validate --working-tree` for the current checkout or `pnpm nu
 
 ## Consequences
 
-The Git path resolves both refs and checks the vault at the resolved head. Changed-path coverage, PR/task transition validation, provider proof, and query-based context ranking remain planned. See [the acceptance ledger](../../runs/ACCEPTANCE.md) for observed evidence.
+The Git path resolves both refs and checks the vault at the resolved head. The trusted source workflow checks the task revision and observed PR identity. Housekeeping validates the matching merge, canonical task blob, and one-file scope before GitHub applies its expected-head guard. Changed-path coverage and query-based context ranking remain planned. See [the acceptance ledger](../../runs/ACCEPTANCE.md) for observed evidence.
 
 ## Affected files
 
@@ -25,3 +25,4 @@ The Git path resolves both refs and checks the vault at the resolved head. Chang
 - [Single-index decision](../../decisions/2026-11-26-single-index-active-task.md).
 - [Shared vault validator](../../../packages/core/src/vault.ts).
 - [Vault CLI](../../../packages/cli/src/main.ts) and [bounded checkout reader](../../../packages/cli/src/vault-files.ts).
+- [Source task policy](../../../packages/core/src/source-task.ts), [trusted runner](../../../packages/cli/src/source-check.ts), and [source workflow](../../../.github/workflows/source-task.yml).

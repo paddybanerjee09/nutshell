@@ -22,7 +22,7 @@ Record the exact command or reproducible action, relevant paths/revision, observ
 | A05 | Revocation, delayed work, token authority | Not run | No application run |
 | A06 | Parser and bounded input validation | Not run | No application run |
 | A07 | Revision-aware retrieval and budget | Not run | No application run |
-| A08 | Coverage and trusted validation policy | Not run | No application run |
+| A08 | Coverage and trusted validation policy | Partial | The source workflow installs the trusted base's pinned dependencies and validates immutable candidate objects. Local YAML and Bash syntax checks and controlled runner tests passed. Changed-path coverage and the first GitHub workflow run remain outstanding. |
 | A09 | HMAC, duplicate events, recovery | Not run | No application run |
 | A10 | Idempotent setup and simulated merge | Not run | No application run |
 | A11 | Invalid snapshots and immutable history | Not run | No application run |
@@ -41,11 +41,11 @@ Record the exact command or reproducible action, relevant paths/revision, observ
 | A24 | Complete local browser journey | Not run | Playwright 1.65.1 launched Chrome Headless Shell 159.0.8154.6 and exercised a test form. No application browser journey. |
 | A25 | Truthful memory, commits, and handoff | Partial | Starter and validator use source [PR #1](https://github.com/paddybanerjee09/nutshell/pull/1). The web/worker handoff remains outstanding. |
 | A26 | Exact active index coverage and routed body reads | Partial | `pnpm nutshell validate --working-tree` checked the current catalog. Vitest fixtures exercised missing, duplicate, stale, and inactive entries. Query-based body selection remains unrun. |
-| A27 | One lead-owned task and guarded revisions | Not run | No task lifecycle implementation run |
+| A27 | One lead-owned task and guarded revisions | Partial | `pnpm test` exercised an idle-to-feature transition, exact provider identity, a competing active task, and stale revisions. The source workflow runs on GitHub after its first merge. |
 | A28 | Relevant decisions, unique keys, and supersession | Partial | Validator fixtures reject duplicate accepted keys and broken supersession links. The starter's mismatched backlink was corrected. Decision retrieval remains unrun. |
 | A29 | Metadata, four headings, and length policy | Pass | `pnpm test` exercised note metadata, exact H2 headings including fenced examples, and length policy; `pnpm nutshell validate --working-tree` passed the managed vault. |
 | A30 | Default archive exclusion and explicit history | Not run | No application retrieval or graph run |
-| A31 | Real source PR proof and guarded canonical cleanup | Partial | Authenticated push and [draft source PR #1](https://github.com/paddybanerjee09/nutshell/pull/1) observed at `ecd6576e5cdce6e14eb0d0838c51a70ed00efa46`. Main was unprotected and had no applicable rulesets or required checks. Merge, canonical cleanup, and negative lifecycle fixtures remain unrun. |
+| A31 | Real source PR proof and guarded canonical cleanup | Partial | Source [PR #1](https://github.com/paddybanerjee09/nutshell/pull/1) passed checks at `e1f743fafcae3c205d610c0aaed6b11cf9e37e8c` and merged at `99a0f9c7da2f371ea7f13076de073c1ae1a587ba`. GitHub accepted the expected-head one-file cleanup at `6c4bd36555f3661adc484ce8bbda57124c752ea7`, canonical idle revision 4. [PR #2](https://github.com/paddybanerjee09/nutshell/pull/2) adds fixtures for premature, repeated, closed-unmerged, mismatched, and stale cleanup. No required main-branch checks or reviews were configured. |
 | Live | Actual GitHub and external acceptance | Not run | No live setup or acceptance |
 
 ## Consequences

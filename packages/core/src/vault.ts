@@ -1,5 +1,5 @@
-import { parseDocument } from "yaml";
 import { z } from "zod";
+import { noteMetadataFields, parseFrontmatter } from "./frontmatter.ts";
 
 const vault = "nutshell-vault/";
 const archive = vault + "archive/";
@@ -12,12 +12,9 @@ const noteHeadings = ["Context", "Decision", "Consequences", "Affected files"];
 const nonempty = z.string().trim().min(1);
 
 const metadataSchema = z.object({
-  id: nonempty,
-  date: z.iso.date(),
+  ...noteMetadataFields,
   status: z.enum(["active", "planned", "accepted", "draft", "superseded", "deprecated", "archived"]),
-  tags: z.array(nonempty).min(1),
   decision_key: nonempty.optional(),
-  length_exception_reason: nonempty.optional(),
   superseded_by: nonempty.optional(),
   supersedes: nonempty.optional(),
 });
@@ -33,41 +30,25 @@ export type VaultIssue = {
 type Report = (path: string, code: string, message: string) => void;
 
 function readNote(path: string, source: string, report: Report) {
-  const lines = source.replace(/^\uFEFF/u, "").split(/\r?\n/u);
-  const end = lines.indexOf("---", 1);
-  if (lines[0] !== "---" || end < 2) {
-    report(path, "note-frontmatter", "Start the note with a delimited YAML frontmatter block.");
+  const frontmatter = parseFrontmatter(source);
+  if (!frontmatter.ok) {
+    report(path, "note-frontmatter", frontmatter.message);
     return;
   }
-
-  const yaml = lines.slice(1, end).join("\n");
-  if (yaml.length > 8_192) {
-    report(path, "note-frontmatter", "Keep YAML frontmatter at or below 8,192 characters.");
+  const result = metadataSchema.safeParse(frontmatter.data);
+  if (!result.success) {
+    for (const issue of result.error.issues) {
+      const field = issue.path.join(".") || "frontmatter";
+      report(path, "note-metadata", "Invalid " + field + " field.");
+    }
     return;
   }
-
-  try {
-    const document = parseDocument(yaml, { strict: true, uniqueKeys: true });
-    if (document.errors.length || document.warnings.length) {
-      report(path, "note-frontmatter", "Use valid YAML with unique keys and supported scalar types.");
-      return;
-    }
-    const result = metadataSchema.safeParse(document.toJS({ maxAliasCount: 0 }));
-    if (!result.success) {
-      for (const issue of result.error.issues) {
-        const field = issue.path.join(".") || "frontmatter";
-        report(path, "note-metadata", "Invalid " + field + " field.");
-      }
-      return;
-    }
-    return {
-      metadata: result.data,
-      body: lines.slice(end + 1),
-      lineCount: lines.length - Number(lines.at(-1) === ""),
-    };
-  } catch {
-    report(path, "note-frontmatter", "Could not parse the YAML frontmatter. YAML aliases are unsupported.");
-  }
+  const { lines, bodyStart } = frontmatter;
+  return {
+    metadata: result.data,
+    body: lines.slice(bodyStart),
+    lineCount: lines.length - Number(lines.at(-1) === ""),
+  };
 }
 
 function visibleLines(lines: string[]) {
