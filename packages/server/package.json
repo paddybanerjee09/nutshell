@@ -9,6 +9,7 @@
     "./fixture-history": "./src/fixture-history.ts",
     "./fixture-onboarding": "./src/fixture-onboarding.ts",
     "./fixture-sync": "./src/fixture-sync.ts",
+    "./github-app": "./src/github-app.ts",
     "./raster": "./src/raster.ts",
     "./runtime": "./src/runtime.ts",
     "./screenshot-assets": "./src/screenshot-assets.ts",

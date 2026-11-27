@@ -15,15 +15,21 @@ Follow [R-08 integration](../../../SPEC.md#11-r-08-accounts-access-and-github-in
 
 The GitHub App transport fixes requests to GitHub.com, bounds response bodies and pagination, and reports typed provider errors. User actions retain user authority through success and failure. Installation credentials use repository and permission scopes for background reads and app-owned Checks.
 
+The adapter verifies current user access for a stable repository and installation, reads managed blobs at immutable Git revisions, and targets the observed head of an open same-repository PR for Checks. Archived repositories retain authorized read access. Check results and branch enforcement are reported separately.
+
 The fixture webhook validates the configured raw-body HMAC and accepts default-branch push deliveries through the [receipt outbox](../../decisions/2026-11-26-fixture-receipt-outbox.md). The core projector validates the immutable tree and the authenticated snapshot API returns the published revision, provider head, and status.
 
 The setup tree builder reads the immutable base, preserves tracked owner content, and appends one delimited instructions section to `AGENTS.md`. It generates missing vault and record files, refuses conflicting managed content, and validates the resulting tree with the same projector used by the worker.
 
 [Fixture setup](../../decisions/2026-11-26-fixture-setup-proposals.md) requires an explicit configuration grant and uses a revision-bound proposal. The setup route sends the stored merge delivery to the signed ingress and reuses the same identity on retry.
 
+The GitHub setup adapter prepares the same managed files, creates a GitHub branch with the user's grant, and commits with the expected branch head. It targets the verified default branch from a separate setup PR and reuses observed matching proposals after a retry.
+
 ## Consequences
 
 The local repository page shows awaiting merge, indexing, or confirmation of the exact indexed revision. Reader sessions can view the setup state. Source-development PRs, revision-linked history, and live GitHub App behavior have separate evidence.
+
+Controlled transport, repository, and setup tests covered authority separation, immutable managed files, permission denial, archived access, exact-head Checks, branch rules, and idempotent proposal recovery. Live application routing, OAuth consent, and disposable-repository operations remain separate gates.
 
 ## Affected files
 
@@ -34,3 +40,4 @@ The local repository page shows awaiting merge, indexing, or confirmation of the
 - [Fixture onboarding service](../../../packages/server/src/fixture-onboarding.ts) and [local browser journey](../../../scripts/local-browser.ts).
 - [Fixture webhook](../../../apps/web/src/app/api/github/webhook/route.ts) and [verification journey](../../../scripts/fixture-sync-verify.ts).
 - [GitHub App transport](../../../packages/server/src/github-app-transport.ts) and [controlled transport tests](../../../packages/server/src/github-app-transport.test.ts).
+- [GitHub App adapter](../../../packages/server/src/github-app.ts), [repository and Check authority](../../../packages/server/src/github-app-repository.ts), and [GitHub setup proposals](../../../packages/server/src/github-app-setup.ts).
