@@ -25,9 +25,11 @@ The workspace shows saved draft, simulated proposal, and indexed revision separa
 
 The Memory Graph projects the same resolved links used by the note view and backlinks. The Product Map projects directed, typed relationships exactly as recorded by validated entities. Search and focus select a bounded visible graph from the indexed repository. Vault archive paths remain excluded from the default graph.
 
+Both graph views open as ordinary workspace tabs and share a React Flow canvas. A bounded d3-force simulation arranges display positions. Pan, zoom, drag, and centering stay in the view. Search, filters, and a keyboard list provide the same node details. Reduced motion settles the graph without animated travel.
+
 ## Consequences
 
-New managed notes, live-provider proposals, private media, semantic history, and graph interaction have separate implementation and acceptance work. Keep graph layout separate from canonical relationships and reuse shared domain services. Consult R-03 when changing the marketing preview.
+New managed notes, live-provider proposals, private media, semantic history, and the interactive marketing preview have separate implementation and acceptance work. Keep graph layout separate from canonical relationships and reuse shared domain services. Consult R-03 when changing the marketing preview.
 
 ## Affected files
 
@@ -35,6 +37,7 @@ New managed notes, live-provider proposals, private media, semantic history, and
 - [SPEC.md](../../../SPEC.md) and [SYSTEM.md](../../architecture/SYSTEM.md).
 - [Proposal service](../../../packages/server/src/fixture-draft-proposals.ts) and [proposal route](../../../apps/web/src/app/api/repos/%5BrepositoryId%5D/draft-proposal/route.ts).
 - [Draft store](../../../packages/server/src/fixture-drafts.ts) and [draft route](../../../apps/web/src/app/api/repos/%5BrepositoryId%5D/draft/route.ts).
+- [Graph renderer](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/workspace-graph.tsx) and [graph panel](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/workspace-graph-panel.tsx).
 - [Graph model](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/workspace-graph-model.ts).
 - [CodeMirror editor](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/markdown-editor.tsx) and [preview parser tests](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/markdown-preview.test.ts).
 - [Workspace shell](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/workspace-shell.tsx), [reading and metadata](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/workspace-content.tsx), and [browser verification](../../../scripts/local-browser.ts).
