@@ -4,8 +4,8 @@ date: "2026-11-26"
 status: active
 tags: [control, task, pull-requests]
 task_id: local-runtime-2026-11-26
-task_state: ready_for_review
-task_revision: 11
+task_state: blocked
+task_revision: 12
 repository_id: 1467144605
 branch: feature/local-runtime
 base_branch: main
@@ -28,7 +28,7 @@ Keep database and authorization in the server package, use a separate worker pro
 
 ## Consequences
 
-Repeated setup, development health/start/stop, PostgreSQL session isolation, durable worker restart, and optimized browser entry checks ran locally. The HTTP auth route now binds to the configured loopback origin after checking Host. Run the exact committed head through alpha:verify and GitHub's trusted status before merge.
+The runtime started and stopped cleanly in development. On PR #3's runnable head, 46 tests, the optimized build, the persisted worker probe, and Chromium assertions passed. The verification command stalled in Chromium teardown after the assertions. Isolated synthetic pages reproduced the shutdown issue in bundled Chromium and both installed Chromium-based browsers. The bounded verifier reports the timeout. Keep PR #3 in draft and rerun alpha:verify when browser shutdown works on the host.
 
 ## Affected files
 

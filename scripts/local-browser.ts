@@ -2,9 +2,20 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { Page } from "playwright";
+import { setTimeout as delay } from "node:timers/promises";
+import type { BrowserServer, Page } from "playwright";
 
 const personaPath = "/api/auth/nutshell/persona";
+
+async function stopVerificationBrowser(server: BrowserServer) {
+  const closed = server.close().then(() => true, () => false);
+  if (await Promise.race([closed, delay(8_000, false, { ref: false })])) return;
+  console.warn("Chromium needed bounded process termination after verification.");
+  const killed = server.kill().then(() => true);
+  if (!await Promise.race([killed, delay(5_000, false, { ref: false })])) {
+    throw new Error("Chromium verification teardown timed out.");
+  }
+}
 
 async function signIn(page: Page, button: RegExp) {
   const response = page.waitForResponse((candidate) => {
@@ -20,8 +31,9 @@ export async function verifyEntryFlow(origin: string) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
   }
   const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: true });
+  const server = await chromium.launchServer({ headless: true, host: "127.0.0.1", timeout: 30_000 });
   try {
+    const browser = await chromium.connect(server.wsEndpoint(), { timeout: 10_000 });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const output = ".local/verification";
     await mkdir(output, { recursive: true });
@@ -55,8 +67,8 @@ export async function verifyEntryFlow(origin: string) {
     await signIn(other, /^Other repository user/);
     await other.getByRole("link", { name: /Harbor Atlas/ }).waitFor();
     assert.equal(await other.getByText("Field Notes").count(), 0);
-    console.log("Browser entry, session reload, and repository isolation passed.");
   } finally {
-    await browser.close();
+    await stopVerificationBrowser(server);
   }
+  console.log("Browser entry, session reload, and repository isolation passed.");
 }
