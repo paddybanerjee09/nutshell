@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
+import { appendVaultCatalogNote, isNewVaultNotePath } from "@nutshell/core/vault";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import {
-  draftFilter, fixtureDraftSourceBlob, isFixtureDraftPath, readEditableSource, readPublishedSource, readStoredDraft, serializeDraft,
+  draftFilter, fixtureDraftSourceBlob, isFixtureDraftPath, isFixtureDraftTargetAbsent, readEditableSource, readPublishedSource, readStoredDraft, serializeDraft,
   withDraftAccess, type DraftScope, type FixtureMarkdownDraft,
 } from "./fixture-drafts.ts";
 import { validateFixtureProposedChanges } from "./fixture-change-validation.ts";
@@ -14,6 +15,7 @@ import { fixtureDraftProposal, markdownDraft } from "./schema.ts";
 const proposalIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const maxDraftVersion = 2_147_483_647;
 const maxIssues = 32;
+const catalogPath = "nutshell-vault/_INDEX.md";
 
 export type FixtureDraftProposal = {
   id: string;
@@ -22,7 +24,7 @@ export type FixtureDraftProposal = {
   branch: string;
   status: "open" | "merged";
   baseRevision: string;
-  sourceBlob: string;
+  sourceBlob: string | null;
   draftVersion: number;
   headRevision: string;
   mergeRevision: string | null;
@@ -89,6 +91,30 @@ async function validateCandidate({ tx, repositoryId }: DraftScope, base: Fixture
   return { status: "invalid_candidate", issues };
 }
 
+function matchesBaseSource(baseFiles: FixtureFile[], path: string, sourceBlob: string | null) {
+  if (sourceBlob === null) return isNewVaultNotePath(path) && isFixtureDraftTargetAbsent(baseFiles, path);
+  const source = baseFiles.find((file) => file.path === path);
+  return source !== undefined && fixtureDraftSourceBlob(source.body) === sourceBlob;
+}
+
+function prepareCandidate(baseFiles: FixtureFile[], path: string, markdown: string, sourceBlob: string | null) {
+  let files: FixtureFile[];
+  if (sourceBlob === null) {
+    const index = baseFiles.find((file) => file.path === catalogPath);
+    const catalog = index && appendVaultCatalogNote(index.body, path, markdown);
+    if (!catalog) return invalidCandidate(path, "draft-catalog-row", "The new note and its catalog row must be valid managed memory.");
+    files = baseFiles.map((file) => file.path === catalogPath ? { path: catalogPath, body: catalog } : file);
+    files.push({ path, body: markdown });
+  } else {
+    files = baseFiles.map((file) => file.path === path ? { path, body: markdown } : file);
+  }
+  try {
+    return { status: "prepared", files: normalizeFixtureFiles(files) } as const;
+  } catch {
+    return invalidCandidate(path, "draft-tree-limit", "The proposed tree exceeds the fixture provider text limits.");
+  }
+}
+
 function candidateHead(scope: DraftScope, base: CandidateBase, files: FixtureFile[]) {
   return createHash("sha256").update(JSON.stringify([
     "fixture draft head", scope.repositoryId, scope.epoch, scope.userId,
@@ -109,7 +135,8 @@ export async function readFixtureDraftProposal(headers: Headers, repositoryId: s
     const proposal = await storedProposal(scope, path);
     if (proposal) return { status: "ready", proposal: publicProposal(proposal) };
     const published = await readPublishedSource(scope, path);
-    return published?.source != null ? { status: "ready", proposal: null } : { status: "unavailable" };
+    return published?.source != null || (await readStoredDraft(scope, path))?.sourceBlob === null
+      ? { status: "ready", proposal: null } : { status: "unavailable" };
   });
 }
 
@@ -128,7 +155,7 @@ export async function proposeFixtureDraft(headers: Headers, repositoryId: string
         (expectedHead === undefined || expectedHead === latest.headRevision)) return { status: "merged", proposal: publicProposal(latest) };
     if (current.status === "conflict") return { ...current, proposal: open ? publicProposal(open) : null };
     if (current.status !== "ready") return current;
-    const { sourceRevision: baseRevision, sourceBlob, stored } = current;
+    const { sourceRevision: baseRevision, source, sourceBlob, stored } = current;
     if (open && (open.baseRevision !== baseRevision || open.sourceBlob !== sourceBlob)) return proposalConflict(scope, path, "source", open);
     if (!stored || stored.version !== version) return proposalConflict(scope, path, "version", open);
 
@@ -139,16 +166,12 @@ export async function proposeFixtureDraft(headers: Headers, repositoryId: string
     if (expectedHead !== open?.headRevision) return proposalConflict(scope, path, "head", open);
 
     const baseFiles = await readFixtureTree(tx, scope.repositoryId, baseRevision);
-    const baseFile = baseFiles?.find((file) => file.path === path);
-    if (!baseFiles || !baseFile || fixtureDraftSourceBlob(baseFile.body) !== sourceBlob) return proposalConflict(scope, path, "source", open);
-    if (baseFile.body === stored.markdown) return invalidCandidate(path, "draft-unchanged", "The saved draft has no change to publish.");
+    if (!baseFiles || !matchesBaseSource(baseFiles, path, sourceBlob)) return proposalConflict(scope, path, "source", open);
+    if (sourceBlob !== null && source === stored.markdown) return invalidCandidate(path, "draft-unchanged", "The saved draft has no change to publish.");
 
-    let files: FixtureFile[];
-    try {
-      files = normalizeFixtureFiles(baseFiles.map((file) => file.path === path ? { path, body: stored.markdown } : file));
-    } catch {
-      return invalidCandidate(path, "draft-tree-limit", "The proposed tree exceeds the fixture provider text limits.");
-    }
+    const candidate = prepareCandidate(baseFiles, path, stored.markdown, sourceBlob);
+    if (candidate.status !== "prepared") return candidate;
+    const { files } = candidate;
     const invalid = await validateCandidate(scope, baseFiles, files);
     if (invalid) return invalid;
 
@@ -186,16 +209,19 @@ export async function mergeFixtureDraftProposal(headers: Headers, repositoryId: 
 
     const published = await readPublishedSource(scope, path);
     if (!published || published.headRevision !== proposal.baseRevision || published.sourceRevision !== proposal.baseRevision ||
-        published.source === null || fixtureDraftSourceBlob(published.source) !== proposal.sourceBlob) return proposalConflict(scope, path, "source", proposal);
+        (published.source === null ? null : fixtureDraftSourceBlob(published.source)) !== proposal.sourceBlob) {
+      return proposalConflict(scope, path, "source", proposal);
+    }
 
     const baseFiles = await readFixtureTree(tx, repositoryId, proposal.baseRevision);
-    const baseFile = baseFiles?.find((file) => file.path === path);
-    if (!baseFiles || !baseFile || fixtureDraftSourceBlob(baseFile.body) !== proposal.sourceBlob) return proposalConflict(scope, path, "source", proposal);
+    if (!baseFiles || !matchesBaseSource(baseFiles, path, proposal.sourceBlob)) return proposalConflict(scope, path, "source", proposal);
     const files = await readFixtureTree(tx, repositoryId, expectedHead);
     const target = files?.find((file) => file.path === path);
-    if (!files || !target || files.length !== baseFiles.length || candidateHead(scope, proposal, files) !== expectedHead ||
-        !files.every((file, index) => file.path === baseFiles[index]?.path && (file.path === path || file.body === baseFiles[index]?.body))) {
-      return invalidCandidate(path, "draft-candidate-integrity", "The exact checked tree no longer matches the proposed file replacement.");
+    const candidate = target && prepareCandidate(baseFiles, path, target.body, proposal.sourceBlob);
+    if (!files || !target || candidate?.status !== "prepared" || files.length !== candidate.files.length ||
+        candidateHead(scope, proposal, files) !== expectedHead || !files.every(({ path, body }, index) =>
+          path === candidate.files[index]?.path && body === candidate.files[index]?.body)) {
+      return invalidCandidate(path, "draft-candidate-integrity", "The exact checked tree no longer matches the proposed note change.");
     }
     const invalid = await validateCandidate(scope, baseFiles, files);
     if (invalid) return invalid;
@@ -211,7 +237,9 @@ export async function mergeFixtureDraftProposal(headers: Headers, repositoryId: 
 
     // Leave any later private edit available for recovery against its original base revision.
     await tx.delete(markdownDraft).where(and(draftFilter(scope, path), eq(markdownDraft.version, proposal.draftVersion),
-      eq(markdownDraft.sourceRevision, proposal.baseRevision), eq(markdownDraft.sourceBlob, proposal.sourceBlob), eq(markdownDraft.markdown, target.body),
+      eq(markdownDraft.sourceRevision, proposal.baseRevision),
+      proposal.sourceBlob === null ? isNull(markdownDraft.sourceBlob) : eq(markdownDraft.sourceBlob, proposal.sourceBlob),
+      eq(markdownDraft.markdown, target.body),
     ));
     return mergedResult(scope, proposal, revision);
   }, "update");

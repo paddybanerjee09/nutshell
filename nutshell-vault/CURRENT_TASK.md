@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: managed-markdown-creation-2026-11-27
 task_state: pr_open
-task_revision: 118
+task_revision: 119
 repository_id: 1467144605
 branch: feature/managed-markdown-creation
 base_branch: main
@@ -28,7 +28,7 @@ Reuse workspace editing and the current repository grants, guard the expected ba
 
 ## Consequences
 
-GitHub created draft PR #22. The index-row helper passed the vault suite, including exact CRLF and BOM preservation against a fenced catalog example. Persist and verify absence-bound drafts, then connect the workspace and browser checks.
+Migration 0010 applied on both local databases. Seventeen targeted checks passed, including PostgreSQL draft history, absent-path creation and publication, and HTTP privacy. The connected workspace reuses the source editor and proposal controls. Verify it in the optimized browser.
 
 ## Affected files
 
