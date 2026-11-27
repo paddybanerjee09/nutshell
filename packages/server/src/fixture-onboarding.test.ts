@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.ts";
+import { isolateFixtureOnboardingHistory } from "./fixture-history-test-support.ts";
 import { openFixtureSetup, readFixtureOnboarding, simulateFixtureSetupMerge } from "./fixture-onboarding.ts";
 import { acceptFixtureDelivery, setFixtureHead } from "./fixture-sync.ts";
 import { closeRuntime, getAuth, getSession } from "./runtime.ts";
@@ -21,7 +22,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture onboard
   const baseFiles = [{ path: "AGENTS.md", body: ownerInstructions }, { path: "README.md", body: "# Owner README\n" }];
   let db: pg.Pool;
   let origin: string;
-  let originalHead: string | undefined;
+  let restoreHistory: (() => Promise<void>) | undefined;
   let originalCanWrite: boolean | undefined;
 
   beforeAll(async () => {
@@ -29,8 +30,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture onboard
     origin = config.origin;
     await migrateAndSeed(config.databaseUrl);
     db = new pg.Pool({ connectionString: config.databaseUrl });
-    const { rows } = await db.query<{ head_revision: string }>("SELECT head_revision FROM fixture_state WHERE repository_id = $1", [repositoryId]);
-    originalHead = rows[0]?.head_revision;
+    restoreHistory = await isolateFixtureOnboardingHistory(db, repositoryId);
     await renewConnection();
   }, 20_000);
 
@@ -39,11 +39,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture onboard
     if (!db) return;
     try {
       const revisions = [...testRevisions];
-      if (originalHead) {
-        await db.query("UPDATE fixture_state SET head_revision = $1 WHERE repository_id = $2 AND head_revision = ANY($3)", [originalHead, repositoryId, revisions]);
-      } else {
-        await db.query("DELETE FROM fixture_state WHERE repository_id = $1 AND head_revision = ANY($2)", [repositoryId, revisions]);
-      }
+      await restoreHistory?.();
       await db.query("DELETE FROM fixture_delivery WHERE id = ANY($1)", [testDeliveries]);
       await db.query("DELETE FROM fixture_setup_proposal WHERE id = ANY($1)", [testProposals]);
       await db.query("DELETE FROM fixture_tree WHERE repository_id = $1 AND revision = ANY($2)", [repositoryId, revisions]);

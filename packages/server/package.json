@@ -6,6 +6,7 @@
     "./config": "./src/config.ts",
     "./fixture-draft-proposals": "./src/fixture-draft-proposals.ts",
     "./fixture-drafts": "./src/fixture-drafts.ts",
+    "./fixture-history": "./src/fixture-history.ts",
     "./fixture-onboarding": "./src/fixture-onboarding.ts",
     "./fixture-sync": "./src/fixture-sync.ts",
     "./raster": "./src/raster.ts",

@@ -4,6 +4,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.ts";
 import { canEditFixtureMarkdown, maxFixtureDraftBytes, readFixtureDraft, saveFixtureDraft } from "./fixture-drafts.ts";
+import { preserveFixtureTestHistory } from "./fixture-history-test-support.ts";
 import { acceptFixtureDelivery, processNextFixtureDelivery, setFixtureHead } from "./fixture-sync.ts";
 import { closeRuntime, getAuth, getSession } from "./runtime.ts";
 import { migrateAndSeed } from "./setup.ts";
@@ -25,7 +26,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL private Markdow
     "## Consequences", "", "Other verification drafts remain in their original paths.", "",
     "## Affected files", "", "This fixture note.", "",
   ].join("\n");
-  const tree = buildFixtureSetupTree([{ path, body: source }], {
+  let tree = buildFixtureSetupTree([{ path, body: source }], {
     name: "Field Notes", description: "A synthetic draft test fixture.", entityId: "ent_draft_test",
   });
   const originalStateQuery = "SELECT head_revision, indexed_revision, indexed_epoch, indexed_schema_version, indexed_policy_version FROM fixture_state WHERE repository_id = $1";
@@ -43,6 +44,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL private Markdow
     origin = config.origin;
     await migrateAndSeed(config.databaseUrl);
     db = new pg.Pool({ connectionString: config.databaseUrl, connectionTimeoutMillis: 15_000 });
+    tree = await preserveFixtureTestHistory(db, repositoryId, tree);
     originalState = (await db.query<RepositoryState>(originalStateQuery, [repositoryId])).rows[0];
     originalCanWrite = (await db.query<{ can_write: boolean }>(
       "SELECT can_write FROM local_provider_grant WHERE repository_id = $1 AND user_id = 'local-reader'", [repositoryId],

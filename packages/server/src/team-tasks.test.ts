@@ -3,6 +3,7 @@ import { buildFixtureSetupTree } from "@nutshell/core/fixture-setup-tree";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.ts";
+import { preserveFixtureTestHistory } from "./fixture-history-test-support.ts";
 import { acceptFixtureDelivery, processNextFixtureDelivery, setFixtureHead } from "./fixture-sync.ts";
 import { closeRuntime, getAuth, getSession } from "./runtime.ts";
 import { migrateAndSeed } from "./setup.ts";
@@ -91,7 +92,9 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL repository team
     expect(await listTeamTasks(reader, repositoryKey)).toMatchObject({ status: "ready", viewerId: "local-reader", canManage: false,
       members: expect.arrayContaining([expect.objectContaining({ id: "local-coordinator" }), expect.objectContaining({ id: "local-reader" })]) });
 
-    const tree = buildFixtureSetupTree([], { name: "Field Notes", description: "Authorized task entity fixture.", entityId });
+    const tree = await preserveFixtureTestHistory(
+      db, repositoryId, buildFixtureSetupTree([], { name: "Field Notes", description: "Authorized task entity fixture.", entityId }),
+    );
     await setFixtureHead(repositoryId, revision, tree);
     expect(await acceptFixtureDelivery({ deliveryId: receipt, repositoryId, installationId, revision })).toBe("accepted");
     while (await processNextFixtureDelivery()) {

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.ts";
 import { mergeFixtureDraftProposal, proposeFixtureDraft, readFixtureDraftProposal } from "./fixture-draft-proposals.ts";
 import { readFixtureDraft, saveFixtureDraft } from "./fixture-drafts.ts";
+import { preserveFixtureTestHistory } from "./fixture-history-test-support.ts";
 import { acceptFixtureDelivery, processNextFixtureDelivery, readFixtureSnapshot, setFixtureHead, type FixtureFile } from "./fixture-sync.ts";
 import { closeRuntime, getAuth, getSession } from "./runtime.ts";
 import { migrateAndSeed } from "./setup.ts";
@@ -27,7 +28,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture draft p
     "## Consequences", "", "Only this note changes.", "", "## Affected files", "", "None.", ""].join("\r\n");
   const original = source("fixture-proposal-note");
   const exactOriginal = source("fixture-exact-note");
-  const tree = buildFixtureSetupTree([
+  let tree = buildFixtureSetupTree([
     { path, body: original }, { path: exactPath, body: exactOriginal }, { path: "src/owner.ts", body: "// Odd whitespace  \r\nconst name = 'é';\n" },
   ], { name: "Field Notes", description: "Private proposal verification fixture.", entityId: "ent_proposal_test" });
 
@@ -41,6 +42,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture draft p
     origin = config.origin;
     await migrateAndSeed(config.databaseUrl);
     db = new pg.Pool({ connectionString: config.databaseUrl, connectionTimeoutMillis: 15_000 });
+    tree = await preserveFixtureTestHistory(db, repositoryId, tree);
     originalState = (await db.query("SELECT * FROM fixture_state WHERE repository_id = $1", [repositoryId])).rows[0];
     originalCanWrite = (await db.query<{ can_write: boolean }>(
       "SELECT can_write FROM local_provider_grant WHERE repository_id = $1 AND user_id = 'local-reader'", [repositoryId],

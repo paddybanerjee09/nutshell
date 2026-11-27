@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: durable-product-history-2026-11-27
 task_state: pr_open
-task_revision: 74
+task_revision: 75
 repository_id: 1467144605
 branch: feature/durable-product-history
 base_branch: main
@@ -28,7 +28,7 @@ The store delegate owns database history, publication, and authorized reads. The
 
 ## Consequences
 
-Private screenshot evidence merged and canonical cleanup was confirmed at idle revision 71. Draft PR #14 is open. The shared parser distinguishes unchanged accepted payloads from new declarations and rejects silent history rewrites or deletions. Twenty-nine parser and setup compatibility tests passed. Next integrate PostgreSQL publication, authorized reads, and the workspace browser journey.
+Private screenshot evidence merged and canonical cleanup was confirmed at idle revision 71. Draft PR #14 is open. The shared parser distinguishes unchanged accepted payloads from new declarations and rejects silent history rewrites or deletions. Twenty-nine parser and setup compatibility tests passed. PostgreSQL history and the affected collaboration and setup scenarios passed dedicated verification. Next exercise the integrated Windows alpha suite and the original history link in Firefox.
 
 ## Affected files
 
