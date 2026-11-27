@@ -21,7 +21,7 @@ CodeMirror decorates parsed Markdown over the original source. Live preview reve
 
 The simulated provider stores a private proposal branch with an immutable checked candidate. Preparing or revising the proposal checks the saved draft version, exact base and blob, and expected proposal head. Explicit simulation revalidates the exact tree, preserves unaffected files, and delivers the new head through signed ingress. The merge consumes only the saved draft whose version and source match the candidate.
 
-The workspace shows saved draft, simulated proposal, and indexed revision separately. The publication control refreshes only after observing the exact indexed merge. Newer local text keeps its original source revision. Repository settings display a later verified head without treating it as the original setup revision.
+The workspace shows saved draft, simulated proposal, and indexed revision separately. The workspace marks a proposal indexed only after observing its exact published revision. Newer local text keeps its original source revision. Repository settings display a later verified head without treating it as the original setup revision.
 
 ## Consequences
 

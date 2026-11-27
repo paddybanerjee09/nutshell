@@ -40,7 +40,7 @@ This is the sole router. Every active managed Markdown file has exactly one row,
 | [nutshell-vault/features/memory-vault/CONTEXT.md](features/memory-vault/CONTEXT.md) | Vault snapshot validation, revision-aware selective retrieval, and source task checks. | active | feature, memory, retrieval, index |
 | [nutshell-vault/features/product-history/CONTEXT.md](features/product-history/CONTEXT.md) | Planned product entities, semantic history, and evidence presentation. | planned | feature, history, entities, evidence |
 | [nutshell-vault/features/tasks-notes/CONTEXT.md](features/tasks-notes/CONTEXT.md) | Planned assignments, deadlines, structured notes, and save conflicts. | planned | feature, tasks, notes, collaboration |
-| [nutshell-vault/features/workspace-editor/CONTEXT.md](features/workspace-editor/CONTEXT.md) | Indexed workspace, pane layout, Markdown editor, private drafts, and planned proposals and graphs. | active | feature, ui, editor, codemirror, graph |
+| [nutshell-vault/features/workspace-editor/CONTEXT.md](features/workspace-editor/CONTEXT.md) | Indexed workspace, pane layout, Markdown editor, private drafts, simulated proposals, and planned graphs. | active | feature, ui, editor, codemirror, graph |
 | [nutshell-vault/product/OVERVIEW.md](product/OVERVIEW.md) | Purpose, audience, product loop, and planned alpha scope. | planned | product, purpose, scope, brand |
 | [nutshell-vault/runs/ACCEPTANCE.md](runs/ACCEPTANCE.md) | Local setup, application, provider, and source PR verification evidence. | active | verification, acceptance, evidence |
 | [nutshell-vault/templates/NOTE.md](templates/NOTE.md) | Required metadata and four-section shape for concise durable notes. | active | template, note, decision |

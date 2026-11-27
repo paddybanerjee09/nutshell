@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import type { BrowserServer, Page } from "playwright";
+import type { Browser, BrowserServer, Page } from "playwright";
 
 const personaPath = "/api/auth/nutshell/persona";
 
@@ -184,6 +184,7 @@ async function verifyWorkspace(page: Page, origin: string, output: string) {
 
 const draftPath = "nutshell-vault/features/nutshell-setup/CONTEXT.md";
 const draftRoute = "/api/repos/1001/draft";
+const proposalRoute = "/api/repos/1001/draft-proposal";
 
 async function verifyMarkdownDraft(page: Page, origin: string, output: string) {
   const endpoint = origin + draftRoute;
@@ -201,6 +202,7 @@ async function verifyMarkdownDraft(page: Page, origin: string, output: string) {
   const pane = page.locator(".workspace-pane[data-focused='true']");
   const explorer = page.getByRole("navigation", { name: "Repository explorer" });
   const editor = pane.getByRole("textbox", { name: "Markdown editor" });
+  const editable = editor.and(pane.locator('[contenteditable="true"]'));
   const mac = process.platform === "darwin";
   const documentEnd = mac ? "Meta+ArrowDown" : "Control+End";
   async function openDocument() {
@@ -218,7 +220,7 @@ async function verifyMarkdownDraft(page: Page, origin: string, output: string) {
   await openDocument();
   await pane.getByRole("button", { name: "Edit draft", exact: true }).click();
   await pane.getByText("Private draft", { exact: true }).waitFor();
-  await editor.waitFor();
+  await editable.waitFor();
   await editor.focus();
   await editor.press(documentEnd);
   const addition = "\n\n## Draft fixture\n\n**認識** e\u0301 🌰 [[_INDEX|Index]]\n\n```txt\n[[literal]]\n```\n";
@@ -254,6 +256,7 @@ async function verifyMarkdownDraft(page: Page, origin: string, output: string) {
   const edit = pane.getByRole("button", { name: "Edit draft", exact: true });
   if (await edit.isVisible()) await edit.click();
   await pane.getByText("Private draft", { exact: true }).waitFor();
+  await editable.waitFor();
   await editor.press(documentEnd);
   await pastedText.waitFor();
   assert.ok(await pane.getByRole("group", { name: "Document view" }).evaluate((bar) => {
@@ -278,6 +281,7 @@ async function verifyMarkdownDraft(page: Page, origin: string, output: string) {
   await openDocument();
   await pane.getByRole("button", { name: "Edit draft", exact: true }).click();
   await pane.getByText("Private draft", { exact: true }).waitFor();
+  await editable.waitFor();
   await editor.press(documentEnd);
   await pastedText.waitFor();
   const parallel = { path: draftPath, markdown: savedDraft.markdown + "\nSaved in another tab.\n", sourceRevision, version: savedDraft.version };
@@ -295,6 +299,118 @@ async function verifyMarkdownDraft(page: Page, origin: string, output: string) {
   await page.close({ runBeforeUnload: false });
 }
 
+async function verifyMarkdownProposal(page: Page, origin: string, output: string) {
+  const repo = origin + "/app/repos/1001";
+  const endpoint = origin + proposalRoute;
+  const pathname = "?" + new URLSearchParams({ path: draftPath });
+  const documentUrl = origin + draftRoute + pathname;
+  const snapshotUrl = origin + "/api/repos/1001/snapshot";
+  type Proposal = {
+    id: string; branch: string; provider: "fixture"; status: "open" | "merged";
+    baseRevision: string; headRevision: string; mergeRevision: string | null;
+  };
+  type Snapshot = { status: string; revision: string; snapshot: { documents: { path: string; markdown: string }[] } };
+  const snapshot = async () => {
+    const response = await page.request.get(snapshotUrl);
+    assert.equal(response.status(), 200);
+    return await response.json() as Snapshot;
+  };
+  const waitForAction = () => page.waitForResponse((candidate) =>
+    candidate.request().method() === "POST" && new URL(candidate.url()).pathname === proposalRoute);
+  const post = (data: object, requestOrigin = origin) => page.request.post(endpoint, {
+    headers: { origin: requestOrigin }, data,
+  });
+  const draftResponse = await page.request.get(documentUrl);
+  assert.equal(draftResponse.status(), 200);
+  type Draft = { markdown: string; version: number; sourceRevision: string };
+  const { draft: invalidDraft } = await draftResponse.json() as { draft: Draft | null };
+  assert.ok(invalidDraft, "A saved private draft is required for the proposal journey.");
+  const publishedBefore = await snapshot();
+  assert.equal(publishedBefore.status, "current");
+  assert.notEqual(publishedBefore.snapshot.documents.find(({ path }) => path === draftPath)?.markdown, invalidDraft.markdown);
+
+  const initial = await page.request.get(endpoint + pathname);
+  assert.equal(initial.status(), 200);
+  assert.equal(initial.headers()["cache-control"], "private, no-store");
+  assert.equal((await initial.json()).proposal, null);
+  const proposed = { action: "propose", path: draftPath, version: invalidDraft.version };
+  assert.equal((await post(proposed, "https://untrusted.invalid")).status(), 403);
+  assert.equal((await post({ ...proposed, version: invalidDraft.version - 1 })).status(), 409);
+
+  await page.goto(repo + "/workspace");
+  const pane = page.locator(".workspace-pane[data-focused='true']");
+  await pane.getByRole("tab", { name: "CONTEXT.md", selected: true }).waitFor();
+  const edit = pane.getByRole("button", { name: "Edit draft", exact: true });
+  const propose = pane.getByRole("button", { name: "Propose change", exact: true });
+  await edit.click();
+  const [rejected] = await Promise.all([waitForAction(), propose.click()]);
+  assert.equal(rejected.status(), 422);
+  const invalid = await rejected.json() as { status: string; issues: { path: string; code: string }[] };
+  assert.equal(invalid.status, "invalid_candidate");
+  assert.ok(invalid.issues.some(({ path, code }) => path === draftPath && code === "note-headings"));
+  await pane.getByRole("alert").filter({ hasText: "The proposed change did not pass validation." }).waitFor();
+  assert.equal((await (await page.request.get(endpoint + pathname)).json()).proposal, null);
+  assert.deepEqual((await snapshot()).snapshot.documents, publishedBefore.snapshot.documents);
+
+  const correctedMarkdown = invalidDraft.markdown.replace("\n## Draft fixture\n", "\n### Draft fixture\n");
+  assert.notEqual(correctedMarkdown, invalidDraft.markdown);
+  const corrected = await page.request.patch(origin + draftRoute, { headers: { origin }, data: {
+    path: draftPath, markdown: correctedMarkdown, version: invalidDraft.version, sourceRevision: invalidDraft.sourceRevision,
+  } });
+  assert.equal(corrected.status(), 200);
+  const { draft } = await corrected.json() as { draft: Draft };
+  await page.reload();
+  await edit.click();
+  const [created] = await Promise.all([waitForAction(), propose.click()]);
+  assert.equal(created.status(), 200);
+  const { proposal } = await created.json() as { proposal: Proposal };
+  assert.ok(proposal.id && proposal.branch);
+  assert.equal(proposal.provider, "fixture");
+  assert.equal(proposal.status, "open");
+  assert.equal(proposal.baseRevision, publishedBefore.revision);
+  assert.notEqual(proposal.headRevision, publishedBefore.revision);
+  const panel = pane.getByRole("group", { name: "Change proposal" });
+  await panel.getByText("Simulated PR open", { exact: true }).waitFor();
+  await page.screenshot({ path: output + "/markdown-proposal-desktop.png" });
+  const repeated = await post({ ...proposed, version: draft.version });
+  assert.equal(repeated.status(), 200);
+  assert.deepEqual((await repeated.json()).proposal, proposal);
+  const stillPublished = await snapshot();
+  assert.equal(stillPublished.revision, publishedBefore.revision);
+  assert.deepEqual(stillPublished.snapshot.documents, publishedBefore.snapshot.documents);
+
+  const merge = { action: "merge", path: draftPath, proposalId: proposal.id, expectedHead: proposal.headRevision };
+  assert.equal((await post({ ...merge, expectedHead: "0".repeat(40) })).status(), 409);
+  const [merged] = await Promise.all([waitForAction(), panel.getByRole("button", { name: "Simulate change merge", exact: true }).click()]);
+  assert.equal(merged.status(), 200);
+  const { proposal: mergedProposal } = await merged.json() as { proposal: Proposal };
+  assert.equal(mergedProposal.id, proposal.id);
+  assert.equal(mergedProposal.status, "merged");
+  assert.ok(mergedProposal.mergeRevision);
+  assert.match(mergedProposal.mergeRevision, /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
+  const replay = await post(merge);
+  assert.equal(replay.status(), 200);
+  assert.deepEqual((await replay.json()).proposal, mergedProposal);
+  await panel.getByText("Change indexed", { exact: true }).waitFor({ timeout: 35_000 });
+  const publishedAfter = await snapshot();
+  assert.equal(publishedAfter.status, "current");
+  assert.equal(publishedAfter.revision, mergedProposal.mergeRevision);
+  assert.deepEqual(publishedAfter.snapshot.documents, publishedBefore.snapshot.documents.map((file) =>
+    file.path === draftPath ? { ...file, markdown: draft.markdown } : file));
+  const afterMerge = await page.request.get(documentUrl);
+  assert.equal(afterMerge.status(), 200);
+  assert.deepEqual(await afterMerge.json(), {
+    status: "ready", source: draft.markdown, sourceRevision: mergedProposal.mergeRevision, draft: null,
+  });
+  await page.reload();
+  await pane.locator(".workspace-reading").getByText("Saved in another tab.", { exact: true }).waitFor();
+  await page.goto(repo);
+  await page.getByRole("heading", { name: "Repository indexed", exact: true }).waitFor();
+  await page.getByText(mergedProposal.mergeRevision, { exact: true }).waitFor();
+  await page.getByRole("link", { name: "Open workspace", exact: true }).waitFor();
+  await page.close();
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -302,8 +418,11 @@ export async function verifyEntryFlow(origin: string) {
   const { chromium, firefox } = await import("playwright");
   const browserType = process.platform === "win32" ? firefox : chromium;
   const server = await browserType.launchServer({ headless: true, host: "127.0.0.1", timeout: 30_000 });
+  let journeyFailure: { error: unknown } | null = null;
+  let client: Browser | null = null;
   try {
     const browser = await browserType.connect(server.wsEndpoint(), { timeout: 10_000 });
+    client = browser;
     const withoutJavaScript = await browser.newPage({ javaScriptEnabled: false });
     await withoutJavaScript.goto(origin + "/login");
     assert.ok(await withoutJavaScript.getByRole("button", { name: /^Coordinator/ }).isDisabled());
@@ -335,11 +454,12 @@ export async function verifyEntryFlow(origin: string) {
     await page.screenshot({ path: output + "/fixture-setup-desktop.png" });
     await verifyWorkspace(page, origin, output);
     const { cookies } = await page.context().storageState();
-    const draftPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
-    await verifyMarkdownDraft(draftPage, origin, output);
     const denied = await page.goto(origin + "/app/repos/1002");
     assert.equal(denied?.status(), 404);
     assert.equal(await page.getByText("Harbor Atlas").count(), 0);
+    await page.close();
+    const draftPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
+    await verifyMarkdownDraft(draftPage, origin, output);
 
     const other = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await other.goto(origin + "/login");
@@ -351,6 +471,9 @@ export async function verifyEntryFlow(origin: string) {
     assert.equal((await other.request.get(origin + "/app/repos/1001/workspace")).status(), 404);
     const draftEndpoint = origin + draftRoute + "?" + new URLSearchParams({ path: draftPath });
     assert.equal((await other.request.get(draftEndpoint)).status(), 404);
+    const proposalEndpoint = origin + proposalRoute + "?" + new URLSearchParams({ path: draftPath });
+    assert.equal((await other.request.get(proposalEndpoint)).status(), 404);
+    await other.close();
 
     const reader = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await reader.goto(origin + "/login");
@@ -365,6 +488,10 @@ export async function verifyEntryFlow(origin: string) {
     });
     assert.equal(forbidden.status(), 403);
     assert.equal((await reader.request.get(draftEndpoint)).status(), 403);
+    assert.equal((await reader.request.get(proposalEndpoint)).status(), 403);
+    assert.equal((await reader.request.post(origin + proposalRoute, { headers: { origin },
+      data: { action: "propose", path: draftPath, version: 1 },
+    })).status(), 403);
     assert.equal((await reader.request.patch(origin + draftRoute, { headers: { origin },
       data: { path: draftPath, markdown: "Unauthorized change", sourceRevision: "0".repeat(40), version: 0 },
     })).status(), 403);
@@ -376,8 +503,23 @@ export async function verifyEntryFlow(origin: string) {
     await readerEditor.waitFor();
     assert.equal(await readerEditor.getAttribute("contenteditable"), "false");
     assert.equal(await readerPane.getByRole("button", { name: "Edit draft", exact: true }).count(), 0);
-  } finally {
-    await stopVerificationBrowser(server);
+    await reader.close();
+    const proposalPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
+    await verifyMarkdownProposal(proposalPage, origin, output);
+  } catch (error) {
+    journeyFailure = { error };
   }
-  console.log(`${browserType.name()} entry, fixture setup and signed publication, authorized workspace and private drafts, and browser shutdown passed.`);
+  if (journeyFailure && client) {
+    await waitForBrowserClose(client.close().then(() => true, () => false), 5_000);
+  }
+  try {
+    await stopVerificationBrowser(server);
+  } catch (shutdownError) {
+    if (!journeyFailure) throw shutdownError;
+    const describe = (error: unknown) => error instanceof Error ? error.stack ?? error.message : String(error);
+    throw new AggregateError([journeyFailure.error, shutdownError],
+      `${describe(journeyFailure.error)}\n${describe(shutdownError)}`, { cause: shutdownError });
+  }
+  if (journeyFailure) throw journeyFailure.error;
+  console.log(`${browserType.name()} entry, signed fixture setup, workspace and private drafts, simulated change proposal publication, and browser shutdown passed.`);
 }
