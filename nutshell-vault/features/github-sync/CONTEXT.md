@@ -7,7 +7,7 @@ tags: [feature, github, synchronization, provider]
 
 ## Context
 
-Planned feature only. No adapter, webhook, external setup, or acceptance is verified. Scope covers local provider scenarios, live integration, onboarding, and durable ingestion.
+The pg-boss worker runs as a separate local process against PostgreSQL. The probe demonstrates queue persistence and clean shutdown. Provider scenarios, integration, onboarding, and ingestion remain planned.
 
 ## Decision
 
@@ -21,4 +21,4 @@ A simulated merge is not a live GitHub merge or deployment. Relevant gates: A09,
 
 - [GITHUB_CONTRACT.md](../../architecture/GITHUB_CONTRACT.md) — provider and record semantics.
 - [Local execution decision](../../decisions/2026-11-26-local-alpha-execution.md).
-- Actual adapter, worker, and test files: not established.
+- [Worker](../../../apps/worker/src/main.ts) and [persisted verification probe](../../../apps/worker/src/probe.ts).

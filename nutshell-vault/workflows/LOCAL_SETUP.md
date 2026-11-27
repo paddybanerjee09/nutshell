@@ -52,21 +52,29 @@ $env:PGPASSFILE = "$pg/pgpass.conf"
 
 These checks cover the database and browser prerequisites. Application migration, browser journeys, and worker startup have their own acceptance gates.
 
-### Implement and document commands
+### Start the local runtime
 
-| Command | Current state |
-| --- | --- |
-| pnpm alpha:setup | Not implemented; must provide idempotent setup/migration/seed |
-| pnpm alpha:dev | Not implemented; must start local web/worker on loopback |
-| pnpm alpha:verify | Not implemented; must use separate test resources |
-| pnpm alpha:stop | Not implemented; must stop only project processes |
-| pnpm alpha:reset | Not implemented; must validate explicit generated-fixture targets |
+Start your PostgreSQL server first. For this checkout use the portable startup command above. For another local installation, set `DATABASE_URL` and `TEST_DATABASE_URL` for `nutshell_alpha` and `nutshell_alpha_test` on loopback. Use an account that can create these dedicated databases and apply migrations, or provision both databases in advance.
 
-As commands become real, record exact tested invocation, runtime versions, URLs, process behavior, and recovery. Do not claim a command or test exists before implementation.
+```powershell
+pnpm install --frozen-lockfile
+pnpm alpha:setup
+pnpm alpha:dev
+```
+
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Setup uses the existing project-scoped portable database when both URLs are absent. It generates a session secret in ignored `.env` and applies Drizzle migrations and fixture inserts. Existing fixture access and persisted sessions survive repeated setup.
+
+Use `pnpm alpha:stop` to stop the supervised web and worker. The database is started independently. See the portable stop command above if it is your project's server.
+
+Install the browser for your platform with `pnpm exec playwright install firefox` on Windows or `pnpm exec playwright install --only-shell chromium` elsewhere. When reusing this checkout's project-local browsers, set `PLAYWRIGHT_BROWSERS_PATH` to the absolute path of `.local/playwright-preflight/browsers` before installing. Run `pnpm alpha:verify`. The optimized verification process uses `nutshell_alpha_test` and binds to [http://127.0.0.1:3001](http://127.0.0.1:3001). It checks the entry flow, repository isolation, a persisted worker probe, and browser shutdown. The test output goes to `.local/verification/`. The fixture reset command remains planned.
+
+On this Windows host, Chromium's native child stayed alive after the browser connection closed, including with a synthetic page and a direct DevTools connection. Playwright Firefox exited successfully in the independent Windows probe. The verifier uses Firefox on Windows and reports a failed check if graceful browser shutdown cannot be confirmed. See the [acceptance ledger](../runs/ACCEPTANCE.md#decision) for the application checks.
+
+The pinned runtime uses Node 24.18.0, pnpm 11.25.0, PostgreSQL 18.7, Next.js 16.4.6, Better Auth 1.7.28, Drizzle 0.45.4, and pg-boss 12.40.0.
 
 ### Configure the product runtime separately
 
-The future .env.example must document NUTSHELL_MODE=local-alpha|live, NUTSHELL_DEPLOYMENT=local|hosted, separate development/test database URLs, origin/port, scoped assets, session/encryption secrets, and optional live product GitHub settings. Keep generated secrets in ignored local files.
+[.env.example](../../.env.example) records the current local mode, deployment, origin, dedicated database URLs, and session secret setting. Live product credentials and private asset settings belong with those integration slices.
 
 Local-alpha product operation requires real PostgreSQL, sessions, authorization, and durable jobs, but no product GitHub App or cloud storage account. The development source PR gate remains mandatory. Optimized local builds may use synthetic providers; hosted mode rejects them, and missing live configuration fails closed.
 

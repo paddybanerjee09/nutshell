@@ -15,18 +15,18 @@ Record the exact command or reproducible action, relevant paths/revision, observ
 
 | Gate | Area | Status | Evidence |
 | --- | --- | --- | --- |
-| A01 | Local setup and startup | Partial | Node 24.18.0 and pnpm 11.25.0 ran. PostgreSQL 18.7 authenticated on 127.0.0.1:55432 and preserved a test row through restart. Alpha setup, migrations, web, and worker remain unrun. See [local setup](../workflows/LOCAL_SETUP.md#observed-on-the-windows-development-machine). |
-| A02 | Lint, typecheck, tests, optimized build | Partial | `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed for the vault validator and CLI. Optimized web build remains unrun. |
-| A03 | Test database and reset isolation | Not run | No application run |
-| A04 | Sessions and protected surfaces | Not run | No application run |
-| A05 | Revocation, delayed work, token authority | Not run | No application run |
+| A01 | Local setup and startup | Pass | Repeated `pnpm alpha:setup` migrated and seeded both databases. After the Windows supervisor repair, `pnpm alpha:dev` reached readiness, `GET http://127.0.0.1:3000/api/health` returned 200, and `pnpm alpha:stop` exited zero and removed the runtime control file. A queued pg-boss probe survived a worker restart. |
+| A02 | Lint, typecheck, tests, optimized build | Pass | Windows `pnpm alpha:verify` exited zero with lint, strict typecheck, 48 tests, a fresh optimized Next.js build, a persisted worker job, and successful Playwright Firefox assertions and shutdown. An independent Chromium probe reproduced the earlier process timeout outside the app. [PR #3](https://github.com/paddybanerjee09/nutshell/pull/3) records the runtime evidence. |
+| A03 | Test database and reset isolation | Partial | Configuration tests verified explicit test database selection and refused the same database name for development and verification. The fixture reset command remains planned. |
+| A04 | Sessions and protected surfaces | Partial | `NUTSHELL_VERIFY=1` server tests against PostgreSQL exercised real-session cookies, same-origin persona input, session persistence, and repository isolation across three fixture identities. Further product surfaces remain unrun. |
+| A05 | Revocation, delayed work, token authority | Partial | PostgreSQL tests verified that revoked membership, provider grants, installations, and sessions denied subsequent reads. Delayed indexing and live provider token boundaries remain unrun. |
 | A06 | Parser and bounded input validation | Not run | No application run |
 | A07 | Revision-aware retrieval and budget | Not run | No application run |
-| A08 | Coverage and trusted validation policy | Partial | The source workflow installs the trusted base's pinned dependencies and validates immutable candidate objects. Local YAML and Bash syntax checks and controlled runner tests passed. Changed-path coverage and the first GitHub workflow run remain outstanding. |
+| A08 | Coverage and trusted validation policy | Partial | The default-branch workflow rejected the first draft without a PR association and reported `nutshell/source-task` success on PR #3's runnable head `c296cd3cbe5b9a9b2a1127da5c5c86639f220c4f`. [First GitHub run](https://github.com/paddybanerjee09/nutshell/actions/runs/45927166147). Changed-path coverage remains planned. |
 | A09 | HMAC, duplicate events, recovery | Not run | No application run |
 | A10 | Idempotent setup and simulated merge | Not run | No application run |
 | A11 | Invalid snapshots and immutable history | Not run | No application run |
-| A12 | Exact brand and visual contract | Not run | No rendered application |
+| A12 | Exact brand and visual contract | Partial | Inspected the entry at 1440×900 and sign-in at 390×844. The exact slogan and full artwork rendered, and the built PNG's SHA-256 matched the original. Workspace and interactive preview checks remain outstanding. |
 | A13 | Shell, panes, docking, layout | Not run | No application run |
 | A14 | Markdown source-preserving editing | Not run | No application run |
 | A15 | Drafts, proposals, and edit conflicts | Not run | No application run |
@@ -35,17 +35,17 @@ Record the exact command or reproducible action, relevant paths/revision, observ
 | A18 | Task persistence and permissions | Not run | No application run |
 | A19 | Notes and optimistic conflicts | Not run | No application run |
 | A20 | Private media and evidence state | Not run | No application run |
-| A21 | Marketing and synthetic preview | Not run | No application run |
-| A22 | Mode and exposure guards | Not run | No application run |
+| A21 | Marketing and synthetic preview | Partial | Chromium followed the marketing CTA into the local sign-in flow. The interactive editor and graph preview remains planned. |
+| A22 | Mode and exposure guards | Partial | Configuration tests refused implicit modes, hosted fixture access, non-loopback origins, and unavailable live mode. The optimized local web bound to 127.0.0.1:3001. |
 | A23 | Live-adapter controlled contract tests | Not run | No application run |
-| A24 | Complete local browser journey | Not run | Playwright 1.65.1 launched Chrome Headless Shell 159.0.8154.6 and exercised a test form. No application browser journey. |
+| A24 | Complete local browser journey | Partial | Playwright 1.65.1 with Firefox 159.0 on Windows passed local sign-in, session reload, authorized repository entry, denial across two fixture identities, and browser shutdown on the optimized build. Vault editing, proposal/merge, collaboration, and graph journeys remain unrun. |
 | A25 | Truthful memory, commits, and handoff | Partial | Starter and validator use source [PR #1](https://github.com/paddybanerjee09/nutshell/pull/1). The web/worker handoff remains outstanding. |
 | A26 | Exact active index coverage and routed body reads | Partial | `pnpm nutshell validate --working-tree` checked the current catalog. Vitest fixtures exercised missing, duplicate, stale, and inactive entries. Query-based body selection remains unrun. |
 | A27 | One lead-owned task and guarded revisions | Partial | `pnpm test` exercised an idle-to-feature transition, exact provider identity, a competing active task, and stale revisions. The source workflow runs on GitHub after its first merge. |
 | A28 | Relevant decisions, unique keys, and supersession | Partial | Validator fixtures reject duplicate accepted keys and broken supersession links. The starter's mismatched backlink was corrected. Decision retrieval remains unrun. |
 | A29 | Metadata, four headings, and length policy | Pass | `pnpm test` exercised note metadata, exact H2 headings including fenced examples, and length policy; `pnpm nutshell validate --working-tree` passed the managed vault. |
 | A30 | Default archive exclusion and explicit history | Not run | No application retrieval or graph run |
-| A31 | Real source PR proof and guarded canonical cleanup | Partial | Source [PR #1](https://github.com/paddybanerjee09/nutshell/pull/1) passed checks at `e1f743fafcae3c205d610c0aaed6b11cf9e37e8c` and merged at `99a0f9c7da2f371ea7f13076de073c1ae1a587ba`. GitHub accepted the expected-head one-file cleanup at `6c4bd36555f3661adc484ce8bbda57124c752ea7`, canonical idle revision 4. [PR #2](https://github.com/paddybanerjee09/nutshell/pull/2) adds fixtures for premature, repeated, closed-unmerged, mismatched, and stale cleanup. No required main-branch checks or reviews were configured. |
+| A31 | Real source PR proof and guarded canonical cleanup | Partial | [PR #1](https://github.com/paddybanerjee09/nutshell/pull/1) merged with confirmed one-file cleanup at `6c4bd36555f3661adc484ce8bbda57124c752ea7`, idle revision 4. [PR #2](https://github.com/paddybanerjee09/nutshell/pull/2) passed 38 tests, including negative task and cleanup fixtures, at tested head `4a55cc95b3696552006de8fa0602d487af2aff0e`. It merged at `410e92f6c47426bc1ed812a020b2503bf96dc596`. The shared guard and GitHub's expected-head write produced one-file cleanup `2586a237bd80471b5b7f71ed8a1b43d2f528ad21`, canonical idle revision 8. No required main-branch checks or reviews were configured. |
 | Live | Actual GitHub and external acceptance | Not run | No live setup or acceptance |
 
 ## Consequences

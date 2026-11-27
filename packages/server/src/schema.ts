@@ -1,0 +1,76 @@
+import { bigint, boolean, index, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+
+const time = (name: string) => timestamp(name, { withTimezone: true });
+const numericId = (name: string) => bigint(name, { mode: "number" });
+
+export const user = pgTable("auth_user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  image: text("image"),
+  createdAt: time("created_at").notNull().defaultNow(),
+  updatedAt: time("updated_at").notNull().defaultNow(),
+});
+
+export const session = pgTable("auth_session", {
+  id: text("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  expiresAt: time("expires_at").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: time("created_at").notNull().defaultNow(),
+  updatedAt: time("updated_at").notNull().defaultNow(),
+}, (table) => [index("auth_session_user_id_idx").on(table.userId)]);
+
+export const account = pgTable("auth_account", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  providerId: text("provider_id").notNull(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  idToken: text("id_token"),
+  accessTokenExpiresAt: time("access_token_expires_at"),
+  refreshTokenExpiresAt: time("refresh_token_expires_at"),
+  scope: text("scope"),
+  password: text("password"),
+  createdAt: time("created_at").notNull().defaultNow(),
+  updatedAt: time("updated_at").notNull().defaultNow(),
+}, (table) => [index("auth_account_user_id_idx").on(table.userId)]);
+
+export const verification = pgTable("auth_verification", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: time("expires_at").notNull(),
+  createdAt: time("created_at").notNull().defaultNow(),
+  updatedAt: time("updated_at").notNull().defaultNow(),
+}, (table) => [index("auth_verification_identifier_idx").on(table.identifier)]);
+
+export const installation = pgTable("provider_installation", {
+  id: numericId("id").primaryKey(),
+  active: boolean("active").notNull().default(true),
+});
+
+export const repository = pgTable("repository", {
+  id: numericId("id").primaryKey(),
+  installationId: numericId("installation_id").notNull().references(() => installation.id),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  active: boolean("active").notNull().default(true),
+});
+
+export const membership = pgTable("repository_membership", {
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  active: boolean("active").notNull().default(true),
+}, (table) => [primaryKey({ columns: [table.userId, table.repositoryId] })]);
+
+export const providerGrant = pgTable("local_provider_grant", {
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  canRead: boolean("can_read").notNull().default(false),
+  canWrite: boolean("can_write").notNull().default(false),
+}, (table) => [primaryKey({ columns: [table.userId, table.repositoryId] })]);

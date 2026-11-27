@@ -4,15 +4,19 @@
 
 A web app for individuals or teams to visualize, understand, and collaborate on AI-assisted GitHub projects.
 
-This workspace contains the supplied logo, agent instructions, the local-alpha specification, and the managed memory vault. The vault validation CLI is available. Web and worker startup are planned.
+Nutshell's current local slice includes branded entry, database-backed fixture sign-in, protected repository selection, a persistent worker, and the vault validation CLI.
 
 ## Start locally
 
-1. Extract this folder into your chosen local project directory. If you already have a Nutshell checkout, merge these instructions deliberately and preserve existing work.
-2. Open the folder in your local coding-agent client. Select your intended model/effort and set its execution permissions before the unattended run. These documents do not change client permissions.
-3. Prepare Git with a real commit identity, a supported Node.js LTS runtime, and local PostgreSQL. Docker is optional. The coding run implements pinned dependencies, setup scripts, browser tests, and application configuration. See [LOCAL_SETUP.md](nutshell-vault/workflows/LOCAL_SETUP.md).
-4. Select the **real GitHub source repository** for building Nutshell and make sure the agent can push feature branches and open PRs there. Every feature must use a PR. To complete the run without human merge steps, the exact repository operations must already be authorized and its existing checks/review policy must allow them. Configure required PR/check protections where available; do not remove existing protections to make the run unattended.
-5. Start with the instruction below. Keep the computer awake and online. No hosted development environment is required; using GitHub for source PRs is separate from where the app and coding agent execute.
+Start local PostgreSQL using [the setup guide](nutshell-vault/workflows/LOCAL_SETUP.md#start-the-local-runtime), then run:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm alpha:setup
+pnpm alpha:dev
+```
+
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). The local sign-in screen offers three fixture identities. Run `pnpm alpha:verify` for the optimized smoke test on the separate test database and `pnpm alpha:stop` to stop the web and worker.
 
 ## Start the first megarun
 
@@ -79,7 +83,7 @@ pnpm typecheck
 pnpm test
 ```
 
-Use `pnpm nutshell validate --base <ref> --head <ref>` for the vault at the resolved Git head. Setup, web, worker, and context retrieval commands are tracked in [the specification](SPEC.md).
+Use `pnpm nutshell validate --base <ref> --head <ref>` for the vault at the resolved Git head. Query-based context retrieval is tracked in [the specification](SPEC.md).
 
 The product's local-alpha mode uses real persistence and application logic with a simulated external GitHub provider. It does not require live product GitHub App credentials. **Building Nutshell still requires the real source PR workflow above.** Simulated product merges cannot clear the development task or prove a source PR was merged. Report the two evidence classes separately.
 
