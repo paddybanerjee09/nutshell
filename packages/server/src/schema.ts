@@ -2,6 +2,7 @@ import type { RepositoryProjection } from "@nutshell/core/snapshot";
 import type { TeamNoteContent } from "@nutshell/core/team-note-content";
 import { sql } from "drizzle-orm";
 import { bigint, boolean, date, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import type { ScreenshotDeclaration } from "./screenshot-assets.ts";
 
 const time = (name: string) => timestamp(name, { withTimezone: true });
 const numericId = (name: string) => bigint(name, { mode: "number" });
@@ -223,3 +224,19 @@ export const teamNote = pgTable("team_note", {
   createdAt: time("created_at").notNull().defaultNow(),
   updatedAt: time("updated_at").notNull().defaultNow(),
 }, (table) => [index("team_note_scope_idx").on(table.repositoryId, table.updatedAt, table.id)]);
+
+export const screenshotAsset = pgTable("screenshot_asset", {
+  id: text("id").primaryKey(),
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  creatorId: text("creator_id").notNull().references(() => user.id),
+  storageKey: uuid("storage_key").notNull().unique(),
+  mimeType: text("mime_type", { enum: ["image/png", "image/jpeg", "image/webp"] }).notNull(),
+  byteLength: integer("byte_length").notNull(),
+  sha256: text("sha256").notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  provenance: text("provenance", { enum: ["declared", "fixture_capture"] }).notNull(),
+  declaration: jsonb("declaration").$type<ScreenshotDeclaration>(),
+  captureRef: text("capture_ref").unique(),
+  createdAt: time("created_at").notNull().defaultNow(),
+});

@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: private-screenshot-evidence-2026-11-27
-task_state: in_progress
-task_revision: 67
+task_state: pr_open
+task_revision: 69
 repository_id: 1467144605
 branch: feature/private-screenshot-evidence
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 13
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/13
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ The service delegate owns asset storage and authorization, the HTTP delegate own
 
 ## Consequences
 
-Team notes merged and canonical cleanup was confirmed at idle revision 66. Next open the draft source PR and integrate the media service, routes, workspace, and local verification.
+Team notes merged and canonical cleanup was confirmed at idle revision 66. Draft PR #13 is open. Private storage, decoder, and authorization tests passed on the isolated database. The 5 scoped route and 4 raster tests passed. Next integrate the workspace and exercise the complete browser and signed-fixture journey.
 
 ## Affected files
 
