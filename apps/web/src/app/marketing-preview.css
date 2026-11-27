@@ -97,7 +97,7 @@
 .marketing-preview-editor-body .workspace-markdown-editor .cm-line { padding-inline: clamp(10px, 2vw, 18px); }
 .marketing-preview .workspace-graph-header { display: none; }
 .marketing-preview .workspace-graph-panel { min-block-size: 0; }
-.marketing-preview .workspace-graph-body { display: block; min-block-size: 0; max-block-size: none; }
+.marketing-preview .workspace-graph-body { display: block; flex: none; min-block-size: 0; max-block-size: none; }
 .marketing-preview .workspace-graph-view { block-size: clamp(260px, 36dvh, 340px); border-inline: 0; }
 .marketing-preview .workspace-graph-details { border-inline: 0; border-block-start: var(--ns-border-width) solid var(--ns-border); }
 
