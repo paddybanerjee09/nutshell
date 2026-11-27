@@ -5,8 +5,8 @@ status: active
 tags: [control, task, pull-requests]
 task_id: team-notes-2026-11-27
 task_state: ready_for_review
-task_revision: 64
-repository_id: "1467144605"
+task_revision: 65
+repository_id: 1467144605
 branch: feature/team-notes
 base_branch: main
 pr_number: 12
