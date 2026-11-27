@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: team-notes-2026-11-27
-task_state: in_progress
-task_revision: 61
+task_state: pr_open
+task_revision: 63
 repository_id: "1467144605"
 branch: feature/team-notes
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 12
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/12
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ The service delegate owns collaboration storage and PostgreSQL tests. The HTTP d
 
 ## Consequences
 
-Team tasks merged and canonical cleanup was confirmed at revision 60. The next action is to open this feature's draft source PR and exercise notes through local browser sessions and the database.
+Team tasks merged and canonical cleanup was confirmed at revision 60. Draft PR #12 is open. The notes database service, JSON schema, and API are implemented. Isolated PostgreSQL authorization and revision tests passed after a transient connection timeout. The editor integration and full Windows alpha verification are next.
 
 ## Affected files
 

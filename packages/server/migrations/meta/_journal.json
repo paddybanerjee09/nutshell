@@ -43,6 +43,13 @@
       "when": 1795651200005,
       "tag": "0005_team_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795651200006,
+      "tag": "0006_team_notes",
+      "breakpoints": true
     }
   ]
 }
