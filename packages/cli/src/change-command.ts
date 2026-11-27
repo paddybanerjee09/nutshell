@@ -1,6 +1,10 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { hasMeaningfulRepositoryChangeText } from "@nutshell/core/change-validation";
 import { projectRepositoryTree, repositoryChangeSchema, type RepositorySnapshotIssue } from "@nutshell/core/snapshot";
 import { applyAuthoringEdits, readAuthoringTree } from "./authoring-files.ts";
+import { hasOnlyHistoricalReferenceIssues, readLocalChangeHistory } from "./git-comparison.ts";
+import { resolveCommit } from "./vault-files.ts";
 
 const help = `Usage:
   pnpm nutshell change add --id <id> --type <type> --summary <text>
@@ -16,7 +20,7 @@ const scalarFlags = new Set([...required, "--corrects", "--reverses"]);
 const scope = "change-authoring";
 const source = { kind: "working-tree" };
 
-export function runChangeCommand(args: readonly string[], cwd: string): number {
+export async function runChangeCommand(args: readonly string[], cwd: string): Promise<number> {
   if ((args.length === 1 && args[0] === "--help") || (args.length === 2 && args[0] === "add" && args[1] === "--help")) {
     console.log(help);
     return 0;
@@ -56,7 +60,13 @@ export function runChangeCommand(args: readonly string[], cwd: string): number {
   if (files.has(path)) {
     return reportIssues([{ path, code: "record-duplicate", message: "A record with this ID already exists." }], json);
   }
-  const base = projectRepositoryTree(files);
+  let base = projectRepositoryTree(files);
+  if (!base.ok && hasOnlyHistoricalReferenceIssues(base.issues) && existsSync(join(cwd, ".git"))) {
+    const head = resolveCommit(cwd, "HEAD");
+    const history = await readLocalChangeHistory(cwd, head);
+    if (!history.ok) return reportIssues(history.issues, json);
+    base = projectRepositoryTree(files, { acceptedChanges: history.acceptedChanges });
+  }
   if (!base.ok) return reportIssues(base.issues, json);
 
   const body = JSON.stringify(change, null, 2) + "\n";

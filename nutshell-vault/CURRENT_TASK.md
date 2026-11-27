@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: local-authoring-compatibility-2026-11-27
 task_state: pr_open
-task_revision: 108
+task_revision: 109
 repository_id: 1467144605
 branch: feature/local-authoring-compatibility
 base_branch: main
@@ -28,7 +28,7 @@ Keep separately owned setup-builder and semantic-history changes. Preserve owner
 
 ## Consequences
 
-The existing indexed owner vault now previews and applies the managed AGENTS append and record creation without editing its catalog or notes. Fourteen setup tests passed. A separate optimized Firefox run verified the exact private screenshot journey after PR #19. Verify local Git history replay and rerun integrated checks.
+Fourteen setup tests passed. Eight CLI tests passed, including real Git archival, authoring and validating a correction, and refusing rewritten history. A separate optimized Firefox run verified the exact private screenshot journey after PR #19. Rerun integrated checks and confirm the trusted source gate.
 
 ## Affected files
 

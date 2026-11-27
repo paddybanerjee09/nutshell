@@ -17,6 +17,8 @@ Follow [R-06 memory and retrieval](../../../SPEC.md#9-r-06-persistent-memory-and
 
 Run `pnpm nutshell validate --working-tree` for the current vault or `pnpm nutshell validate --base <ref> --head <ref>` for an immutable comparison. The bounded reader supplies active notes and archived frontmatter to the shared index, metadata, and supersession validator. With product records present, the Git comparison also checks source coverage and new change declarations. Use `pnpm nutshell impact --base <ref> --head <ref>` for changed paths, mapped entities, related memory, and diagnostics. `--json` returns the scope, resolved source, and issues.
 
+When only prior change references disappeared from the current view, local authoring and comparison can recover them by replaying up to 64 record-changing revisions along the selected commit's first-parent history. Each revision must pass the shared snapshot checks. The working copy must retain the exact event payload. Current records still need active references, and provider checks use their own verified accepted history.
+
 Use `pnpm nutshell context --query <text> --budget <estimated tokens>` for Git HEAD. Add `--ref <ref>` or `--working-tree` to select a source explicitly, `--paths` for comma-separated repository paths, and `--json` for structured output. [The context budget decision](../../decisions/2026-11-27-vault-context-budget.md) defines whole-control budgeting and the history boundary.
 
 ## Consequences
