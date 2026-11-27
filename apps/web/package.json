@@ -7,11 +7,16 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
+    "@nutshell/core": "workspace:*",
     "@nutshell/server": "workspace:*",
     "lucide-react": "1.80.0",
     "next": "16.4.6",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "unified": "11.0.5"
   },
   "devDependencies": {
     "@types/react": "19.3.3",

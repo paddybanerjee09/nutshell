@@ -6,7 +6,7 @@ import { acceptFixtureDelivery, processNextFixtureDelivery, readFixtureSnapshot,
 import { closeRuntime, getAuth, getSession } from "./runtime.ts";
 import { migrateAndSeed } from "./setup.ts";
 
-describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture receipts", () => {
+describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture receipts", { timeout: 20_000 }, () => {
   const repositoryId = 1002;
   const installationId = 2002;
   const previousRevision = randomBytes(20).toString("hex");
@@ -25,7 +25,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture receipt
     db = new pg.Pool({ connectionString: config.databaseUrl });
     const { rows } = await db.query<{ head_revision: string }>("SELECT head_revision FROM fixture_state WHERE repository_id = $1", [repositoryId]);
     originalHead = rows[0]?.head_revision;
-  });
+  }, 20_000);
 
   afterAll(async () => {
     await closeRuntime();

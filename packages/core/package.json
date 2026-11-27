@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./fixture-setup-tree": "./src/fixture-setup-tree.ts",
+    "./frontmatter": "./src/frontmatter.ts",
     "./snapshot": "./src/repo-snapshot.ts",
     "./source-task": "./src/source-task.ts",
     "./vault": "./src/vault.ts"

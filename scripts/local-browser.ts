@@ -32,11 +32,14 @@ async function stopVerificationBrowser(server: BrowserServer) {
 }
 
 async function signIn(page: Page, button: RegExp) {
-  const response = page.waitForResponse((candidate) => {
-    return candidate.request().method() === "POST" && new URL(candidate.url()).pathname === personaPath;
-  });
-  await page.getByRole("button", { name: button }).click();
-  assert.equal((await response).status(), 200, "The local persona endpoint must accept the same-origin browser request.");
+  const control = page.getByRole("button", { name: button });
+  await control.click({ trial: true });
+  const [response] = await Promise.all([
+    page.waitForResponse((candidate) => candidate.request().method() === "POST" && new URL(candidate.url()).pathname === personaPath)
+      .catch((error: unknown) => { throw new Error(`Sign-in for ${button.source} did not return a response.`, { cause: error }); }),
+    control.click(),
+  ]);
+  assert.equal(response.status(), 200, "The local persona endpoint must accept the same-origin browser request.");
   await page.waitForURL("**/app");
 }
 
@@ -49,9 +52,9 @@ async function verifySetup(page: Page, origin: string) {
   const post = (data: object, requestOrigin = origin) => page.request.post(endpoint, { headers: { origin: requestOrigin }, data });
 
   assert.equal((await post({ action: "open" }, "https://untrusted.invalid")).status(), 403);
-  const creation = responseFor();
-  await setup.getByRole("button", { name: "Create setup proposal" }).click();
-  const result = await creation;
+  const create = setup.getByRole("button", { name: "Create setup proposal" });
+  await create.click({ trial: true });
+  const [result] = await Promise.all([responseFor(), create.click()]);
   assert.equal(result.status(), 200);
   const { proposal } = await result.json() as { proposal: { id: string; headRevision: string } };
   assert.ok(proposal.id);
@@ -62,9 +65,8 @@ async function verifySetup(page: Page, origin: string) {
   assert.deepEqual((await duplicate.json()).proposal, proposal);
   assert.equal((await post({ action: "merge", expectedHead: "0".repeat(40) })).status(), 409);
 
-  const merge = responseFor();
-  await setup.getByRole("button", { name: "Simulate setup merge" }).click();
-  const merged = await merge;
+  const merge = setup.getByRole("button", { name: "Simulate setup merge" });
+  const [merged] = await Promise.all([responseFor(), merge.click()]);
   assert.equal(merged.status(), 200);
   const { proposal: mergedProposal } = await merged.json() as { proposal: { mergeRevision: string } };
   assert.match(mergedProposal.mergeRevision, /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
@@ -81,6 +83,105 @@ async function verifySetup(page: Page, origin: string) {
   assert.ok(snapshot.snapshot.entities.length > 0);
 }
 
+async function verifyWorkspace(page: Page, origin: string, output: string) {
+  await page.getByRole("link", { name: "Open workspace", exact: true }).click();
+  await page.waitForURL("**/app/repos/1001/workspace");
+  const controls = page.getByRole("navigation", { name: "Workspace controls" });
+  const explorer = page.getByRole("navigation", { name: "Repository explorer" });
+  const panes = page.getByRole("region", { name: "Workspace pane" });
+  const activePane = page.locator(".workspace-pane[data-focused='true']");
+  const workspaceStatus = page.getByTestId("workspace-status");
+  await controls.waitFor();
+  await explorer.getByRole("button", { name: "nutshell-vault/CURRENT_TASK.md", exact: true }).click();
+  await activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true }).waitFor();
+  await activePane.getByText("No feature task is active.").waitFor();
+  assert.equal((await page.locator(".workspace-ribbon").boundingBox())?.width, 40);
+  assert.equal((await workspaceStatus.boundingBox())?.height, 24);
+  assert.equal(await workspaceStatus.evaluate((node) => getComputedStyle(node).fontSize), "11px");
+  const reading = activePane.locator(".workspace-reading");
+  assert.deepEqual(await reading.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return [style.fontSize, style.lineHeight, style.maxInlineSize];
+  }), ["16px", "25.6px", "700px"]);
+  assert.match(await workspaceStatus.innerText(), /Indexed[\s\S]*\d+ backlinks?[\s\S]*\d+ words/u);
+
+  const title = activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true });
+  await title.focus();
+  await page.keyboard.press("Control+P");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const search = palette.getByRole("combobox", { name: "Search commands and files" });
+  await search.waitFor();
+  assert.equal((await palette.boundingBox())?.width, 560);
+  await page.keyboard.press("Escape");
+  await palette.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "tab");
+  await controls.getByRole("button", { name: "Command palette" }).click();
+  await search.fill("Field Notes");
+  await palette.getByRole("option", { name: /Field Notes/ }).waitFor();
+  await page.keyboard.press("Enter");
+  await activePane.getByRole("heading", { name: "Field Notes", exact: true }).waitFor();
+
+  await page.keyboard.press("Control+P");
+  await search.fill("Move active tab left");
+  await palette.getByRole("option", { name: "Move active tab left", exact: true }).waitFor();
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => {
+    const tabs = document.querySelectorAll(".workspace-pane[data-focused='true'] [role='tab']");
+    return tabs.length === 3 && tabs[1]?.getAttribute("aria-selected") === "true";
+  });
+
+  async function paneAction(name: string) {
+    await activePane.locator("summary[aria-label='Pane actions']").click();
+    await activePane.getByRole("button", { name, exact: true }).click();
+  }
+  await paneAction("Split right");
+  await page.waitForFunction(() => document.querySelectorAll(".workspace-pane").length === 2);
+  await paneAction("Split down");
+  await page.waitForFunction(() => document.querySelectorAll(".workspace-pane").length === 3);
+  assert.equal(await panes.count(), 3);
+  const separator = page.getByRole("separator", { name: "Resize pane split" }).first();
+  const originalRatio = await separator.getAttribute("aria-valuenow");
+  await separator.focus();
+  await separator.press("ArrowRight");
+  await page.waitForFunction((before) => document.querySelector("[aria-label='Resize pane split']")?.getAttribute("aria-valuenow") !== before, originalRatio);
+  assert.notEqual(await separator.getAttribute("aria-valuenow"), originalRatio);
+  await explorer.getByRole("button", { name: "nutshell-vault/CURRENT_TASK.md", exact: true }).click();
+  await activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true }).waitFor();
+  const sourcePane = await activePane.getAttribute("data-pane-id");
+  assert.ok(sourcePane);
+  await paneAction("Move tab to next pane");
+  await page.waitForFunction((source) => document.querySelector(".workspace-pane[data-focused='true']")?.getAttribute("data-pane-id") !== source, sourcePane);
+  await activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true }).waitFor();
+  assert.equal(await page.locator(`[data-pane-id='${sourcePane}']`).getByRole("tab", { name: "CURRENT_TASK.md", exact: true }).count(), 0);
+  const left = page.getByRole("complementary", { name: "Left sidebar" });
+  const right = page.getByRole("complementary", { name: "Right sidebar" });
+  await left.getByRole("button", { name: "Move Explorer to right sidebar" }).click();
+  await right.getByRole("navigation", { name: "Repository explorer" }).waitFor();
+  await page.reload();
+  await right.getByRole("navigation", { name: "Repository explorer" }).waitFor();
+  await page.waitForFunction(() => document.querySelectorAll(".workspace-pane").length === 3);
+  await activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true }).waitFor();
+
+  for (const [width, height] of [[1440, 900], [1280, 800], [1024, 768], [768, 1024], [390, 844], [320, 740]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth);
+    if (width <= 1024) {
+      await page.waitForFunction(() => document.querySelectorAll(".workspace-pane").length === 1);
+      await workspaceStatus.getByText("Document counters", { exact: true }).waitFor({ state: width <= 720 ? "visible" : "hidden" });
+    }
+    await page.screenshot({ path: `${output}/workspace-${width}x${height}.png` });
+  }
+  await controls.getByRole("button", { name: "Explorer", exact: true }).click();
+  await right.getByRole("navigation", { name: "Repository explorer" }).waitFor();
+  await right.getByRole("button", { name: "nutshell-vault/_INDEX.md", exact: true }).click();
+  await activePane.getByRole("tab", { name: "_INDEX.md", selected: true }).waitFor();
+  await paneAction("Split right");
+  await page.getByText("This viewport is too small for another visible pane. The current tab stays open.", { exact: true }).waitFor();
+  assert.equal(await panes.count(), 1);
+  const denied = await page.request.get(origin + "/app/repos/1002/workspace");
+  assert.equal(denied.status(), 404);
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -90,11 +191,15 @@ export async function verifyEntryFlow(origin: string) {
   const server = await browserType.launchServer({ headless: true, host: "127.0.0.1", timeout: 30_000 });
   try {
     const browser = await browserType.connect(server.wsEndpoint(), { timeout: 10_000 });
+    const withoutJavaScript = await browser.newPage({ javaScriptEnabled: false });
+    await withoutJavaScript.goto(origin + "/login");
+    assert.ok(await withoutJavaScript.getByRole("button", { name: /^Coordinator/ }).isDisabled());
+    await withoutJavaScript.close();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const output = ".local/verification";
     await mkdir(output, { recursive: true });
     const health = await page.request.get(origin + "/api/health");
-    assert.equal(health.status(), 200);
+    assert.equal(health.status(), 200, "The served health route must be ready before the browser journey.");
     const protectedPage = await page.request.get(origin + "/app", { maxRedirects: 0 });
     assert.equal(new URL(protectedPage.headers().location ?? "/", origin).pathname, "/login");
     const crossOrigin = await page.request.post(origin + personaPath, {
@@ -115,6 +220,7 @@ export async function verifyEntryFlow(origin: string) {
     await page.getByRole("heading", { name: "Field Notes" }).waitFor();
     await verifySetup(page, origin);
     await page.screenshot({ path: output + "/fixture-setup-desktop.png" });
+    await verifyWorkspace(page, origin, output);
     const denied = await page.goto(origin + "/app/repos/1002");
     assert.equal(denied?.status(), 404);
     assert.equal(await page.getByText("Harbor Atlas").count(), 0);
@@ -126,6 +232,7 @@ export async function verifyEntryFlow(origin: string) {
     await other.getByRole("link", { name: /Harbor Atlas/ }).waitFor();
     assert.equal(await other.getByText("Field Notes").count(), 0);
     assert.equal((await other.request.get(origin + "/api/repos/1001/setup")).status(), 404);
+    assert.equal((await other.request.get(origin + "/app/repos/1001/workspace")).status(), 404);
 
     const reader = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await reader.goto(origin + "/login");
@@ -142,5 +249,5 @@ export async function verifyEntryFlow(origin: string) {
   } finally {
     await stopVerificationBrowser(server);
   }
-  console.log(`${browserType.name()} entry, session reload, repository isolation, simulated setup and signed publication, and browser shutdown passed.`);
+  console.log(`${browserType.name()} entry, fixture setup and signed publication, authorized workspace panes and palette, and browser shutdown passed.`);
 }

@@ -1,9 +1,9 @@
 import pg from "pg";
-import { requireLocalDatabaseUrl } from "./config.ts";
+import { localSetupConnectionTimeout, requireLocalDatabaseUrl } from "./config.ts";
 
 export async function ensureLocalDatabase(connectionString: string): Promise<void> {
   const connection = new URL(requireLocalDatabaseUrl(connectionString, "Provisioning target"));
-  const target = new pg.Client({ connectionString: connection.href, connectionTimeoutMillis: 5_000 });
+  const target = new pg.Client({ connectionString: connection.href, connectionTimeoutMillis: localSetupConnectionTimeout });
   try {
     await target.connect();
     return;
@@ -15,7 +15,7 @@ export async function ensureLocalDatabase(connectionString: string): Promise<voi
 
   const name = connection.pathname.slice(1);
   connection.pathname = "/postgres";
-  const client = new pg.Client({ connectionString: connection.href, connectionTimeoutMillis: 5_000 });
+  const client = new pg.Client({ connectionString: connection.href, connectionTimeoutMillis: localSetupConnectionTimeout });
   try {
     await client.connect();
     const found = await client.query("SELECT 1 FROM pg_database WHERE datname = $1", [name]);

@@ -29,6 +29,7 @@ This is the sole router. Every active managed Markdown file has exactly one row,
 | [nutshell-vault/decisions/2026-11-26-single-index-active-task.md](decisions/2026-11-26-single-index-active-task.md) | Finalized single-router, single-task, relevant-decision, and archive workflow. | accepted | decision, workflow, memory, retrieval |
 | [nutshell-vault/decisions/2026-11-26-fixture-receipt-outbox.md](decisions/2026-11-26-fixture-receipt-outbox.md) | Transactional fixture receipts, immutable projections, and publication guards. | accepted | decision, fixture, synchronization |
 | [nutshell-vault/decisions/2026-11-26-fixture-setup-proposals.md](decisions/2026-11-26-fixture-setup-proposals.md) | Revision-bound fixture setup proposals, configuration grants, and signed delivery recovery. | accepted | decision, fixture, onboarding, authorization |
+| [nutshell-vault/decisions/2026-11-27-workspace-layout-preferences.md](decisions/2026-11-27-workspace-layout-preferences.md) | Versioned recursive pane state, account and repository scope, and responsive fitting. | accepted | decision, workspace, panes, preferences |
 | [nutshell-vault/design/BRAND.md](design/BRAND.md) | Exact product name, slogan, supplied logo, and asset placement. | active | design, brand, assets |
 | [nutshell-vault/design/UI_ACCEPTANCE.md](design/UI_ACCEPTANCE.md) | Visual review, viewport, keyboard, contrast, and accessibility verification requirements. | active | design, ui, qa, contrast, accessibility |
 | [nutshell-vault/design/UI_GUIDE.md](design/UI_GUIDE.md) | The fifteen exact visual and interaction requirements supplied by the user. | active | design, ui, source-spec |
@@ -38,7 +39,7 @@ This is the sole router. Every active managed Markdown file has exactly one row,
 | [nutshell-vault/features/memory-vault/CONTEXT.md](features/memory-vault/CONTEXT.md) | Vault snapshot validation and planned selective retrieval and task validation. | active | feature, memory, retrieval, index |
 | [nutshell-vault/features/product-history/CONTEXT.md](features/product-history/CONTEXT.md) | Planned product entities, semantic history, and evidence presentation. | planned | feature, history, entities, evidence |
 | [nutshell-vault/features/tasks-notes/CONTEXT.md](features/tasks-notes/CONTEXT.md) | Planned assignments, deadlines, structured notes, and save conflicts. | planned | feature, tasks, notes, collaboration |
-| [nutshell-vault/features/workspace-editor/CONTEXT.md](features/workspace-editor/CONTEXT.md) | Planned workspace shell, Markdown live preview, and graph interaction. | planned | feature, ui, editor, codemirror, graph |
+| [nutshell-vault/features/workspace-editor/CONTEXT.md](features/workspace-editor/CONTEXT.md) | Indexed workspace, pane layout, Markdown reading, and planned editing and graphs. | active | feature, ui, editor, codemirror, graph |
 | [nutshell-vault/product/OVERVIEW.md](product/OVERVIEW.md) | Purpose, audience, product loop, and planned alpha scope. | planned | product, purpose, scope, brand |
 | [nutshell-vault/runs/ACCEPTANCE.md](runs/ACCEPTANCE.md) | Local setup, application, provider, and source PR verification evidence. | active | verification, acceptance, evidence |
 | [nutshell-vault/templates/NOTE.md](templates/NOTE.md) | Required metadata and four-section shape for concise durable notes. | active | template, note, decision |

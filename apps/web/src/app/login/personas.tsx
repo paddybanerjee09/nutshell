@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useHydrated } from "../use-hydrated";
 
 const personas = [
   { id: "coordinator", label: "Coordinator", name: "Morgan Chen" },
@@ -11,6 +12,7 @@ const personas = [
 type Persona = typeof personas[number]["id"];
 
 export function LocalPersonas() {
+  const hydrated = useHydrated();
   const [pending, setPending] = useState<Persona | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -42,6 +44,7 @@ export function LocalPersonas() {
               type="button"
               aria-labelledby={`persona-label-${id}`}
               aria-describedby={`persona-name-${id}`}
+              disabled={!hydrated}
               aria-disabled={pending !== null}
               onClick={() => void signIn(id)}
             >

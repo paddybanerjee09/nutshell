@@ -4,7 +4,7 @@
 
 A web app for individuals or teams to visualize, understand, and collaborate on AI-assisted GitHub projects.
 
-Nutshell's local alpha includes branded entry, database-backed fixture sign-in, protected repository setup, signed fixture synchronization, a persistent worker, and the vault validation CLI.
+Nutshell's local alpha includes fixture sign-in and repository setup, signed synchronization and a persistent worker, an indexed repository workspace, and the vault validation CLI.
 
 ## Start locally
 
@@ -16,7 +16,7 @@ pnpm alpha:setup
 pnpm alpha:dev
 ```
 
-Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Sign in as Coordinator and open Field Notes to create a setup proposal and simulate its merge. The repository page reports the indexed revision. Run `pnpm alpha:verify` for the optimized smoke test on the separate test database and `pnpm alpha:stop` to stop the web and worker. The setup guide includes the Playwright installation command for your platform.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Sign in as Coordinator and open Field Notes to create a setup proposal and simulate its merge. Once the repository is indexed, select **Open workspace** to browse the snapshot. Run `pnpm alpha:verify` on the separate test database and `pnpm alpha:stop` to stop the web and worker. The setup guide gives the Playwright installation command for your platform.
 
 ## Start the first megarun
 

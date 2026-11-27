@@ -6,6 +6,8 @@ const deploymentSchema = z.enum(["local", "hosted"]);
 const verifySchema = z.enum(["0", "1"]).optional();
 const databaseNames = ["nutshell_alpha", "nutshell_alpha_test"] as const;
 
+export const localSetupConnectionTimeout = 15_000;
+
 type Env = Readonly<Record<string, string | undefined>>;
 
 export type RuntimeConfig = {

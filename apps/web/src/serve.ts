@@ -4,11 +4,13 @@ import type { Socket } from "node:net";
 import { fileURLToPath } from "node:url";
 import next from "next";
 import { loadConfig } from "@nutshell/server/config";
-import { closeRuntime, healthCheck } from "@nutshell/server/runtime";
+import { closeRuntime } from "@nutshell/server/runtime";
+import { waitForStartupDatabase } from "./startup-database.ts";
 
-function reportStartupFailure(error: unknown) {
-  const code = error instanceof Error && "code" in error && typeof error.code === "string" ? ` (${error.code})` : "";
-  console.error(`Nutshell web startup failed${code}. Check the runtime configuration, database, port, and build output.`);
+function reportStartupFailure(error: unknown, phase: string) {
+  const code = error instanceof Error && "code" in error && typeof error.code === "string" && /^[A-Z0-9_]{2,30}$/u.test(error.code)
+    ? ` (${error.code})` : "";
+  console.error(`Nutshell web startup failed during ${phase}${code}.`);
 }
 
 async function start() {
@@ -73,13 +75,24 @@ async function start() {
     return;
   }
 
+  let phase = "Next.js preparation";
   try {
     await app.prepare();
     if (signal.aborted) return;
-    await healthCheck();
-    if (signal.aborted) return;
+    phase = "loopback binding";
     server.listen(port, hostname);
     await once(server, "listening", { signal });
+    if (signal.aborted) return;
+    phase = "served PostgreSQL readiness";
+    await waitForStartupDatabase(async () => {
+      const response = await fetch(new URL("/api/health", url), {
+        cache: "no-store", redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(18_000)]),
+      });
+      await response.arrayBuffer();
+      if (response.status === 503) return false;
+      if (response.status !== 200) throw new Error("The health endpoint returned " + response.status + ".");
+      return true;
+    }, signal);
     if (signal.aborted) return;
 
     console.log(`Nutshell web listening at ${url.origin}`);
@@ -88,7 +101,7 @@ async function start() {
     });
   } catch (error) {
     if (signal.aborted) return;
-    reportStartupFailure(error);
+    reportStartupFailure(error, phase);
     await shutdown(1);
   }
 }
@@ -96,7 +109,7 @@ async function start() {
 try {
   await start();
 } catch (error) {
-  reportStartupFailure(error);
+  reportStartupFailure(error, "configuration");
   process.exitCode = 1;
   if (process.connected) process.disconnect();
 }

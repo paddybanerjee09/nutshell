@@ -64,7 +64,7 @@ pnpm alpha:dev
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Setup uses the existing project-scoped portable database when both URLs are absent. It generates separate session and fixture webhook secrets in ignored `.env` and applies Drizzle migrations and fixture inserts. Existing fixture access and persisted sessions survive repeated setup. Run setup again when updating an older database or environment file.
 
-To initialize the Field Notes fixture, sign in as Coordinator, open Field Notes, create a setup proposal, and select **Simulate setup merge**. The repository page shows the proposal revision and the indexed merge revision. If the local webhook delivery fails after a simulated merge, retry it using the page action. The retry reuses the same delivery. The Reader can view setup status and the Other repository user can configure Harbor Atlas.
+To initialize the Field Notes fixture, sign in as Coordinator, open Field Notes, create a setup proposal, and select **Simulate setup merge**. The repository page shows the proposal revision and the indexed merge revision. Select **Open workspace** to browse the published documents or product records. If webhook delivery fails after a simulated merge, the retry action reuses the same delivery. The Reader can view the Field Notes workspace and the Other repository user can configure Harbor Atlas.
 
 Use `pnpm alpha:stop` to stop the supervised web and worker. The database is started independently. See the portable stop command above if it is your project's server.
 
@@ -73,6 +73,8 @@ Install the browser for your platform with `pnpm exec playwright install firefox
 On this Windows host, Chromium's native child stayed alive after the browser connection closed, including with a synthetic page and a direct DevTools connection. Playwright Firefox exited successfully in the independent Windows probe. The verifier uses Firefox on Windows and reports a failed check if graceful browser shutdown cannot be confirmed. See the [acceptance ledger](../runs/ACCEPTANCE.md#decision) for the application checks.
 
 Verification runs the test files in sequence because PostgreSQL integration tests change shared fixture grants and connection epochs. On Windows, Vitest uses worker threads to avoid the observed fork shutdown timeouts.
+
+Web startup reports the failed phase and waits for HTTP 200 from its own loopback health route before signalling readiness. Transient unavailability permits up to three checks within the supervisor deadline. Provisioning and migration each allow 15 seconds per local connection, and the three real PostgreSQL test suites have 20-second setup and test deadlines.
 
 The pinned runtime uses Node 24.18.0, pnpm 11.25.0, PostgreSQL 18.7, Next.js 16.4.6, Better Auth 1.7.28, Drizzle 0.45.4, and pg-boss 12.40.0.
 
