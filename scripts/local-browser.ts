@@ -462,7 +462,6 @@ async function verifyMarkdownProposal(page: Page, origin: string, output: string
 }
 
 async function verifyNewMarkdownNote(page: Page, reader: Page, other: Page, origin: string, output: string) {
-  const path = "nutshell-vault/notes/Rainfall review.md";
   const indexPath = "nutshell-vault/_INDEX.md";
   const endpoint = origin + "/api/repos/1001/draft";
   const snapshotUrl = origin + "/api/repos/1001/snapshot";
@@ -474,6 +473,8 @@ async function verifyNewMarkdownNote(page: Page, reader: Page, other: Page, orig
   }
 
   const before = await snapshot();
+  const relativePath = `notes/verification-${before.revision.slice(0, 8)}/Rainfall review.md`;
+  const path = "nutshell-vault/" + relativePath;
   assert.ok(!before.snapshot.documents.some((note) => note.path === path));
   await page.goto(origin + "/app/repos/1001/workspace");
   await page.locator("main.workspace-shell[aria-busy='false']").waitFor();
@@ -485,7 +486,7 @@ async function verifyNewMarkdownNote(page: Page, reader: Page, other: Page, orig
   await search.press("Enter");
   const form = page.getByRole("form", { name: "New Markdown note" });
   await form.getByLabel("Title", { exact: true }).fill("Rainfall review");
-  await form.getByLabel("Vault path", { exact: true }).fill("notes/Rainfall review.md");
+  await form.getByLabel("Vault path", { exact: true }).fill(relativePath);
   const [created] = await Promise.all([
     page.waitForResponse((response) => response.url() === endpoint && response.request().method() === "POST"),
     form.getByRole("button", { name: "Create private draft", exact: true }).press("Enter"),
@@ -527,8 +528,10 @@ async function verifyNewMarkdownNote(page: Page, reader: Page, other: Page, orig
   assert.equal(afterDocs.size, beforeDocs.size + 1);
   assert.equal(afterDocs.get(path), saved.draft.markdown);
   const index = afterDocs.get(indexPath);
-  const row = index?.match(/^\| \[nutshell-vault\/notes\/Rainfall review\.md\]\(<notes\/Rainfall%20review\.md>\)[^\r\n]*(?:\r?\n|$)/mu)?.[0];
-  assert.ok(index && row);
+  const target = relativePath.split("/").map(encodeURIComponent).join("/");
+  const rows = index?.match(/[^\n]*\n|[^\n]+$/gu)?.filter((line) => line.startsWith(`| [${path}](<${target}>)`));
+  const row = rows?.[0];
+  assert.ok(index && row && rows?.length === 1);
   assert.equal(index.replace(row, ""), beforeDocs.get(indexPath));
   for (const [oldPath, markdown] of beforeDocs) if (oldPath !== indexPath) assert.equal(afterDocs.get(oldPath), markdown);
   const published = await page.request.get(endpoint + "?path=" + encodeURIComponent(path));
