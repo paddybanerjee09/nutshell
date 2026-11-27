@@ -4,13 +4,13 @@ date: "2026-11-26"
 status: active
 tags: [control, task, pull-requests]
 task_id: fixture-sync-2026-11-26
-task_state: in_progress
-task_revision: 17
+task_state: ready_to_merge
+task_revision: 19
 repository_id: 1467144605
 branch: feature/fixture-sync
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 4
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/4
 last_verified_head: null
 lead_agent: codex-lead
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Use immutable fixture trees and PostgreSQL receipts. Validate repository records
 
 ## Consequences
 
-PR #3 passed Windows verification and merged. GitHub confirmed its guarded cleanup at canonical idle revision 16. This task starts from that commit. Open the new source draft and exercise the real local ingress and worker before promotion.
+GitHub confirmed draft PR #4 against canonical idle revision 16. Windows `pnpm alpha:setup` and `pnpm alpha:verify` passed, including 70 tests, the optimized application, two isolated signed fixture snapshots, invalid-head preservation, and browser shutdown. Require the trusted check on the final PR head and record that head in the PR. Clear this task only after GitHub confirms the matching merge.
 
 ## Affected files
 

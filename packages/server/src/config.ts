@@ -15,6 +15,7 @@ export type RuntimeConfig = {
   databaseUrl: string;
   testDatabaseUrl: string;
   authSecret: string;
+  webhookSecret?: string;
 };
 
 function readUrl(value: string | undefined, key: string) {
@@ -70,6 +71,10 @@ export function loadConfig(env: Env = process.env): RuntimeConfig {
   if (!authSecret || authSecret.length < 32 || authSecret.trim() !== authSecret) {
     throw new Error("Set BETTER_AUTH_SECRET to a randomly generated secret of at least 32 characters.");
   }
+  const webhookSecret = env.NUTSHELL_WEBHOOK_SECRET || undefined;
+  if (webhookSecret && (webhookSecret.length < 32 || webhookSecret.length > 1024 || webhookSecret.trim() !== webhookSecret)) {
+    throw new Error("Set NUTSHELL_WEBHOOK_SECRET to a randomly generated secret of 32 to 1024 characters.");
+  }
   return {
     mode: mode.data,
     deployment: deployment.data,
@@ -77,5 +82,6 @@ export function loadConfig(env: Env = process.env): RuntimeConfig {
     databaseUrl: verify.data === "1" ? testDatabaseUrl : developmentDatabaseUrl,
     testDatabaseUrl,
     authSecret,
+    webhookSecret,
   };
 }

@@ -1,6 +1,14 @@
 import { randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { loadConfig } from "@nutshell/server/config";
+
+const secretNames = ["BETTER_AUTH_SECRET", "NUTSHELL_WEBHOOK_SECRET"] as const;
+
+function missingSecrets() {
+  return secretNames
+    .filter((key) => !process.env[key])
+    .map((key) => [key, randomBytes(32).toString("base64url")] as const);
+}
 
 export function loadLocalEnv(create: boolean) {
   if (create && !existsSync(".env")) {
@@ -11,7 +19,9 @@ export function loadLocalEnv(create: boolean) {
       NUTSHELL_ORIGIN: process.env.NUTSHELL_ORIGIN ?? "http://127.0.0.1:3000",
       DATABASE_URL: urls.databaseUrl,
       TEST_DATABASE_URL: urls.testDatabaseUrl,
-      BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET || randomBytes(32).toString("base64url"),
+      BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
+      NUTSHELL_WEBHOOK_SECRET: process.env.NUTSHELL_WEBHOOK_SECRET,
+      ...Object.fromEntries(missingSecrets()),
     };
     loadConfig(config);
     const rows = Object.entries(config).map(([key, value]) => key + "=" + JSON.stringify(value));
@@ -19,18 +29,20 @@ export function loadLocalEnv(create: boolean) {
   }
   if (existsSync(".env")) {
     process.loadEnvFile(".env");
-    if (create && !process.env.BETTER_AUTH_SECRET) {
-      const secret = randomBytes(32).toString("base64url");
-      loadConfig({ ...process.env, BETTER_AUTH_SECRET: secret });
-      const existing = readFileSync(".env", "utf8");
-      const blankSecret = /^BETTER_AUTH_SECRET=\s*$/m;
-      if (blankSecret.test(existing)) {
-        writeFileSync(".env", existing.replace(blankSecret, "BETTER_AUTH_SECRET=" + secret + "\n"), { mode: 0o600 });
-      } else {
-        appendFileSync(".env", "\nBETTER_AUTH_SECRET=" + secret + "\n", { mode: 0o600 });
-      }
-      process.env.BETTER_AUTH_SECRET = secret;
+    if (!create) return;
+    const secrets = missingSecrets();
+    if (!secrets.length) return;
+    loadConfig({ ...process.env, ...Object.fromEntries(secrets) });
+    let existing = readFileSync(".env", "utf8");
+    for (const [key, value] of secrets) {
+      const blank = new RegExp("^" + key + "=[ \\t]*(?:\"\"|'')?[ \\t]*\\r?$", "m");
+      const line = key + "=" + value;
+      existing = blank.test(existing)
+        ? existing.replace(blank, line)
+        : existing + (existing.endsWith("\n") ? "" : "\n") + line + "\n";
     }
+    writeFileSync(".env", existing, { mode: 0o600 });
+    for (const [key, value] of secrets) process.env[key] = value;
   }
 }
 

@@ -62,11 +62,11 @@ pnpm alpha:setup
 pnpm alpha:dev
 ```
 
-Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Setup uses the existing project-scoped portable database when both URLs are absent. It generates a session secret in ignored `.env` and applies Drizzle migrations and fixture inserts. Existing fixture access and persisted sessions survive repeated setup.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Setup uses the existing project-scoped portable database when both URLs are absent. It generates separate session and fixture webhook secrets in ignored `.env` and applies Drizzle migrations and fixture inserts. Existing fixture access and persisted sessions survive repeated setup. Run setup again when updating an older database or environment file.
 
 Use `pnpm alpha:stop` to stop the supervised web and worker. The database is started independently. See the portable stop command above if it is your project's server.
 
-Install the browser for your platform with `pnpm exec playwright install firefox` on Windows or `pnpm exec playwright install --only-shell chromium` elsewhere. When reusing this checkout's project-local browsers, set `PLAYWRIGHT_BROWSERS_PATH` to the absolute path of `.local/playwright-preflight/browsers` before installing. Run `pnpm alpha:verify`. The optimized verification process uses `nutshell_alpha_test` and binds to [http://127.0.0.1:3001](http://127.0.0.1:3001). It checks the entry flow, repository isolation, a persisted worker probe, and browser shutdown. The test output goes to `.local/verification/`. The fixture reset command remains planned.
+Install the browser for your platform with `pnpm exec playwright install firefox` on Windows or `pnpm exec playwright install --only-shell chromium` elsewhere. When reusing this checkout's project-local browsers, set `PLAYWRIGHT_BROWSERS_PATH` to the absolute path of `.local/playwright-preflight/browsers` before installing. Run `pnpm alpha:verify`. The optimized verification process uses `nutshell_alpha_test` and binds to [http://127.0.0.1:3001](http://127.0.0.1:3001). It checks the entry flow, repository isolation, a persisted worker probe, signed fixture deliveries, authorized snapshot reads, invalid-revision handling, and browser shutdown. Browser evidence goes to `.local/verification/`. The fixture reset command remains planned.
 
 On this Windows host, Chromium's native child stayed alive after the browser connection closed, including with a synthetic page and a direct DevTools connection. Playwright Firefox exited successfully in the independent Windows probe. The verifier uses Firefox on Windows and reports a failed check if graceful browser shutdown cannot be confirmed. See the [acceptance ledger](../runs/ACCEPTANCE.md#decision) for the application checks.
 
@@ -84,11 +84,11 @@ For separately authorized live product acceptance, supply the registered develop
 
 Feature work begins only after real source PR preflight is ready. Optional live product credentials do not block that local product target, and simulated customer-repository events cannot establish real development PR completion.
 
-On resume, follow router-first order, then reconcile CURRENT_TASK with Git/service state. Verify changed behavior without repeating unrelated checks unnecessarily. Preserve truthful evidence and unresolved prerequisites. No application tests, PRs, or provider acceptance are asserted by this document.
+On resume, follow router-first order, then reconcile CURRENT_TASK with Git/service state. Keep observed application and provider verification in the acceptance ledger.
 
 ## Affected files
 
 - [SPEC.md](../../SPEC.md) — command requirements and gates.
 - [_INDEX.md](../_INDEX.md), [CURRENT_TASK.md](../CURRENT_TASK.md), and [GIT_WORKFLOW.md](GIT_WORKFLOW.md).
 - [ACCEPTANCE.md](../runs/ACCEPTANCE.md) — observed verification only.
-- Future package scripts and .env.example when implemented; no runtime files are supplied by this note.
+- [Local command implementation](../../scripts/alpha.ts) and [environment example](../../.env.example).
