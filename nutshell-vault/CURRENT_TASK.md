@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: local-verification-recovery-2026-11-27
-task_state: pr_open
-task_revision: 114
+task_state: ready_for_review
+task_revision: 115
 repository_id: 1467144605
 branch: feature/local-verification-recovery
 base_branch: main
 pr_number: 21
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/21
-last_verified_head: null
+last_verified_head: 0443908bcdcc1fd0142332bb73c8309321fe972e
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ Target the exact loopback verification database. Restrict reset to identified sy
 
 ## Consequences
 
-The exact packaged reset refused the interactive override and competing lease, cleared generated state, and preserved the interactive database, unrelated test row, and screenshot assets. A restarted worker published a signed delivery accepted while its predecessor was stopped. The focused reset and supervisor tests and strict root checks passed. Run the complete verification on the integrated head before finishing the source gate.
+The exact packaged reset preserved the interactive database, unrelated test row, and screenshot assets. The full Windows verification exited zero with 274 tests, the optimized build, worker restart and exact signed publication, the complete Firefox journey, and shutdown. Confirm the latest trusted source check, then merge and clear only this matching task.
 
 ## Affected files
 
