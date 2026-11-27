@@ -187,6 +187,9 @@ export function RepositorySetup({ repositoryId, initialSetup, initialSnapshot }:
           {pending ? pendingLabel : actionLabel}
         </button>
       )}
+      {(initialSnapshot?.revision || sync === "synced") && setup && (
+        <a className="back-link" href={"/app/repos/" + encodeURIComponent(repositoryId) + "/workspace"}>Open workspace</a>
+      )}
       <span className="sr-only" role="status">{pending ? pendingLabel : heading}</span>
       {error && <p role="alert">{error}</p>}
     </section>

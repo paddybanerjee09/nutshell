@@ -18,9 +18,7 @@ export default async function RepositoryPage({ params }: { params: Promise<{ rep
   if (!repository) notFound();
 
   const setup = await readFixtureOnboarding(requestHeaders, repositoryId).catch(() => null);
-  const snapshot = setup?.proposal?.status === "merged"
-    ? await readFixtureSnapshot(requestHeaders, repositoryId).catch(() => null)
-    : null;
+  const snapshot = await readFixtureSnapshot(requestHeaders, repositoryId).catch(() => null);
   const sync = snapshot ? {
     status: snapshot.status,
     headRevision: snapshot.headRevision,

@@ -81,6 +81,91 @@ async function verifySetup(page: Page, origin: string) {
   assert.ok(snapshot.snapshot.entities.length > 0);
 }
 
+async function verifyWorkspace(page: Page, origin: string, output: string) {
+  await page.getByRole("link", { name: "Open workspace", exact: true }).click();
+  await page.waitForURL("**/app/repos/1001/workspace");
+  const controls = page.getByRole("navigation", { name: "Workspace controls" });
+  const explorer = page.getByRole("navigation", { name: "Repository explorer" });
+  const panes = page.getByRole("region", { name: "Workspace pane" });
+  const activePane = page.locator(".workspace-pane[data-focused='true']");
+  const workspaceStatus = page.getByTestId("workspace-status");
+  await controls.waitFor();
+  await explorer.getByRole("button", { name: "nutshell-vault/CURRENT_TASK.md", exact: true }).click();
+  await activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true }).waitFor();
+  await activePane.getByText("No feature task is active.").waitFor();
+  assert.equal((await page.locator(".workspace-ribbon").boundingBox())?.width, 40);
+  assert.equal((await workspaceStatus.boundingBox())?.height, 24);
+  assert.equal(await workspaceStatus.evaluate((node) => getComputedStyle(node).fontSize), "11px");
+  const reading = activePane.locator(".workspace-reading");
+  assert.deepEqual(await reading.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return [style.fontSize, style.lineHeight, style.maxWidth];
+  }), ["16px", "25.6px", "700px"]);
+  assert.match(await workspaceStatus.innerText(), /Indexed[\s\S]*\d+ backlinks?[\s\S]*\d+ words/u);
+
+  const title = activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true });
+  await title.focus();
+  await page.keyboard.press("Control+P");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const search = palette.getByRole("combobox", { name: "Search commands and files" });
+  await search.waitFor();
+  assert.equal((await palette.boundingBox())?.width, 560);
+  await page.keyboard.press("Escape");
+  await palette.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "tab");
+  await controls.getByRole("button", { name: "Command palette" }).click();
+  await search.fill("Field Notes");
+  await palette.getByRole("option", { name: /Field Notes/ }).waitFor();
+  await page.keyboard.press("Enter");
+  await activePane.getByRole("heading", { name: "Field Notes", exact: true }).waitFor();
+
+  async function paneAction(name: string) {
+    await activePane.locator("summary[aria-label='Pane actions']").click();
+    await activePane.getByRole("button", { name, exact: true }).click();
+  }
+  await paneAction("Split right");
+  await page.waitForFunction(() => document.querySelectorAll(".workspace-pane").length === 2);
+  await paneAction("Split down");
+  await page.waitForFunction(() => document.querySelectorAll(".workspace-pane").length === 3);
+  assert.equal(await panes.count(), 3);
+  const separator = page.getByRole("separator", { name: "Resize pane split" }).first();
+  const originalRatio = await separator.getAttribute("aria-valuenow");
+  await separator.focus();
+  await separator.press("ArrowRight");
+  assert.notEqual(await separator.getAttribute("aria-valuenow"), originalRatio);
+  await explorer.getByRole("button", { name: "nutshell-vault/CURRENT_TASK.md", exact: true }).click();
+  await activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true }).waitFor();
+  await paneAction("Move tab to next pane");
+  await activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true }).waitFor();
+  const left = page.getByRole("complementary", { name: "Left sidebar" });
+  const right = page.getByRole("complementary", { name: "Right sidebar" });
+  await left.getByRole("button", { name: "Move Explorer to right sidebar" }).click();
+  await right.getByRole("navigation", { name: "Repository explorer" }).waitFor();
+  await page.reload();
+  await right.getByRole("navigation", { name: "Repository explorer" }).waitFor();
+  await page.waitForFunction(() => document.querySelectorAll(".workspace-pane").length === 3);
+  await activePane.getByRole("tab", { name: "CURRENT_TASK.md", selected: true }).waitFor();
+
+  for (const [width, height] of [[1440, 900], [1280, 800], [1024, 768], [768, 1024], [390, 844], [320, 740]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth);
+    if (width <= 1024) {
+      await page.waitForFunction(() => document.querySelectorAll(".workspace-pane").length === 1);
+      await workspaceStatus.getByText("Document counters", { exact: true }).waitFor({ state: width <= 720 ? "visible" : "hidden" });
+    }
+    await page.screenshot({ path: `${output}/workspace-${width}x${height}.png` });
+  }
+  await controls.getByRole("button", { name: "Explorer", exact: true }).click();
+  await right.getByRole("navigation", { name: "Repository explorer" }).waitFor();
+  await right.getByRole("button", { name: "nutshell-vault/_INDEX.md", exact: true }).click();
+  await activePane.getByRole("tab", { name: "_INDEX.md", selected: true }).waitFor();
+  await paneAction("Split right");
+  await page.getByText("This viewport is too small for another visible pane. The current tab stays open.", { exact: true }).waitFor();
+  assert.equal(await panes.count(), 1);
+  const denied = await page.request.get(origin + "/app/repos/1002/workspace");
+  assert.equal(denied.status(), 404);
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -115,6 +200,7 @@ export async function verifyEntryFlow(origin: string) {
     await page.getByRole("heading", { name: "Field Notes" }).waitFor();
     await verifySetup(page, origin);
     await page.screenshot({ path: output + "/fixture-setup-desktop.png" });
+    await verifyWorkspace(page, origin, output);
     const denied = await page.goto(origin + "/app/repos/1002");
     assert.equal(denied?.status(), 404);
     assert.equal(await page.getByText("Harbor Atlas").count(), 0);
@@ -126,6 +212,7 @@ export async function verifyEntryFlow(origin: string) {
     await other.getByRole("link", { name: /Harbor Atlas/ }).waitFor();
     assert.equal(await other.getByText("Field Notes").count(), 0);
     assert.equal((await other.request.get(origin + "/api/repos/1001/setup")).status(), 404);
+    assert.equal((await other.request.get(origin + "/app/repos/1001/workspace")).status(), 404);
 
     const reader = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await reader.goto(origin + "/login");
@@ -142,5 +229,5 @@ export async function verifyEntryFlow(origin: string) {
   } finally {
     await stopVerificationBrowser(server);
   }
-  console.log(`${browserType.name()} entry, session reload, repository isolation, simulated setup and signed publication, and browser shutdown passed.`);
+  console.log(`${browserType.name()} entry, fixture setup and signed publication, authorized workspace panes and palette, and browser shutdown passed.`);
 }
