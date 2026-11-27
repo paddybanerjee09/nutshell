@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { canEditFixtureMarkdown } from "@nutshell/server/fixture-drafts";
 import { readFixtureSnapshot } from "@nutshell/server/fixture-sync";
 import { getSession, readRepository } from "@nutshell/server/runtime";
+import { entryMode } from "../../../../entry-mode";
 import { hasIndexedSnapshot, workspaceData } from "./workspace-data";
 import { WorkspaceShell } from "./workspace-shell";
 import "./workspace.css";
@@ -15,6 +16,7 @@ export default async function WorkspacePage({ params, searchParams }: {
   params: Promise<{ repositoryId: string }>;
   searchParams: Promise<{ history?: string | string[]; note?: string | string[] }>;
 }) {
+  if (entryMode() !== "local-alpha") notFound();
   const { repositoryId } = await params;
   const request = await headers();
   const [session, repository, snapshot] = await Promise.all([

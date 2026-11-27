@@ -21,6 +21,8 @@ Live repository authorization matches the current GitHub user to their linked ac
 
 The configured runtime selects the GitHub Better Auth handler in live mode and excludes the local persona plugin. Live connections use a separate PostgreSQL database. The repository list and overview disclose only currently authorized local associations. The fixture worker and local tooling require local-alpha configuration.
 
+The browser starts GitHub authorization with a same-origin POST and accepts only the configured GitHub OAuth destination and callback. Unavailable live authorization exposes a generic reconnect state. Local persona controls are rendered only in local-alpha mode.
+
 ## Consequences
 
 Dedicated PostgreSQL tests covered cookie flags, session persistence, cross-repository denial, access revocation, and setup preservation of revoked grants. The live adapter and authorization on later product surfaces are tracked in [the acceptance ledger](../../runs/ACCEPTANCE.md).
@@ -37,3 +39,4 @@ Controlled authorization tests cover mismatched accounts, provider denial, owner
 - [GitHub App auth](../../../packages/server/src/github-app-auth.ts), [account token storage](../../../packages/server/src/github-app-auth-tokens.ts), and [controlled auth tests](../../../packages/server/src/github-app-auth.test.ts).
 - [Current GitHub authorization](../../../packages/server/src/github-live-access.ts) and [controlled authorization tests](../../../packages/server/src/github-live-access.test.ts).
 - [Runtime configuration](../../../packages/server/src/config.ts), [unseeded live migration](../../../scripts/live-migrate.ts), and [local and live setup](../../workflows/LOCAL_SETUP.md).
+- [Sign-in page](../../../apps/web/src/app/login/page.tsx), [GitHub authorization request](../../../apps/web/src/app/login/github-sign-in-request.ts), and [entry surface tests](../../../apps/web/src/app/entry-surfaces.test.tsx).

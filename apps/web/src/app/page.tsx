@@ -1,9 +1,14 @@
 import { BrandArtwork } from "./brand";
+import { entryMode } from "./entry-mode";
 import { MarketingSectionLinks } from "./marketing-navigation";
 import { MarketingPreview } from "./marketing-preview";
 import "./marketing.css";
 
+export const dynamic = "force-dynamic";
+
 export default function HomePage() {
+  const mode = entryMode();
+  const signIn = mode === "local-alpha" ? "Open local alpha" : mode === "live" ? "Sign in with GitHub" : "Sign in";
   return (
     <>
       <header className="marketing-header">
@@ -20,7 +25,7 @@ export default function HomePage() {
         <div className="marketing-intro">
           <h1><span>Your codebase.</span>{" "}<span>In a Nutshell.</span></h1>
           <p>Shared project memory, connected features, and clear change history for teams building with AI.</p>
-          <a className="primary-cta" href="/login">Open local alpha</a>
+          <a className="primary-cta" href="/login">{signIn}</a>
         </div>
         <section className="marketing-showcase" id="product" aria-label="Workspace preview" tabIndex={-1}>
           <MarketingPreview />
