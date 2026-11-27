@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: configured-github-access-2026-11-27
-task_state: in_progress
-task_revision: 88
+task_state: pr_open
+task_revision: 89
 repository_id: 1467144605
 branch: feature/configured-github-access
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 17
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/17
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ The configuration delegate owns explicit mode, origin and isolated connection ch
 
 ## Consequences
 
-GitHub confirmed PR #16 merged and the one-file canonical cleanup advanced to idle revision 87. No external product App credentials are present. Verify this runtime slice with controlled responses and preserve the full Windows fixture journey.
+GitHub confirmed PR #16 merged and the one-file canonical cleanup advanced to idle revision 87. Draft PR #17 is open. No external product App credentials are present. Verify this runtime slice with controlled responses and preserve the full Windows fixture journey.
 
 ## Affected files
 
