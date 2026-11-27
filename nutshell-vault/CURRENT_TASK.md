@@ -4,8 +4,8 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: trusted-change-validation-2026-11-27
-task_state: pr_open
-task_revision: 94
+task_state: ready_for_review
+task_revision: 95
 repository_id: 1467144605
 branch: feature/trusted-change-validation
 base_branch: main
@@ -28,7 +28,7 @@ One delegate owns changed-path policy and tests. One delegate owns the immutable
 
 ## Consequences
 
-Draft PR #18 has the shared changed-path policy and immutable Git CLI. Review identified an initial setup weakening gap, and 30 focused core and controlled setup tests now verify the common coverage floor. The GitHub and simulated proposal integrations are undergoing final local and controlled verification. External product Check acceptance remains unrun.
+Draft PR #18 passed 68 focused tests, lint, strict root and build-time web checks, working-tree vault validation, the optimized Windows Firefox journey, a persisted worker probe, and signed fixture processing and shutdown. Controlled GitHub tests covered pointed base and head Checks. Next pass the exact source check, merge, and verify canonical cleanup.
 
 ## Affected files
 
