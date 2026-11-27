@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -151,3 +151,65 @@ test("impact requires two immutable refs", async () => {
   assert.equal(result.status, 2);
   assert.match(result.stderr, /Impact requires both --base and --head/u);
 }, 45_000);
+
+test("CLI previews and applies setup, then authors one record that classifies a Git change", async () => {
+  const root = temporaryRepository();
+  git(root, "init", "--quiet", "--initial-branch=main", "--template=");
+  const originalOwner = Buffer.from("\uFEFF# Owner\r\n\r\nKeep these exact instructions.\r\n", "utf8");
+  write(root, "AGENTS.md", originalOwner);
+  write(root, originalPath, "export const sampleLimit = 12;\n");
+
+  const preview = await cli(root, ["init", "--json"]);
+  assert.equal(preview.status, 0, preview.stderr);
+  assert.equal(JSON.parse(preview.stdout).status, "planned");
+  assert.equal(existsSync(join(root, ".nutshell")), false);
+  assert.deepEqual(readFileSync(join(root, "AGENTS.md")), originalOwner);
+
+  const setup = await cli(root, ["init", "--write", "--json"]);
+  assert.equal(setup.status, 0, setup.stderr);
+  assert.equal(JSON.parse(setup.stdout).status, "written");
+  const configuredOwner = readFileSync(join(root, "AGENTS.md"));
+  assert.deepEqual(configuredOwner.subarray(0, originalOwner.length), originalOwner);
+  assert.equal(statSync(join(root, "nutshell-vault", "decisions")).isDirectory(), true);
+  assert.equal(statSync(join(root, "nutshell-vault", "archive")).isDirectory(), true);
+  assert.match(readFileSync(join(root, "nutshell-vault", "CURRENT_TASK.md"), "utf8"), /^task_state: idle$/mu);
+
+  const repeat = await cli(root, ["init", "--write", "--json"]);
+  assert.equal(repeat.status, 0, repeat.stderr);
+  assert.equal(JSON.parse(repeat.stdout).status, "configured");
+  assert.deepEqual(readFileSync(join(root, "AGENTS.md")), configuredOwner);
+  const [entityFile] = readdirSync(join(root, ".nutshell", "entities"));
+  assert.ok(entityFile);
+  const entity = repositoryEntitySchema.parse(JSON.parse(readFileSync(join(root, ".nutshell", "entities", entityFile), "utf8")));
+  const base = commit(root, "Initialize local authoring fixture");
+
+  write(root, originalPath, "export const sampleLimit = 16;\n");
+  const event = "chg_sample_limit";
+  const add = [
+    "change", "add", "--id", event, "--type", "changed", "--summary", "Raise the sample limit.",
+    "--impact", "internal", "--rationale", "Keep all calibration readings in one sample batch.",
+    "--technical-summary", "Increase the exported calibration limit from 12 to 16.",
+    "--entity", entity.id, "--memory", contextPath, "--json",
+  ];
+  const authored = await cli(root, add);
+  assert.equal(authored.status, 0, authored.stderr);
+  assert.equal(JSON.parse(authored.stdout).scope, "change-authoring");
+  const record = join(root, ".nutshell", "changes", event + ".json");
+  const originalRecord = readFileSync(record);
+  const duplicate = await cli(root, add);
+  assert.equal(duplicate.status, 1);
+  assert.equal(JSON.parse(duplicate.stdout).issues[0]?.code, "record-duplicate");
+  assert.deepEqual(readFileSync(record), originalRecord);
+  const head = commit(root, "Change source with an authored semantic record");
+
+  const refs = ["--base", base, "--head", head, "--json"];
+  const [comparison, impact] = await Promise.all([cli(root, ["validate", ...refs]), cli(root, ["impact", ...refs])]);
+  assert.equal(comparison.status, 0, comparison.stderr || comparison.stdout);
+  assert.equal(impact.status, 0, impact.stderr || impact.stdout);
+  const report = JSON.parse(impact.stdout) as Comparison;
+  const mapping = report.mappings.find(({ path }) => path === originalPath);
+  assert.ok(mapping?.covered);
+  assert.deepEqual(mapping.entityIds, [entity.id]);
+  assert.deepEqual(mapping.changeIds, [event]);
+  assert.ok(mapping.memoryPaths.includes(contextPath));
+}, 120_000);

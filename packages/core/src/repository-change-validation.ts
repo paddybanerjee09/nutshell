@@ -68,6 +68,10 @@ function meaningfulText(value: string) {
   return Array.from(words).length > 1 && !placeholders.has(words);
 }
 
+export function hasMeaningfulRepositoryChangeText(change: Pick<RepositoryChange, "summary" | "rationale" | "technical_summary">) {
+  return [change.summary, change.rationale, change.technical_summary].every(meaningfulText);
+}
+
 function matchWildcardSequence<T>(pattern: readonly T[], input: readonly T[], star: T, matches: (part: T, item: T) => boolean,
   charge: () => void): boolean {
   let p = 0;
@@ -295,7 +299,7 @@ export function validateRepositoryChanges({ baseFiles, headFiles, changedPaths, 
   const fresh: RepositoryChange[] = [];
   for (const record of head.changes) {
     if (prior.has(record.id) || baseFiles.has(changePath(record.id))) continue;
-    if ([record.summary, record.rationale, record.technical_summary].every(meaningfulText)) fresh.push(record);
+    if (hasMeaningfulRepositoryChangeText(record)) fresh.push(record);
     else report(changePath(record.id), "change-placeholder", "Use a specific summary, rationale and technical explanation.");
   }
 

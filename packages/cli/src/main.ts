@@ -1,4 +1,6 @@
 const help = `Usage:
+  pnpm nutshell init [--write] [--json]
+  pnpm nutshell change add --help
   pnpm nutshell validate --working-tree [--json]
   pnpm nutshell validate --base <ref> --head <ref> [--json]
   pnpm nutshell impact --base <ref> --head <ref> [--json]
@@ -18,7 +20,7 @@ function parseOptions(args: string[]): Options {
     return { kind: "help" };
   }
   const command = args[0];
-  if (command !== "validate" && command !== "impact") throw new Error("Expected validate, impact, or context. See --help.");
+  if (command !== "validate" && command !== "impact") throw new Error("Expected init, change, validate, impact, or context. See --help.");
   if (args.length === 2 && args[1] === "--help") return { kind: "help" };
 
   const seen = new Set<string>();
@@ -95,6 +97,14 @@ async function reportGitComparison(options: Extract<Options, { kind: "git" }>, c
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
+  if (args[0] === "init") {
+    const { runInitCommand } = await import("./init-command.ts");
+    return runInitCommand(args.slice(1), process.cwd());
+  }
+  if (args[0] === "change") {
+    const { runChangeCommand } = await import("./change-command.ts");
+    return runChangeCommand(args.slice(1), process.cwd());
+  }
   if (args[0] === "context") {
     const { runContextCommand } = await import("./context-command.ts");
     return runContextCommand(args.slice(1), process.cwd());

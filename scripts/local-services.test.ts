@@ -4,7 +4,7 @@ import { startServices } from "./local-services.ts";
 
 const { fork } = vi.hoisted(() => ({ fork: vi.fn() }));
 vi.mock("node:child_process", () => ({ fork }));
-vi.mock("@nutshell/server/config", () => ({ loadConfig: () => ({}) }));
+vi.mock("@nutshell/server/config", () => ({ loadLocalConfig: () => ({}) }));
 vi.mock("node:timers/promises", () => ({
   setTimeout: (milliseconds: number, value: unknown, { signal }: { signal: AbortSignal }) =>
     new Promise((resolve, reject) => {

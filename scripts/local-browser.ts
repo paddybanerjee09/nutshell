@@ -552,18 +552,48 @@ async function verifyWorkspaceGraphs(page: Page, origin: string, output: string)
   await product.locator('[data-testid="workspace-graph-canvas"][data-layout="reduced-motion"]').waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth);
-  await page.waitForFunction(() => {
-    const canvas = document.querySelector('[data-testid="workspace-graph-canvas"]');
-    if (!canvas) return false;
-    const bounds = canvas.getBoundingClientRect();
-    return ["Observation capture", "Observation store"].every((name) => {
-      const node = canvas.querySelector(`[data-testid="workspace-graph-node"][aria-label="${name}"]`);
-      if (!node) return false;
-      const extent = node.getBoundingClientRect();
-      return extent.width > 0 && extent.left >= bounds.left && extent.top >= bounds.top &&
-        extent.right <= bounds.right && extent.bottom <= bounds.bottom;
-    });
-  });
+  const mobileGraph = {
+    canvasSelector: '.workspace-pane[data-focused="true"] .workspace-graph-panel [data-testid="workspace-graph-canvas"]',
+    nodes: ["Observation capture", "Observation store"],
+  };
+  try {
+    await page.waitForFunction(({ canvasSelector, nodes }) => {
+      const canvas = document.querySelector('.workspace-main[data-compact="true"]')?.querySelector(canvasSelector);
+      const pane = canvas?.querySelector(".react-flow__pane");
+      if (!canvas || !pane || canvas.getAttribute("data-layout") !== "reduced-motion") return false;
+      const labelId = canvas.closest(".workspace-graph-panel")?.getAttribute("aria-labelledby");
+      if (!labelId || document.getElementById(labelId)?.textContent !== "Product Map") return false;
+      const paneBounds = pane.getBoundingClientRect();
+      if (paneBounds.width <= 0 || paneBounds.height <= 0) return false;
+      const bounds = canvas.getBoundingClientRect();
+      return nodes.every((name) => {
+        const node = canvas.querySelector(`[data-testid="workspace-graph-node"][aria-label="${name}"]`);
+        if (!node) return false;
+        const extent = node.getBoundingClientRect();
+        return extent.width > 0 && extent.left >= bounds.left && extent.top >= bounds.top &&
+          extent.right <= bounds.right && extent.bottom <= bounds.bottom;
+      });
+    }, mobileGraph);
+  } catch (error) {
+    const geometry = await page.evaluate(({ canvasSelector, nodes }) => {
+      const canvas = document.querySelector(canvasSelector);
+      const viewport = canvas?.querySelector(".react-flow__viewport");
+      const labelId = canvas?.closest(".workspace-graph-panel")?.getAttribute("aria-labelledby");
+      const bounds = (element: Element | null | undefined) => element?.getBoundingClientRect().toJSON() ?? null;
+      return {
+        screen: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+        compact: document.querySelector(".workspace-main")?.getAttribute("data-compact"),
+        title: labelId ? document.getElementById(labelId)?.textContent : null,
+        layout: canvas?.getAttribute("data-layout"),
+        canvas: bounds(canvas),
+        pane: bounds(canvas?.querySelector(".react-flow__pane")),
+        transform: viewport ? getComputedStyle(viewport).transform : null,
+        nodes: nodes.map((name) => ({ name, bounds: bounds(canvas?.querySelector(`[data-testid="workspace-graph-node"][aria-label="${name}"]`)) })),
+      };
+    }, mobileGraph).catch(() => null);
+    await page.screenshot({ path: output + "/workspace-product-map-mobile-failure.png", timeout: 3_000 }).catch(() => {});
+    throw new Error(`The mobile Product Map did not fit its nodes. Geometry ${JSON.stringify(geometry)}`, { cause: error });
+  }
   await page.screenshot({ path: output + "/workspace-product-map-mobile.png" });
   await page.setViewportSize({ width: 1440, height: 900 });
   await product.getByRole("button", { name: "Focus neighborhood", exact: true }).click();
@@ -804,6 +834,7 @@ async function verifyTeamNotes(coordinator: Page, reader: Page, origin: string, 
 }
 
 async function verifyScreenshotEvidence(coordinator: Page, reader: Page, other: Page, origin: string, output: string) {
+  coordinator.setDefaultTimeout(30_000);
   const workspace = origin + "/app/repos/1001/workspace";
   const endpoint = origin + "/api/repos/1001/screenshots";
   const snapshotUrl = origin + "/api/repos/1001/snapshot";
@@ -812,7 +843,9 @@ async function verifyScreenshotEvidence(coordinator: Page, reader: Page, other: 
   assert.equal(before.status(), 200);
   const { revision: sourceRevision } = await before.json() as { revision: string };
   assert.match(sourceRevision, /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
+  const readyWorkspace = coordinator.locator("main.workspace-shell[aria-busy='false']");
   await coordinator.goto(workspace);
+  await readyWorkspace.waitFor();
   const uploader = coordinator.getByRole("region", { name: "Screenshot evidence", exact: true });
   const input = uploader.getByLabel("Screenshot file", { exact: true });
   await input.waitFor();
@@ -862,30 +895,53 @@ async function verifyScreenshotEvidence(coordinator: Page, reader: Page, other: 
   while (!indexed && Date.now() < deadline) {
     const result = await coordinator.request.get(snapshotUrl, { timeout: 15_000 });
     assert.equal(result.status(), 200);
-    const payload = await result.json() as { status: string; revision: string };
+    const payload = await result.json() as {
+      status: string;
+      revision: string;
+      snapshot: { changes: Array<{ id: string; evidence: Array<{ asset_id: string }> }> } | null;
+    };
     indexed = payload.status === "current" && payload.revision === evidenceRevision;
-    if (!indexed) await delay(250);
+    if (indexed) {
+      const change = payload.snapshot?.changes.find(({ id }) => id === "chg_private_screenshot_fixture");
+      assert.ok(change?.evidence.some(({ asset_id }) => asset_id === asset.id), "The indexed change must reference the exact uploaded asset.");
+    } else await delay(250);
   }
   assert.equal(indexed, true, "Signed screenshot fixture must reach the indexed workspace.");
+  console.log("Indexed the signed screenshot evidence and verified its exact asset reference.");
 
+  const served = await coordinator.request.get(workspace, { timeout: 15_000, maxRedirects: 0 });
+  assert.equal(served.status(), 200);
+  const isInitiallyInert = await coordinator.evaluate((html) => new DOMParser().parseFromString(html, "text/html")
+    .querySelector("main.workspace-shell[aria-busy='true'] .workspace-main[inert]") !== null, await served.text());
+  assert.equal(isInitiallyInert, true, "The server-rendered workspace must be busy and inert before hydration.");
+  console.log("Verified the initial workspace markup before hydration.");
   await coordinator.reload();
-  const explorer = coordinator.getByRole("navigation", { name: "Repository explorer", exact: true });
+  await readyWorkspace.waitFor();
+  await readyWorkspace.getByTestId("workspace-status").locator(`.workspace-status-state[title="${evidenceRevision}"]`)
+    .filter({ hasText: /^Indexed$/u }).waitFor();
+  const explorer = readyWorkspace.getByRole("navigation", { name: "Repository explorer", exact: true });
   const records = explorer.locator("summary").filter({ hasText: /^Product records$/u });
   if (!await records.evaluate((node) => (node.parentElement as HTMLDetailsElement).open)) await records.click();
-  await explorer.getByRole("button", { name: "Observation capture", exact: true }).click();
-  const evidence = coordinator.getByRole("region", { name: "Evidence for Inspect screenshot evidence for observation capture.", exact: true });
-  const declared = evidence.getByRole("listitem").filter({ hasText: asset.id });
+  const observation = explorer.getByRole("button", { name: "Observation capture", exact: true });
+  await observation.click();
+  await observation.and(explorer.locator('[aria-current="true"]')).waitFor();
+  const details = readyWorkspace.getByRole("region", { name: "Details", exact: true });
+  if (!await details.isVisible()) {
+    await readyWorkspace.getByRole("navigation", { name: "Workspace controls", exact: true })
+      .getByRole("button", { name: "Details", exact: true }).click();
+  }
+  await details.waitFor();
+  const evidence = details.getByRole("region", { name: "Evidence for Inspect screenshot evidence for observation capture.", exact: true });
+  await evidence.waitFor();
+  const declared = evidence.getByRole("listitem").filter({ has: coordinator.getByText(asset.id, { exact: true }) });
+  await declared.waitFor();
   await declared.getByText("Declared screenshot", { exact: true }).waitFor();
   await evidence.getByText("Fixture capture", { exact: true }).waitFor();
   await evidence.getByText("Evidence unavailable", { exact: true }).waitFor();
   for (const alt of ["Screenshot for Uploaded workspace image", "Screenshot for workspace-indexed"]) {
     const element = evidence.getByRole("img", { name: alt, exact: true });
     await element.waitFor();
-    assert.equal(await element.evaluate(async (node) => {
-      if (!(node instanceof HTMLImageElement)) return 0;
-      await node.decode();
-      return node.naturalWidth;
-    }), 1440);
+    assert.equal(await element.evaluate((node) => node instanceof HTMLImageElement && node.complete ? node.naturalWidth : 0), 1440);
   }
   assert.equal(await evidence.getByRole("img").count(), 2);
   await evidence.scrollIntoViewIfNeeded();

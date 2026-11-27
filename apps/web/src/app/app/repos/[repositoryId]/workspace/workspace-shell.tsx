@@ -128,6 +128,7 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
   const historyRequest = useRef(0);
   const [layout, setLayout] = useState(() => createWorkspaceLayout(data.initialItemId ?? undefined));
   const [restoredKey, setRestoredKey] = useState<string | null>(null);
+  const layoutReady = restoredKey === data.layoutKey;
   const [size, setSize] = useState({ width: 0, center: { width: 0, height: 0 } });
   const [drawer, setDrawer] = useState<DockSide | null>(null);
   const [notice, setNotice] = useState("");
@@ -168,13 +169,13 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
   }, [data.initialItemId, data.layoutKey, initialHistory, itemsById]);
 
   useEffect(() => {
-    if (restoredKey !== data.layoutKey) return;
+    if (!layoutReady) return;
     try {
       window.localStorage.setItem(data.layoutKey, JSON.stringify(layout));
     } catch {
       // A quota or privacy restriction should not affect the open workspace.
     }
-  }, [data.layoutKey, layout, restoredKey]);
+  }, [data.layoutKey, layout, layoutReady]);
 
   useEffect(() => {
     if (!main.current || !center.current) return;
@@ -201,6 +202,7 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
   }, []);
 
   useEffect(() => {
+    if (!layoutReady) return;
     function keyboard(event: globalThis.KeyboardEvent) {
       if (event.isComposing || (!event.ctrlKey && !event.metaKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "p") return;
       const target = event.target;
@@ -213,7 +215,7 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
     }
     document.addEventListener("keydown", keyboard, true);
     return () => document.removeEventListener("keydown", keyboard, true);
-  }, [openPalette]);
+  }, [layoutReady, openPalette]);
 
   function dispatch(action: WorkspaceLayoutAction) {
     setLayout((current) => workspaceLayoutReducer(current, action));
@@ -595,9 +597,9 @@ export function WorkspaceShell({ data, initialHistory }: { data: WorkspaceData; 
     <WorkspaceTasksProvider repositoryId={data.repositoryId}>
     <WorkspaceTeamNotesProvider repositoryId={data.repositoryId}>
     <WorkspaceHistoryProvider repositoryId={data.repositoryId} snapshotKey={`${data.revision}:${data.status}:${data.headRevision ?? ""}`}>
-    <main className="workspace-shell" id="content" tabIndex={-1}>
+    <main className="workspace-shell" id="content" tabIndex={-1} aria-busy={!layoutReady}>
       <h1 className="sr-only">{data.repositoryName} workspace</h1>
-      <div className="workspace-main" ref={main} data-compact={compact} onKeyDown={(event) => {
+      <div className="workspace-main" ref={main} data-compact={compact} inert={!layoutReady} onKeyDown={(event) => {
         if (event.key === "Escape" && compact && drawer) {
           event.stopPropagation();
           closeDock(drawer);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Handle, Position, ReactFlow, getStraightPath, type Edge, type EdgeProps, type Node, type NodeProps, type ReactFlowInstance } from "@xyflow/react";
+import { Handle, Position, ReactFlow, getStraightPath, getViewportForBounds, type Edge, type EdgeProps, type Node, type NodeProps, type ReactFlowInstance } from "@xyflow/react";
 import { Crosshair, Maximize, Minus, Pause, Play, Plus, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { IconButton } from "./pane-controls";
@@ -127,7 +127,6 @@ export function WorkspaceGraph({ nodes, edges, selectedId, onSelect, active = tr
     let frameId: number | undefined;
     const observer = new ResizeObserver(() => {
       if (frameId !== undefined) return;
-      // Let React Flow's own measurement catch up before fitting the viewport.
       frameId = requestAnimationFrame(() => {
         frameId = undefined;
         const width = canvas.clientWidth;
@@ -136,8 +135,13 @@ export function WorkspaceGraph({ nodes, edges, selectedId, onSelect, active = tr
         const previous = canvasSize.current;
         canvasSize.current = { width, height };
         if (!previous || (previous.width === width && previous.height === height)) return;
+        const nodes = flow.getNodes();
+        if (!nodes.length) return;
+        // React Flow measures its viewport independently. Use the observed size for this refit.
+        const viewport = getViewportForBounds(flow.getNodesBounds(nodes), width, height,
+          fitOptions.minZoom, fitOptions.maxZoom, fitOptions.padding);
         if (layout.settled) framed.current.add(layout);
-        void flow.fitView({ ...fitOptions, duration: cameraDuration });
+        void flow.setViewport(viewport, { duration: cameraDuration });
       });
     });
     observer.observe(canvas);
