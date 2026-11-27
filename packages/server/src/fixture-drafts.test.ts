@@ -13,7 +13,7 @@ const repositoryKey = String(repositoryId);
 const installationId = 2001;
 const path = "nutshell-vault/features/nutshell-setup/CONTEXT.md";
 
-describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL private Markdown drafts", () => {
+describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL private Markdown drafts", { timeout: 20_000 }, () => {
   const [revision, invalidRevision, newerRevision] = Array.from({ length: 3 }, () => randomBytes(20).toString("hex")) as [string, string, string];
   const revisions = [revision, invalidRevision, newerRevision];
   const delivered: string[] = [];
@@ -34,12 +34,12 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL private Markdow
     const config = loadConfig();
     origin = config.origin;
     await migrateAndSeed(config.databaseUrl);
-    db = new pg.Pool({ connectionString: config.databaseUrl });
+    db = new pg.Pool({ connectionString: config.databaseUrl, connectionTimeoutMillis: 15_000 });
     originalState = (await db.query<RepositoryState>(originalStateQuery, [repositoryId])).rows[0];
     originalCanWrite = (await db.query<{ can_write: boolean }>(
       "SELECT can_write FROM local_provider_grant WHERE repository_id = $1 AND user_id = 'local-reader'", [repositoryId],
     )).rows[0]?.can_write;
-  });
+  }, 20_000);
 
   afterAll(async () => {
     await closeRuntime();
@@ -62,7 +62,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL private Markdow
     } finally {
       await db.end();
     }
-  });
+  }, 20_000);
 
   async function login(persona: "coordinator" | "reader" | "other") {
     const response = await getAuth().handler(new Request(origin + "/api/auth/nutshell/persona", {

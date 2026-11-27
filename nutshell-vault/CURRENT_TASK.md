@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: markdown-drafts-2026-11-27
 task_state: pr_open
-task_revision: 37
+task_revision: 38
 repository_id: 1467144605
 branch: feature/markdown-drafts
 base_branch: main
@@ -28,7 +28,7 @@ Decorations are a view over Markdown source. Read remains the default view. Savi
 
 ## Consequences
 
-Source PR #8 is open. Migration 0003 and the draft API are integrated. The focused PostgreSQL scenario passed concurrent saves, cross-user and epoch isolation, stale source conflicts, and exact text round trips. Next, verify the integrated CodeMirror and pane behavior in the optimized browser run.
+Source PR #8 has the draft API and CodeMirror workspace. The optimized build, persisted-worker probe, and focused editor and PostgreSQL checks passed. The original full gate hit the draft hook deadline after 123 passing tests. The focused database test passed with the corrected bound. Firefox renders existing Markdown headings and discards synthetic ClipboardEvent data. Next, exercise the clipboard handler with explicit test data and rerun the complete gate.
 
 ## Affected files
 
