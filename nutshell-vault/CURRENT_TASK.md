@@ -3,34 +3,35 @@ id: control-current-task
 date: "2026-11-26"
 status: active
 tags: [control, task, pull-requests]
-task_id: null
-task_state: idle
-task_revision: 25
-repository_id: null
-branch: null
-base_branch: null
+task_id: snapshot-workspace-2026-11-26
+task_state: in_progress
+task_revision: 26
+repository_id: 1467144605
+branch: feature/snapshot-workspace
+base_branch: main
 pr_number: null
 pr_url: null
 last_verified_head: null
-lead_agent: null
-integration_checkout: null
+lead_agent: codex-lead
+integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
 ---
 # Current task
 
 ## Context
 
-No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
+Open the authorized indexed repository documents and records in a read-only workspace with the specified ribbon, status bar, and responsive pane layout.
 
 ## Decision
 
-The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
+Use the published snapshot for document and record content. Keep tabs and split state in a versioned, bounded user and repository preference. Apply the canonical UI guide and preserve the original logo.
 
 ## Consequences
 
-See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
+PR #5 merged and its guarded cleanup confirmed idle revision 25. Open the source draft before integrating workspace data, pane controls, and responsive browser verification.
 
 ## Affected files
 
-- [Task template](templates/TASK.md)
-- [Vault index](_INDEX.md)
+- [Workspace context](features/workspace-editor/CONTEXT.md)
+- [UI guide](design/UI_GUIDE.md)
+- [Acceptance ledger](runs/ACCEPTANCE.md)
