@@ -4,8 +4,8 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: github-app-adapter-2026-11-27
-task_state: pr_open
-task_revision: 85
+task_state: ready_for_review
+task_revision: 86
 repository_id: 1467144605
 branch: feature/github-app-adapter
 base_branch: main
@@ -28,7 +28,7 @@ The transport delegate owns bounded GitHub requests and installation credentials
 
 ## Consequences
 
-The interactive preview merged and canonical cleanup was confirmed at idle revision 82. Draft PR #16 is open. Eight controlled transport tests passed for fixed origins, pagination, credential scope and token expiry. Next verify repository, setup, Check targeting, and pinned Better Auth behavior together.
+Controlled GitHub App and setup-tree suites passed 41 tests. Configured provider responses exercised credentials, immutable repository reads, and exact PR targeting. No live product credentials or disposable repository were supplied. Next verify the source check and merge the exact PR, then confirm canonical cleanup.
 
 ## Affected files
 
