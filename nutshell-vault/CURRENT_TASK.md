@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: private-screenshot-evidence-2026-11-27
-task_state: pr_open
-task_revision: 69
+task_state: ready_for_review
+task_revision: 70
 repository_id: 1467144605
 branch: feature/private-screenshot-evidence
 base_branch: main
 pr_number: 13
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/13
-last_verified_head: null
+last_verified_head: 0864c06f390aab810c7ba4790c63e461b0727856
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ The service delegate owns asset storage and authorization, the HTTP delegate own
 
 ## Consequences
 
-Team notes merged and canonical cleanup was confirmed at idle revision 66. Draft PR #13 is open. Private storage, decoder, and authorization tests passed on the isolated database. The 5 scoped route and 4 raster tests passed. Next integrate the workspace and exercise the complete browser and signed-fixture journey.
+Migration 0007 passed on both databases. Eleven focused PostgreSQL, raster, and route tests passed. Lint, strict types, the optimized build, persisted worker, signed fixture flows, and real Firefox passed with private image delivery and distinct declared, fixture capture, and unavailable states. Next verify the exact GitHub head before merge and guarded cleanup.
 
 ## Affected files
 
