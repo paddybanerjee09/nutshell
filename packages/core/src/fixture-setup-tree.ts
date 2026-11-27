@@ -20,7 +20,7 @@ const managedInstructions = [
   finish,
 ];
 
-const fixtureDetails = z.strictObject({
+const setupDetails = z.strictObject({
   name: z.string().trim().min(1).max(160).regex(/^[^\p{Cc}]+$/u),
   description: z.string().trim().min(1).max(600).regex(/^[^\p{Cc}]+$/u),
   entityId: repositoryEntitySchema.shape.id,
@@ -31,7 +31,27 @@ const catalogMetadata = z.object({
 });
 
 type SetupFile = { path: string; body: string };
-type FixtureDetails = z.input<typeof fixtureDetails>;
+type SetupDetails = z.input<typeof setupDetails>;
+type SetupProvider = "fixture" | "github";
+
+const setupCopy = {
+  fixture: {
+    tags: "setup, fixture",
+    context: "This repository is a synthetic fixture for Nutshell's local setup flow.",
+    consequences: "A simulated setup merge lets the local worker validate and publish this fixture's initial knowledge.",
+    catalog: "The synthetic fixture setup context.",
+    requirements: "This synthetic fixture exercises Nutshell's local repository setup.",
+    rationale: "Give this synthetic fixture a versioned repository map and a shared vault.",
+  },
+  github: {
+    tags: "setup, repository",
+    context: "This repository uses Nutshell for source-linked knowledge.",
+    consequences: "After the setup pull request merges, Nutshell validates the default-branch revision before indexing it.",
+    catalog: "The Nutshell repository setup context.",
+    requirements: "Record this repository's product and implementation requirements here.",
+    rationale: "Give this repository a versioned product map and a shared vault.",
+  },
+} as const;
 
 function installInstructions(owner: string) {
   const markers = owner.match(/<!--\s*nutshell\s*(?::\s*|[-\s]+)managed\b/giu);
@@ -84,7 +104,7 @@ ${sections.affectedFiles}
 `;
 }
 
-function initialVault() {
+function initialVault(copy: (typeof setupCopy)[SetupProvider]) {
   return new Map([
     [taskPath, memoryNote("control-current-task", "control, task", {
       context: "No feature task is active.",
@@ -104,10 +124,10 @@ integration_checkout: null
 last_verified_head: null
 cleanup_pr_url: null
 `)],
-    [contextPath, memoryNote("feature-nutshell-setup", "setup, fixture", {
-      context: "This repository is a synthetic fixture for Nutshell's local setup flow.",
+    [contextPath, memoryNote("feature-nutshell-setup", copy.tags, {
+      context: copy.context,
       decision: "Keep repository instructions and handoff files with the project. Register active Markdown in one vault index.",
-      consequences: "A simulated setup merge lets the local worker validate and publish this fixture's initial knowledge.",
+      consequences: copy.consequences,
       affectedFiles: "[Index](../../_INDEX.md), [current task](../../CURRENT_TASK.md), and [.nutshell configuration](../../../.nutshell/config.json).",
     })],
     [noteTemplatePath, memoryNote("template-note", "template, note", {
@@ -131,12 +151,11 @@ const catalogDescriptions = new Map([
   ["SPEC.md", "Repository requirements."],
   [catalogPath, "The sole active memory catalog."],
   [taskPath, "The single lead-owned task."],
-  [contextPath, "The synthetic fixture setup context."],
   [noteTemplatePath, "Four-section format for durable notes."],
   [taskTemplatePath, "Guidance for overwriting and clearing the current task."],
 ]);
 
-function makeCatalog(files: ReadonlyMap<string, string>) {
+function makeCatalog(files: ReadonlyMap<string, string>, contextDescription: string) {
   const rows = ["| Path | Description | Status | Tags |", "| --- | --- | --- | --- |"];
   for (const path of [...files.keys(), catalogPath].sort()) {
     const vaultDocument = path.startsWith(root) && /\.md$/iu.test(path) && !path.startsWith(root + "archive/");
@@ -155,7 +174,7 @@ function makeCatalog(files: ReadonlyMap<string, string>) {
     if (!path.isWellFormed()) throw new Error("Use valid Unicode in tracked file names before retrying setup.");
     const relative = vaultDocument ? path.slice(root.length) : "../" + path;
     const destination = relative.split("/").map(encodeURIComponent).join("/");
-    const description = catalogDescriptions.get(path) ?? "Repository note.";
+    const description = path === contextPath ? contextDescription : catalogDescriptions.get(path) ?? "Repository note.";
     rows.push(`| [${path}](<${destination}>) | ${description} | ${status} | ${tags} |`);
   }
   return memoryNote("control-vault-index", "control, index", {
@@ -166,7 +185,7 @@ function makeCatalog(files: ReadonlyMap<string, string>) {
   });
 }
 
-function addSetupRecords(files: Map<string, string>, details: FixtureDetails) {
+function addSetupRecords(files: Map<string, string>, details: SetupDetails, rationale: string) {
   const sourcePaths = [...files.keys()].some((path) => path.startsWith("src/")) ? ["src/**"] : [];
   const config: RepositoryProjection["config"] = {
     schema_version: 1,
@@ -197,7 +216,7 @@ function addSetupRecords(files: Map<string, string>, details: FixtureDetails) {
     change_type: "added",
     summary: "Initialized Nutshell repository knowledge for " + details.name + ".",
     product_impact: "internal",
-    rationale: "Give this synthetic fixture a versioned repository map and a shared vault.",
+    rationale,
     technical_summary: "Add the initial configuration, product entity and vault catalog through a setup proposal.",
     memory_paths: [contextPath],
     evidence: [],
@@ -215,26 +234,27 @@ function addSetupRecords(files: Map<string, string>, details: FixtureDetails) {
   }
 }
 
-export function buildFixtureSetupTree(files: readonly SetupFile[], info: FixtureDetails): SetupFile[] {
-  const details = fixtureDetails.safeParse(info);
-  if (!details.success) throw new Error("Provide a valid fixture name, description and stable entity ID before generating setup.");
-  if (files.length > 5_000) throw new Error("The fixture tree exceeds the path limit.");
+export function buildRepositorySetupTree(files: readonly SetupFile[], info: SetupDetails, provider: SetupProvider): SetupFile[] {
+  const copy = setupCopy[provider];
+  const details = setupDetails.safeParse(info);
+  if (!details.success) throw new Error("Provide a valid repository name, description and stable entity ID before generating setup.");
+  if (files.length > 5_000) throw new Error("The repository tree exceeds the path limit.");
 
   const tree = new Map<string, string>();
   for (const { path, body } of files) {
-    if (tree.has(path)) throw new Error("The fixture tree contains a duplicate path: " + path + ".");
+    if (tree.has(path)) throw new Error("The repository tree contains a duplicate path: " + path + ".");
     tree.set(path, body);
   }
   const owner = tree.get("AGENTS.md") ?? "";
   if (owner.length > 256 * 1024) throw new Error("AGENTS.md exceeds the managed document size limit.");
   tree.set("AGENTS.md", installInstructions(owner));
   if (!tree.has("README.md")) tree.set("README.md", "# Repository overview\n\nSee [the vault index](nutshell-vault/_INDEX.md) for shared repository knowledge.\n");
-  if (!tree.has("SPEC.md")) tree.set("SPEC.md", "# Repository requirements\n\nThis synthetic fixture exercises Nutshell's local repository setup.\n");
-  for (const [path, body] of initialVault()) {
+  if (!tree.has("SPEC.md")) tree.set("SPEC.md", "# Repository requirements\n\n" + copy.requirements + "\n");
+  for (const [path, body] of initialVault(copy)) {
     if (!tree.has(path)) tree.set(path, body);
   }
-  if (!tree.has(catalogPath)) tree.set(catalogPath, makeCatalog(tree));
-  addSetupRecords(tree, details.data);
+  if (!tree.has(catalogPath)) tree.set(catalogPath, makeCatalog(tree, copy.catalog));
+  addSetupRecords(tree, details.data, copy.rationale);
 
   for (const path of tree.keys()) {
     for (let separator = path.lastIndexOf("/"); separator > 0; separator = path.lastIndexOf("/", separator - 1)) {
@@ -248,4 +268,8 @@ export function buildFixtureSetupTree(files: readonly SetupFile[], info: Fixture
     throw new Error("Setup cannot use " + issue.path + ". " + issue.message);
   }
   return [...tree.keys()].sort().map((path) => ({ path, body: tree.get(path)! }));
+}
+
+export function buildFixtureSetupTree(files: readonly SetupFile[], info: SetupDetails): SetupFile[] {
+  return buildRepositorySetupTree(files, info, "fixture");
 }
