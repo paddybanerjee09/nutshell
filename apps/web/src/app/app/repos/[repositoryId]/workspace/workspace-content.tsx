@@ -77,7 +77,7 @@ export function WorkspaceContent({ item, items, onOpen, mode: requestedMode, ind
         <span>Private draft</span>
         {showingDraft.version > 0 && <span>Version {showingDraft.version}</span>}
         <code title={showingDraft.sourceRevision}>{showingDraft.sourceRevision.slice(0, 12)}</code>
-        <span role="status">{showingDraft.saving ? "Saving draft…" : dirty ? "Unsaved changes"
+        <span role="status">{showingDraft.saving ? "Saving draft…" : conflict ? "Draft conflict" : dirty ? "Unsaved changes"
           : showingDraft.version > 0 ? "Draft saved" : "New draft"}</span>
       </> : <>
         <span>Canonical</span>
