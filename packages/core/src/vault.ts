@@ -29,7 +29,7 @@ export type VaultIssue = {
 
 type Report = (path: string, code: string, message: string) => void;
 
-function readNote(path: string, source: string, report: Report) {
+export function readNote(path: string, source: string, report: Report) {
   const frontmatter = parseFrontmatter(source);
   if (!frontmatter.ok) {
     report(path, "note-frontmatter", frontmatter.message);
@@ -51,7 +51,7 @@ function readNote(path: string, source: string, report: Report) {
   };
 }
 
-function visibleLines(lines: string[]) {
+export function visibleLines(lines: string[]) {
   let fence: string | undefined;
   let inComment = false;
   return lines.map((line) => {
@@ -108,11 +108,11 @@ function tableCells(line: string) {
   return cells;
 }
 
-function isManagedPath(path: string) {
+export function isManagedPath(path: string) {
   return handoffPaths.has(path) || (path.startsWith(vault) && /\.md$/iu.test(path));
 }
 
-function isLiteralPath(path: string) {
+export function isLiteralPath(path: string) {
   return !/[\\:\p{Cc}]/u.test(path) &&
     path.split("/").every((part) => part && part !== "." && part !== "..");
 }
@@ -145,11 +145,9 @@ function indexLink(cell: string) {
   }
 }
 
-function validateIndex(
-  lines: string[],
-  activePaths: ReadonlyMap<string, string>,
-  report: Report,
-) {
+export type VaultCatalogEntry = { path: string; description: string; status: string; tags: string[] };
+
+function catalogRows(lines: string[], report: Report): VaultCatalogEntry[] | undefined {
   const rows = lines.map(tableCells);
   const tables = rows.reduce<number[]>((starts, cells, line) => {
     if (cells.join("|") === indexColumns.join("|")) starts.push(line);
@@ -168,6 +166,7 @@ function validateIndex(
   }
 
   const seen = new Set<string>();
+  const entries: VaultCatalogEntry[] = [];
   for (const [offset, cells] of rows.slice(start + 2).entries()) {
     if (!cells.length) break;
     const [label, description, rowStatus, tags] = cells;
@@ -186,7 +185,26 @@ function validateIndex(
       report(indexPath, "index-duplicate", "Duplicate catalog entry for " + path + ".");
     }
     seen.add(path);
+    entries.push({ path, description, status: rowStatus, tags: tags.split(",").map((tag) => tag.trim()) });
+  }
+  return entries;
+}
 
+export function readVaultCatalog(source: string) {
+  const issues: VaultIssue[] = [];
+  const report: Report = (path, code, message) => { issues.push({ path, code, message }); };
+  const index = readNote(indexPath, source, report);
+  if (index && index.metadata.status !== "active") report(indexPath, "control-status", "Vault controls must have status active.");
+  const entries = index ? catalogRows(visibleLines(index.body), report) ?? [] : [];
+  return { entries, issues };
+}
+
+function validateIndex(lines: string[], activePaths: ReadonlyMap<string, string>, report: Report) {
+  const entries = catalogRows(lines, report);
+  if (!entries) return;
+  const seen = new Set<string>();
+  for (const { path, status: rowStatus } of entries) {
+    seen.add(path);
     const status = activePaths.get(path);
     if (!status) {
       report(indexPath, "index-unmanaged", "Catalog entry is missing, unmanaged, or inactive: " + path + ".");
