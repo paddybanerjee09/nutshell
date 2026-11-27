@@ -41,7 +41,7 @@ This is the sole router. Every active managed Markdown file has exactly one row,
 | [nutshell-vault/features/product-history/CONTEXT.md](features/product-history/CONTEXT.md) | Indexed product relationships, retained semantic history, original revision links, and private screenshot evidence. | active | feature, history, entities, evidence |
 | [nutshell-vault/features/tasks-notes/CONTEXT.md](features/tasks-notes/CONTEXT.md) | Repository tasks, date-only deadlines, structured notes, collaboration permissions, and save conflicts. | active | feature, tasks, notes, collaboration |
 | [nutshell-vault/features/workspace-editor/CONTEXT.md](features/workspace-editor/CONTEXT.md) | Indexed workspace, pane layout, Markdown editor, private drafts, simulated proposals, and graphs. | active | feature, ui, editor, codemirror, graph |
-| [nutshell-vault/product/OVERVIEW.md](product/OVERVIEW.md) | Purpose, audience, product loop, and planned alpha scope. | planned | product, purpose, scope, brand |
+| [nutshell-vault/product/OVERVIEW.md](product/OVERVIEW.md) | Product purpose, local alpha, and public synthetic demo. | active | product, purpose, scope, brand |
 | [nutshell-vault/runs/ACCEPTANCE.md](runs/ACCEPTANCE.md) | Local setup, application, provider, and source PR verification evidence. | active | verification, acceptance, evidence |
 | [nutshell-vault/templates/NOTE.md](templates/NOTE.md) | Required metadata and four-section shape for concise durable notes. | active | template, note, decision |
 | [nutshell-vault/templates/TASK.md](templates/TASK.md) | Current-task fields, lead ownership, overwrite rules, and reset semantics. | active | template, task, control |

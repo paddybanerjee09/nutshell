@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
-import type { Browser, BrowserServer, Locator, Page } from "playwright";
+import type { Browser, BrowserServer, Locator, Page, Request } from "playwright";
 
 const personaPath = "/api/auth/nutshell/persona";
 
@@ -923,6 +923,152 @@ async function verifyProductHistory(coordinator: Page, reader: Page, other: Page
   await coordinator.close();
 }
 
+async function verifyMarketingLayout(page: Page, origin: string, output: string) {
+  const direct = await page.request.get(origin);
+  assert.equal(direct.status(), 200);
+  assert.doesNotMatch(await direct.text(), /Field Notes|Harbor Atlas|local-coordinator|\/api\/repos\/1001/u);
+  const headline = page.getByRole("heading", { level: 1 });
+  assert.equal((await headline.innerText()).replace(/\s+/gu, " "), "Your codebase. In a Nutshell.");
+  const title = await headline.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { size: parseFloat(style.fontSize), spacing: parseFloat(style.letterSpacing), color: style.color };
+  });
+  assert.ok(title.size >= 48 && title.size <= 64);
+  assert.ok(Math.abs(title.spacing / title.size + 0.03) < 0.001);
+  assert.equal(title.color, "rgb(255, 255, 255)");
+  const subtitle = page.getByText("Shared project memory, connected features, and clear change history for teams building with AI.", { exact: true });
+  assert.equal(await subtitle.evaluate((element) => getComputedStyle(element).color), "rgb(153, 153, 153)");
+  const cta = page.getByRole("link", { name: "Open local alpha", exact: true });
+  const button = await cta.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return [style.backgroundColor, style.color, style.borderRadius];
+  });
+  assert.deepEqual(button, ["rgb(127, 109, 242)", "rgb(22, 22, 22)", "4px"]);
+  assert.equal(await page.locator("a.primary-cta").count(), 1);
+  assert.equal(await cta.getAttribute("href"), "/login");
+  const header = page.getByRole("banner");
+  assert.match(await header.evaluate((element) => getComputedStyle(element).backgroundColor), /^rgba\(/u);
+  const nav = header.getByRole("navigation", { name: "Main navigation", exact: true });
+  const row = await nav.getByRole("link").evaluateAll((links) => links.map((link) => {
+    const box = link.getBoundingClientRect();
+    return box.y + box.height / 2;
+  }));
+  assert.equal(row.length, 4);
+  assert.ok(Math.max(...row) - Math.min(...row) <= 2);
+  const logo = header.locator("img");
+  const logoSrc = await logo.getAttribute("src");
+  assert.ok(logoSrc);
+  const logoUrl = new URL(logoSrc, origin);
+  assert.equal(logoUrl.origin, origin);
+  const artwork = await page.request.get(logoUrl.href);
+  assert.equal(artwork.status(), 200);
+  const original = await readFile("assets/brand/nutshell-logo.png");
+  assert.equal(createHash("sha256").update(original).digest("hex"), "e5bf6e6c8ab5b8c732df625df393265bd6aafeed633dc38d8e70b5c884963fbd");
+  assert.deepEqual(await artwork.body(), original);
+  assert.deepEqual(await logo.evaluate(async (element) => {
+    const image = element as HTMLImageElement;
+    await image.decode();
+    return [image.naturalWidth, image.naturalHeight];
+  }), [567, 523]);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: output + "/entry-desktop.png" });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: output + "/entry-1280x800.png" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+}
+
+async function verifyMarketingPreview(page: Page, browser: Browser, origin: string, output: string) {
+  const protectedRequests: string[] = [];
+  function trackRequest(request: Request) {
+    const path = new URL(request.url()).pathname;
+    if (/^\/api\/(?:repos|auth|github)(?:\/|$)/u.test(path)) protectedRequests.push(path);
+  }
+  page.on("request", trackRequest);
+  try {
+    await page.goto(origin);
+    await verifyMarketingLayout(page, origin, output);
+    const navigation = page.getByRole("navigation", { name: "Main navigation", exact: true });
+    assert.equal(await navigation.getByRole("link", { name: "Sign in", exact: true }).getAttribute("href"), "/login");
+    await navigation.getByRole("link", { name: "Product", exact: true }).press("Enter");
+    await page.waitForURL("**/#product");
+    const preview = page.getByRole("region", { name: "Editor and graph demo", exact: true });
+    await preview.getByText("Demo", { exact: true }).waitFor();
+    const documentSelect = preview.getByLabel("Demo document", { exact: true });
+    await documentSelect.selectOption({ label: "Release checklist" });
+    const editor = preview.getByRole("textbox", { name: "Markdown editor", exact: true });
+    await editor.getByText(/Release checklist/u).first().waitFor();
+    assert.equal(await editor.getAttribute("contenteditable"), "false");
+    await preview.getByRole("button", { name: "Source", exact: true }).press("Enter");
+    await editor.getByText(/# Release checklist/u).first().waitFor();
+
+    const canvas = preview.getByRole("region", { name: "Graph canvas", exact: true });
+    await canvas.getByRole("button", { name: "Telemetry", exact: true }).press("Enter");
+    const selected = preview.getByRole("complementary", { name: "Selected graph item", exact: true });
+    await selected.getByRole("heading", { name: "Telemetry", exact: true }).waitFor();
+    await selected.getByRole("button", { name: "Open note", exact: true }).click();
+    assert.equal(await documentSelect.locator("option:checked").innerText(), "Telemetry");
+    await editor.getByText(/soil_moisture_pct/u).first().waitFor();
+    const viewport = canvas.locator(".react-flow__viewport");
+    const beforeZoom = await viewport.evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).a);
+    await canvas.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await page.waitForFunction((initial) => {
+      const element = document.querySelector("[aria-label='Graph canvas'] .react-flow__viewport");
+      return element && new DOMMatrix(getComputedStyle(element).transform).a > initial;
+    }, beforeZoom);
+
+    await page.setViewportSize({ width: 1440, height: 200 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForFunction(() => document.querySelector("[aria-label='Graph canvas']")?.getAttribute("data-layout") === "inactive");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await navigation.getByRole("link", { name: "How it works", exact: true }).press("Enter");
+    await page.waitForURL("**/#how-it-works");
+    assert.equal(await page.locator("#how-it-works").count(), 1);
+
+    const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+    mobile.on("request", trackRequest);
+    try {
+      await mobile.goto(origin);
+      const nav = mobile.getByRole("navigation", { name: "Main navigation", exact: true });
+      const menu = nav.locator("summary").filter({ hasText: /^Menu$/u });
+      await menu.press("Enter");
+      await nav.getByRole("link", { name: "Product", exact: true }).press("Enter");
+      await mobile.waitForURL("**/#product");
+      const open = mobile.getByRole("button", { name: "Open full demo", exact: true });
+      await open.press("Enter");
+      const dialog = mobile.getByRole("dialog", { name: "Full demo", exact: true });
+      await dialog.getByLabel("Demo document", { exact: true }).selectOption({ label: "Ground station" });
+      await dialog.getByRole("textbox", { name: "Markdown editor", exact: true }).getByText(/Ground station/u).first().waitFor();
+      await dialog.locator("[aria-label='Graph canvas'][data-motion='reduced']").waitFor();
+      assert.ok(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1));
+      await mobile.screenshot({ path: output + "/entry-full-demo-mobile.png" });
+      await mobile.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+      assert.equal(await open.evaluate((element) => element === document.activeElement), true);
+      for (const width of [390, 320]) {
+        await mobile.setViewportSize({ width, height: 844 });
+        await mobile.evaluate(() => window.scrollTo(0, 0));
+        assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        const size = await mobile.getByRole("heading", { level: 1 }).evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+        assert.ok(size >= 48 && size <= 64);
+        if (width === 390) await mobile.screenshot({ path: output + "/entry-mobile.png" });
+      }
+      // A 1440 × 900 window presents this CSS viewport at 200% zoom.
+      await mobile.setViewportSize({ width: 720, height: 450 });
+      await mobile.evaluate(() => window.scrollTo(0, 0));
+      assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      assert.ok(await mobile.getByRole("link", { name: "Open local alpha", exact: true }).isVisible());
+      await mobile.screenshot({ path: output + "/entry-reflow-720x450.png" });
+    } finally {
+      mobile.off("request", trackRequest);
+      await mobile.close();
+    }
+    assert.deepEqual(protectedRequests, []);
+  } finally {
+    page.off("request", trackRequest);
+  }
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -951,11 +1097,12 @@ export async function verifyEntryFlow(origin: string) {
       data: { persona: "coordinator" },
     });
     assert.equal(crossOrigin.status(), 403);
-    await page.goto(origin);
-    assert.equal(await page.getByRole("heading", { level: 1 }).innerText(), "Your codebase. In a Nutshell.");
-    await page.screenshot({ path: output + "/entry-desktop.png" });
+    await verifyMarketingPreview(page, browser, origin, output);
     await page.getByRole("link", { name: "Open local alpha" }).click();
     await signIn(page, /^Coordinator/);
+    const signedInPublic = await page.request.get(origin);
+    assert.equal(signedInPublic.status(), 200);
+    assert.doesNotMatch(await signedInPublic.text(), /Field Notes|Harbor Atlas|local-coordinator|\/api\/repos\/1001/u);
     await page.getByRole("link", { name: /Field Notes/ }).waitFor();
     assert.equal(await page.getByText("Harbor Atlas").count(), 0);
     await page.reload();

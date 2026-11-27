@@ -1,0 +1,138 @@
+.marketing-header {
+  position: relative;
+  z-index: 1;
+  border-block-end: var(--ns-border-width) solid var(--ns-border);
+  background: rgba(24, 24, 24, 0.88);
+}
+
+.marketing-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(8px, 2vw, 24px);
+  max-inline-size: 1320px;
+  min-block-size: 64px;
+  margin-inline: auto;
+  padding: 5px clamp(12px, 3vw, 32px);
+}
+
+.marketing-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ns-headline);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.marketing-brand .marketing-brand-artwork { flex: none; inline-size: 46px; padding: 4px; }
+.marketing-section-links { display: flex; align-items: center; gap: clamp(10px, 2vw, 24px); }
+.marketing-nav a, .marketing-nav summary { white-space: nowrap; }
+
+.marketing-nav :is(.marketing-sign-in, .marketing-section-links a, .marketing-section-menu a, summary) {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  padding-inline: 6px;
+  border-radius: var(--ns-radius-button);
+  color: var(--ns-text);
+  text-decoration: none;
+  text-underline-offset: 4px;
+}
+
+.marketing-nav :is(.marketing-sign-in, .marketing-section-links a, .marketing-section-menu a):hover { text-decoration: underline; }
+.marketing-mobile-menu { display: none; position: relative; }
+.marketing-mobile-menu summary { gap: 5px; cursor: pointer; list-style: none; }
+.marketing-mobile-menu summary::-webkit-details-marker { display: none; }
+.marketing-mobile-menu summary svg { color: var(--ns-icon); }
+.marketing-mobile-menu summary:hover { background: var(--ns-hover); }
+.marketing-mobile-menu[open] summary svg, .marketing-mobile-menu summary:hover svg { color: var(--ns-text); }
+
+.marketing-section-menu {
+  position: absolute;
+  inset-block-start: calc(100% + 5px);
+  inset-inline-end: 0;
+  display: grid;
+  min-inline-size: 136px;
+  padding: 4px;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-card);
+  background: var(--ns-chrome-alt);
+}
+
+.marketing-section-menu a:hover { background: var(--ns-hover); }
+.marketing-mobile-menu:not([open]) .marketing-section-menu { display: none; }
+.marketing-page { padding-block-end: clamp(32px, 6vw, 72px); }
+
+.marketing-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-inline-size: 720px;
+  margin-inline: auto;
+  padding: clamp(24px, 3.5vw, 44px) 16px clamp(20px, 3vw, 32px);
+  text-align: center;
+}
+
+.marketing-intro h1 {
+  max-inline-size: 100%;
+  margin: 0;
+  color: var(--ns-headline);
+  font-size: clamp(var(--ns-font-size-hero-min), 5vw, var(--ns-font-size-hero-max));
+  line-height: 1.05;
+  letter-spacing: var(--ns-letter-spacing-hero);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.marketing-intro h1 span { display: block; }
+
+.marketing-intro p, .marketing-how dd {
+  color: var(--ns-subtitle);
+  font-size: var(--ns-font-size-body);
+  line-height: var(--ns-line-height-body);
+}
+
+.marketing-intro p { max-inline-size: 52ch; margin: 12px 0 20px; text-wrap: balance; }
+.marketing-intro .primary-cta {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 44px;
+  padding: 8px 16px;
+  border-radius: var(--ns-radius-button);
+  background: var(--ns-accent);
+  color: var(--ns-primary-cta-label);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.marketing-intro .primary-cta:hover { text-decoration: underline; }
+
+.marketing-showcase, .marketing-how {
+  min-inline-size: 0;
+  inline-size: min(1320px, calc(100% - clamp(24px, 6vw, 88px)));
+  margin-inline: auto;
+}
+
+.marketing-how {
+  max-inline-size: 1000px;
+  margin-block-start: clamp(28px, 6vw, 64px);
+  border-block-start: var(--ns-border-width) solid var(--ns-border);
+  padding-block-start: 20px;
+}
+
+.marketing-how h2 { margin: 0 0 14px; color: var(--ns-headline); font-size: 24px; letter-spacing: -0.02em; }
+.marketing-how dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px clamp(14px, 3vw, 28px); margin: 0; }
+.marketing-how dt { color: var(--ns-text); font-size: 16px; font-weight: 650; }
+.marketing-how dd { margin: 3px 0 0; }
+
+@media (max-width: 600px) {
+  .marketing-nav { min-block-size: 58px; }
+  .marketing-brand .marketing-brand-artwork { inline-size: 42px; }
+  .marketing-section-links { display: none; }
+  .marketing-mobile-menu { display: block; }
+  .marketing-how dl { grid-template-columns: minmax(0, 1fr); }
+}
