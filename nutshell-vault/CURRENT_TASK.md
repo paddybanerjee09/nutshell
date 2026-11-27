@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: workspace-graphs-2026-11-27
-task_state: in_progress
-task_revision: 48
+task_state: pr_open
+task_revision: 50
 repository_id: 1467144605
 branch: feature/workspace-graphs
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 10
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/10
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Use one React Flow renderer with bounded d3-force layout, distinct graph semanti
 
 ## Consequences
 
-Source preflight and canonical idle revision 47 are verified. Next, open the real graph feature PR, integrate the projection and workspace views, and verify them in local Firefox.
+Source PR #10 has pinned graph dependencies and a tested bounded model. Five model tests passed. The isolated PostgreSQL fixture validated its declared edge and archive exclusion. Next, integrate the force renderer and workspace navigation and run the browser journey.
 
 ## Affected files
 

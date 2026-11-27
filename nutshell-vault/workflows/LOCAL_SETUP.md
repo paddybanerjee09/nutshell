@@ -27,7 +27,7 @@ If source-repository access, authentication, or required PR capability is unavai
 - Complete Codex sign-in/project trust as needed. Inspect existing instructions, overrides, branch/worktree, and unrelated user changes.
 - Verify a supported Node LTS runtime; select compatible stable dependencies and pin actual Node/pnpm/dependency versions and the lockfile.
 - Provide local PostgreSQL through a native installation or available Docker setup. Verify connectivity and restart behavior; do not assume Docker or WSL exists.
-- Verify dependency-download access, Playwright Chromium, and required operating-system dependencies.
+- Verify dependency-download access, the Playwright browser for the host, and the required operating-system dependencies.
 - Verify project writes, permitted Git operations, app ports, and scoped database/media directories.
 - Keep the machine awake and session online during the run. Use PowerShell-compatible or cross-platform scripts for Windows.
 
@@ -74,9 +74,11 @@ On this Windows host, Chromium's native child stayed alive after the browser con
 
 Verification runs the test files in sequence because PostgreSQL integration tests change shared fixture grants and connection epochs. On Windows, Vitest uses worker threads to avoid the observed fork shutdown timeouts.
 
-Web startup reports the failed phase and waits for HTTP 200 from its own loopback health route before signalling readiness. Transient unavailability permits up to three checks within the supervisor deadline. Provisioning and migration each allow 15 seconds per local connection, and the three real PostgreSQL test suites have 20-second setup and test deadlines.
+Web startup reports the failed phase and waits for HTTP 200 from its own loopback health route before signalling readiness. Transient unavailability permits up to three checks within the supervisor deadline. Provisioning and migration each allow 15 seconds per local connection. The PostgreSQL integration suites use explicit setup, test, and cleanup deadlines.
 
 The pinned runtime uses Node 24.18.0, pnpm 11.25.0, PostgreSQL 18.7, Next.js 16.4.6, Better Auth 1.7.28, Drizzle 0.45.4, and pg-boss 12.40.0.
+
+The workspace graphs use React Flow 13.0.3 with d3-force 3.0.1. The lockfile pins the graph and editor dependencies used by the app. [React Flow layout guide](https://reactflow.dev/learn/layouting/layouting) and [d3-force reference](https://d3js.org/d3-force).
 
 ### Configure the product runtime separately
 

@@ -17,7 +17,7 @@ type DocumentItem = Item & {
   words: number;
   characters: number;
 };
-type EntityItem = Item & { kind: "entity"; entity: Projection["entities"][number] };
+type EntityItem = Item & { kind: "entity"; kindLabel?: string; entity: Projection["entities"][number] };
 
 export type WorkspaceItem = DocumentItem | EntityItem;
 export type WorkspaceData = {
@@ -58,8 +58,10 @@ export function workspaceData(repository: { id: string; name: string }, userId: 
     item.linkedItemIds = [...outgoing];
     for (const id of outgoing) byId.get(id)?.backlinkIds.push(item.id);
   }
+  const kindLabels = new Map(indexed.snapshot.config.entity_kinds.map(({ slug, label }) => [slug, label]));
   const entities = indexed.snapshot.entities.map((entity): EntityItem => ({
-    kind: "entity", id: "entity:" + entity.id, title: entity.title, path: ".nutshell/entities/" + entity.id + ".json", entity,
+    kind: "entity", id: "entity:" + entity.id, title: entity.title, path: ".nutshell/entities/" + entity.id + ".json",
+    kindLabel: kindLabels.get(entity.kind), entity,
   }));
   const items = [...documents, ...entities];
   const initial = documents.find(({ path }) => path.startsWith("nutshell-vault/features/")) ?? items[0];
