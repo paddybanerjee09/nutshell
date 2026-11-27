@@ -7,6 +7,13 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
+    "@codemirror/commands": "6.8.1",
+    "@codemirror/lang-markdown": "6.3.3",
+    "@codemirror/language": "6.11.2",
+    "@codemirror/search": "6.5.11",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.44.0",
+    "@lezer/markdown": "1.4.3",
     "@nutshell/core": "workspace:*",
     "@nutshell/server": "workspace:*",
     "lucide-react": "1.80.0",

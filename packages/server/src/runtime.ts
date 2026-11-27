@@ -133,7 +133,7 @@ export async function resolveRepositoryActor(headers: Headers) {
 
 export type RepositoryActor = NonNullable<Awaited<ReturnType<typeof resolveRepositoryActor>>>;
 
-export async function lockRepositorySetupGrant(tx: FixtureTransaction, actor: RepositoryActor, repositoryId: number) {
+export async function lockRepositoryGrant(tx: FixtureTransaction, actor: RepositoryActor, repositoryId: number) {
   // Lock authorization facts so a concurrent revocation cannot commit before this operation.
   const [grant] = await tx.select({ canWrite: providerGrant.canWrite, canConfigure: providerGrant.canConfigure }).from(repository)
     .innerJoin(installation, activeInstallation()).innerJoin(membership, activeMembership(actor.userId))
@@ -141,7 +141,7 @@ export async function lockRepositorySetupGrant(tx: FixtureTransaction, actor: Re
     .innerJoin(session, and(eq(session.userId, actor.userId), eq(session.id, actor.sessionId), gt(session.expiresAt, sql`now()`)))
     .where(and(eq(repository.id, repositoryId), eq(repository.active, true)))
     .for("share", { of: [session, membership, providerGrant] });
-  return grant ? { canConfigure: grant.canWrite && grant.canConfigure } : null;
+  return grant ? { canWrite: grant.canWrite, canConfigure: grant.canWrite && grant.canConfigure } : null;
 }
 
 export async function resolveRepositoryReadFilter(headers: Headers, id: string) {

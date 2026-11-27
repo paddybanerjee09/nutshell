@@ -148,3 +148,18 @@ export const fixtureSetupProposal = pgTable("fixture_setup_proposal", {
   foreignKey({ columns: [table.repositoryId, table.headRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
   foreignKey({ columns: [table.repositoryId, table.mergedRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
 ]);
+
+export const markdownDraft = pgTable("markdown_draft", {
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  connectionEpoch: integer("connection_epoch").notNull(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  path: text("path").notNull(),
+  sourceRevision: text("source_revision").notNull(),
+  sourceBlob: text("source_blob").notNull(),
+  markdown: text("markdown").notNull(),
+  version: integer("version").notNull(),
+  updatedAt: time("updated_at").notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.repositoryId, table.connectionEpoch, table.userId, table.path] }),
+  foreignKey({ columns: [table.repositoryId, table.sourceRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
+]);

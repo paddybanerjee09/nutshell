@@ -34,7 +34,8 @@ describe("authorized snapshot workspace", () => {
       documents: files, entities: [], changes: [],
     } } satisfies Parameters<typeof workspaceData>[2];
     const data = workspaceData({ id: "1001", name: "Field Notes" }, "coordinator", snapshot);
-    expect(data.items[0]).toMatchObject({ kind: "document", properties: "id: note\nstatus: active", linkedItemIds: ["document:" + root + "Related.md"] });
+    expect(data.items[0]).toMatchObject({ kind: "document", source: files[0]?.markdown,
+      properties: "id: note\nstatus: active", linkedItemIds: ["document:" + root + "Related.md"] });
     expect(data.items[1]).toMatchObject({ kind: "document", words: 4, characters: 19, backlinkIds: ["document:" + root + "Guide.md"] });
     expect(data.status).toBe("stale");
     expect(data.layoutKey).not.toBe(workspaceData({ id: "1001", name: "Field Notes" }, "reader", snapshot).layoutKey);
@@ -42,8 +43,9 @@ describe("authorized snapshot workspace", () => {
   });
 
   it("renders source as safe Markdown with authorized note actions and without loading remote image URLs", () => {
+    const markdown = "# Guide\n\n[[Related|Open note]]\n\n![Fixture](https://private.invalid/image.png)\n\n<script>alert(1)</script>\n\n[unsafe](javascript:alert%281%29)";
     const item = { kind: "document", id: "guide", title: "Guide.md", path: root + "Guide.md", properties: "tags: [fixture]",
-      markdown: "# Guide\n\n[[Related|Open note]]\n\n![Fixture](https://private.invalid/image.png)\n\n<script>alert(1)</script>\n\n[unsafe](javascript:alert%281%29)",
+      markdown, source: markdown,
       linkedItemIds: [], backlinkIds: [], words: 0, characters: 0 } as const;
     const document = { ...item, linkedItemIds: [], backlinkIds: [] };
     const related = { ...document, id: "related", path: root + "Related.md", title: "Related.md" };

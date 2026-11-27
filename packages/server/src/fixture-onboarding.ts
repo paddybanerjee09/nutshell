@@ -7,7 +7,7 @@ import {
   readFixtureTree, storeFixtureTree, writeFixtureHead, type DeliveryInput, type FixtureFile,
 } from "./fixture-sync.ts";
 import { fixtureRepositories } from "./local-fixtures.ts";
-import { getFixtureDatabase, lockRepositorySetupGrant, resolveRepositoryActor, type FixtureTransaction } from "./runtime.ts";
+import { getFixtureDatabase, lockRepositoryGrant, resolveRepositoryActor, type FixtureTransaction } from "./runtime.ts";
 import { fixtureSetupProposal, fixtureState } from "./schema.ts";
 
 type FixtureRepository = (typeof fixtureRepositories)[number];
@@ -45,7 +45,7 @@ async function withSetupAccess<Result>(
   return getFixtureDatabase().transaction(async (tx) => {
     const connection = await lockFixtureConnection(tx, fixture.id, fixture.installationId, lock);
     if (!connection) return null;
-    const permission = await lockRepositorySetupGrant(tx, actor, fixture.id);
+    const permission = await lockRepositoryGrant(tx, actor, fixture.id);
     if (!permission) return null;
     return perform({ tx, fixture, epoch: connection.epoch, canConfigure: permission.canConfigure });
   });

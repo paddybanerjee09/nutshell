@@ -21,8 +21,10 @@ import {
 import type { DockModule, DockSide, LayoutNode, PaneNode, SplitDirection, WorkspaceLayoutAction, WorkspaceSize } from "./layout-state";
 import { CommandPalette, IconButton, PaneMenu, ResizeHandle } from "./pane-controls";
 import type { WorkspaceCommand } from "./pane-controls";
-import { WorkspaceContent, WorkspaceDetails, WorkspaceStatus } from "./workspace-content";
+import { documentModeLabels, WorkspaceContent, WorkspaceDetails, WorkspaceStatus } from "./workspace-content";
+import type { DocumentMode } from "./workspace-content";
 import type { WorkspaceData, WorkspaceItem } from "./workspace-data";
+import { WorkspaceDraftProvider } from "./workspace-drafts";
 
 const sides: DockSide[] = ["left", "right"];
 const moduleLabels: Record<DockModule, string> = { explorer: "Explorer", details: "Details" };
@@ -113,6 +115,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
   const [size, setSize] = useState({ width: 0, center: { width: 0, height: 0 } });
   const [drawer, setDrawer] = useState<DockSide | null>(null);
   const [notice, setNotice] = useState("");
+  const [documentModes, setDocumentModes] = useState<Record<string, { itemId: string; mode: DocumentMode }>>({});
   const itemsById = useMemo(() => new Map(data.items.map((item) => [item.id, item])), [data.items]);
   const folders = useMemo(() => explorerFolders(data.items), [data.items]);
   const entities = useMemo(() => data.items.filter((item) => item.kind === "entity"), [data.items]);
@@ -120,6 +123,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
   const tabCount = panes.reduce((count, pane) => count + pane.tabs.length, 0);
   const activePane = findPane(layout.root, layout.activePaneId) ?? panes[0]!;
   const activeItem = activePane.activeTabId ? itemsById.get(activePane.activeTabId) ?? null : null;
+  const activeView = documentModes[activePane.id];
   const dockWidth = sides.reduce((width, side) => {
     const dock = layout.docks[side];
     return width + (dock.open && dock.modules.length ? dock.width : 0);
@@ -176,20 +180,26 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
 
   useEffect(() => {
     function keyboard(event: globalThis.KeyboardEvent) {
-      if ((!event.ctrlKey && !event.metaKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "p") return;
+      if (event.isComposing || (!event.ctrlKey && !event.metaKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "p") return;
       const target = event.target;
       if (!(target instanceof HTMLElement) || (target !== document.body && !main.current?.parentElement?.contains(target))) return;
-      if ((target.isContentEditable || target.matches("input, textarea, select")) && !palette.current?.contains(target)) return;
+      const inEditor = Boolean(target.closest(".cm-content"));
+      if ((target.isContentEditable || target.matches("input, textarea, select")) && !inEditor && !palette.current?.contains(target)) return;
       event.preventDefault();
+      if (inEditor) event.stopPropagation();
       openPalette();
     }
-    document.addEventListener("keydown", keyboard);
-    return () => document.removeEventListener("keydown", keyboard);
+    document.addEventListener("keydown", keyboard, true);
+    return () => document.removeEventListener("keydown", keyboard, true);
   }, [openPalette]);
 
   function dispatch(action: WorkspaceLayoutAction) {
     setLayout((current) => workspaceLayoutReducer(current, action));
     if (action.type !== "activate-pane") setNotice("");
+  }
+
+  function setDocumentMode(paneId: string, itemId: string, mode: DocumentMode) {
+    setDocumentModes((current) => ({ ...current, [paneId]: { itemId, mode } }));
   }
 
   function viewId(kind: string, id: string) {
@@ -277,6 +287,15 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
     }
     if (pane.activeTabId) {
       const tabId = pane.activeTabId;
+      const item = itemsById.get(tabId);
+      if (item?.kind === "document") {
+        for (const mode of Object.keys(documentModeLabels) as DocumentMode[]) {
+          commands.push({ id: "view-" + mode, label: documentModeLabels[mode], run: () => {
+            setDocumentMode(pane.id, tabId, mode);
+            focusPane(pane.id, true);
+          } });
+        }
+      }
       const index = pane.tabs.indexOf(tabId);
       for (const [offset, direction] of [[-1, "left"], [1, "right"]] as const) {
         const next = index + offset;
@@ -346,6 +365,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
       );
     }
     const item = node.activeTabId ? itemsById.get(node.activeTabId) ?? null : null;
+    const view = documentModes[node.id];
     const panelId = viewId("panel", node.id);
     const selectedIndex = node.activeTabId ? node.tabs.indexOf(node.activeTabId) : -1;
     return (
@@ -410,7 +430,14 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
           aria-label={selectedIndex < 0 ? "Empty pane" : undefined}
           tabIndex={0}
         >
-          <WorkspaceContent item={item} items={data.items} onOpen={(id) => openItem(id, node.id)} />
+          <WorkspaceContent
+            item={item}
+            items={data.items}
+            mode={view && view.itemId === item?.id ? view.mode : undefined}
+            indexedRevision={data.revision}
+            onModeChange={(mode) => { if (item) setDocumentMode(node.id, item.id, mode); }}
+            onOpen={(id) => openItem(id, node.id)}
+          />
         </div>
       </section>
     );
@@ -524,7 +551,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
     })),
   ];
 
-  return (
+  return <WorkspaceDraftProvider repositoryId={data.repositoryId} canEdit={data.canEdit}>
     <main className="workspace-shell" id="content" tabIndex={-1}>
       <h1 className="sr-only">{data.repositoryName} workspace</h1>
       <div className="workspace-main" ref={main} data-compact={compact} onKeyDown={(event) => {
@@ -559,7 +586,9 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
         {renderDock("right")}
         {notice && <p className="workspace-notice" role="status">{notice}</p>}
       </div>
-      <WorkspaceStatus item={activeItem} data={data} />
+      <WorkspaceStatus item={activeItem} data={data}
+        mode={activeView && activeView.itemId === activeItem?.id ? activeView.mode : undefined}
+      />
       <CommandPalette dialog={palette} commands={commands} onClose={(restoreFocus) => {
         const previous = paletteTrigger.current;
         if (restoreFocus) {
@@ -569,5 +598,5 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
         paletteTrigger.current = null;
       }} />
     </main>
-  );
+  </WorkspaceDraftProvider>;
 }

@@ -9,6 +9,7 @@ type IndexedSnapshot = FixtureSnapshotRead & { status: WorkspaceData["status"]; 
 type Item = { id: string; title: string; path: string };
 type DocumentItem = Item & {
   kind: "document";
+  source: string;
   markdown: string;
   properties: string;
   linkedItemIds: string[];
@@ -20,8 +21,10 @@ type EntityItem = Item & { kind: "entity"; entity: Projection["entities"][number
 
 export type WorkspaceItem = DocumentItem | EntityItem;
 export type WorkspaceData = {
+  repositoryId: string;
   repositoryName: string;
   repositoryHref: string;
+  canEdit: boolean;
   layoutKey: string;
   revision: string;
   headRevision: string | null;
@@ -35,13 +38,13 @@ export function hasIndexedSnapshot(snapshot: FixtureSnapshotRead): snapshot is I
   return snapshot.status !== "pending" && snapshot.revision !== null && snapshot.snapshot !== null;
 }
 
-export function workspaceData(repository: { id: string; name: string }, userId: string, indexed: IndexedSnapshot): WorkspaceData {
+export function workspaceData(repository: { id: string; name: string }, userId: string, indexed: IndexedSnapshot, canEdit = false): WorkspaceData {
   const documents = indexed.snapshot.documents.map(({ path, markdown }): DocumentItem => {
     const parsed = parseFrontmatter(markdown);
     const body = parsed.ok ? parsed.lines.slice(parsed.bodyStart).join("\n") : markdown;
     const properties = parsed.ok ? parsed.lines.slice(1, parsed.bodyStart - 1).join("\n") : "";
     const title = path.slice(path.lastIndexOf("/") + 1);
-    return { kind: "document", id: "document:" + path, title, path, markdown: body, properties,
+    return { kind: "document", id: "document:" + path, title, path, source: markdown, markdown: body, properties,
       linkedItemIds: [], backlinkIds: [], words: (body.match(/\S+/gu) ?? []).length, characters: Array.from(body).length };
   });
   const resolve = documentResolver(documents);
@@ -62,8 +65,10 @@ export function workspaceData(repository: { id: string; name: string }, userId: 
   const initial = documents.find(({ path }) => path.startsWith("nutshell-vault/features/")) ?? items[0];
   const scope = createHash("sha256").update(JSON.stringify([userId, repository.id])).digest("hex");
   return {
+    repositoryId: repository.id,
     repositoryName: repository.name,
     repositoryHref: "/app/repos/" + repository.id,
+    canEdit,
     layoutKey: "nutshell.workspace." + scope,
     revision: indexed.revision,
     headRevision: indexed.headRevision,

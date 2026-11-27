@@ -182,6 +182,119 @@ async function verifyWorkspace(page: Page, origin: string, output: string) {
   assert.equal(denied.status(), 404);
 }
 
+const draftPath = "nutshell-vault/features/nutshell-setup/CONTEXT.md";
+const draftRoute = "/api/repos/1001/draft";
+
+async function verifyMarkdownDraft(page: Page, origin: string, output: string) {
+  const endpoint = origin + draftRoute;
+  const documentUrl = endpoint + "?" + new URLSearchParams({ path: draftPath });
+  const original = await page.request.get(documentUrl);
+  assert.equal(original.status(), 200);
+  assert.equal(original.headers()["cache-control"], "private, no-store");
+  const { source, sourceRevision, draft } = await original.json() as {
+    source: string; sourceRevision: string; draft: { markdown: string; version: number } | null;
+  };
+  const base = draft?.markdown ?? source;
+  const version = draft?.version ?? 0;
+  const ready = await page.goto(origin + "/app/repos/1001/workspace");
+  assert.equal(ready?.status(), 200);
+  const pane = page.locator(".workspace-pane[data-focused='true']");
+  const explorer = page.getByRole("navigation", { name: "Repository explorer" });
+  const editor = pane.getByRole("textbox", { name: "Markdown editor" });
+  const mac = process.platform === "darwin";
+  const documentEnd = mac ? "Meta+ArrowDown" : "Control+End";
+  async function openDocument() {
+    for (const name of [/^features$/u, /^nutshell-setup$/u]) {
+      const folder = explorer.locator("summary").filter({ hasText: name });
+      if (!await folder.evaluate((node) => (node.parentElement as HTMLDetailsElement).open)) await folder.click();
+    }
+    await explorer.getByRole("button", { name: draftPath, exact: true }).click();
+  }
+  async function paneAction(name: string) {
+    await pane.locator("summary[aria-label='Pane actions']").click();
+    await pane.getByRole("button", { name, exact: true }).click();
+  }
+
+  await openDocument();
+  await pane.getByRole("button", { name: "Edit draft", exact: true }).click();
+  await pane.getByText("Private draft", { exact: true }).waitFor();
+  await editor.waitFor();
+  await editor.focus();
+  await editor.press(documentEnd);
+  const addition = "\n\n## Draft fixture\n\n**認識** e\u0301 🌰 [[_INDEX|Index]]\n\n```txt\n[[literal]]\n```\n";
+  const paste = () => editor.evaluate((element, text) => {
+    const event = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
+    // Firefox drops the DataTransfer contents on a synthetic ClipboardEvent.
+    Object.defineProperty(event, "clipboardData", { value: {
+      getData: (format: string) => format === "text/plain" ? text : "",
+    } });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  }, addition);
+  const pastedText = editor.locator(".cm-md-heading").filter({ hasText: /^Draft fixture$/u });
+  assert.equal(await paste(), true);
+  await editor.press(documentEnd);
+  await pastedText.waitFor();
+  await editor.press(mac ? "Meta+z" : "Control+z");
+  await pastedText.waitFor({ state: "hidden" });
+  await editor.press(mac ? "Meta+Shift+z" : "Control+y");
+  await pastedText.waitFor();
+  await pastedText.click();
+  await pane.getByText("## Draft fixture", { exact: true }).waitFor();
+  await editor.press(documentEnd);
+  await pastedText.waitFor();
+
+  await paneAction("Source");
+  await pane.getByText("## Draft fixture", { exact: true }).waitFor();
+  await paneAction("Live preview");
+  await pastedText.waitFor();
+  await paneAction("Split right");
+  await page.waitForFunction(() => document.querySelectorAll(".workspace-pane").length === 2);
+  await openDocument();
+  const edit = pane.getByRole("button", { name: "Edit draft", exact: true });
+  if (await edit.isVisible()) await edit.click();
+  await pane.getByText("Private draft", { exact: true }).waitFor();
+  await editor.press(documentEnd);
+  await pastedText.waitFor();
+  assert.ok(await pane.getByRole("group", { name: "Document view" }).evaluate((bar) => {
+    const panel = bar.closest("[role='tabpanel']");
+    return panel && bar.getBoundingClientRect().top >= panel.getBoundingClientRect().top;
+  }), "The draft status and save control must stay visible when the editor scrolls.");
+  await page.screenshot({ path: output + "/markdown-draft-desktop.png" });
+
+  const save = pane.getByRole("button", { name: "Save draft", exact: true });
+  const waitForSave = () => page.waitForResponse((candidate) =>
+    candidate.request().method() === "PATCH" && new URL(candidate.url()).pathname === draftRoute);
+  const [saved] = await Promise.all([waitForSave(), save.click()]);
+  assert.equal(saved.status(), 200);
+  const savedDraft = (await saved.json()).draft;
+  assert.equal(savedDraft.version, version + 1);
+  assert.equal(savedDraft.markdown, base + addition);
+  const current = async () => (await (await page.request.get(documentUrl)).json());
+  assert.equal((await current()).source, source);
+  await pane.getByText("Draft saved", { exact: true }).waitFor();
+
+  await page.reload();
+  await openDocument();
+  await pane.getByRole("button", { name: "Edit draft", exact: true }).click();
+  await pane.getByText("Private draft", { exact: true }).waitFor();
+  await editor.press(documentEnd);
+  await pastedText.waitFor();
+  const parallel = { path: draftPath, markdown: savedDraft.markdown + "\nSaved in another tab.\n", sourceRevision, version: savedDraft.version };
+  assert.equal((await page.request.patch(endpoint, { headers: { origin: "https://untrusted.invalid" }, data: parallel })).status(), 403);
+  assert.equal((await page.request.patch(endpoint, { headers: { origin }, data: parallel })).status(), 200);
+  await editor.focus();
+  await editor.press(documentEnd);
+  await page.keyboard.insertText("Unsaved local text.");
+  const [conflict] = await Promise.all([waitForSave(), save.click()]);
+  assert.equal(conflict.status(), 409);
+  assert.equal((await conflict.json()).reason, "version");
+  await pane.getByRole("alert").waitFor();
+  await pane.getByText("Unsaved local text.", { exact: true }).waitFor();
+  assert.equal((await current()).draft.markdown, parallel.markdown);
+  await page.close({ runBeforeUnload: false });
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -221,6 +334,9 @@ export async function verifyEntryFlow(origin: string) {
     await verifySetup(page, origin);
     await page.screenshot({ path: output + "/fixture-setup-desktop.png" });
     await verifyWorkspace(page, origin, output);
+    const { cookies } = await page.context().storageState();
+    const draftPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
+    await verifyMarkdownDraft(draftPage, origin, output);
     const denied = await page.goto(origin + "/app/repos/1002");
     assert.equal(denied?.status(), 404);
     assert.equal(await page.getByText("Harbor Atlas").count(), 0);
@@ -233,6 +349,8 @@ export async function verifyEntryFlow(origin: string) {
     assert.equal(await other.getByText("Field Notes").count(), 0);
     assert.equal((await other.request.get(origin + "/api/repos/1001/setup")).status(), 404);
     assert.equal((await other.request.get(origin + "/app/repos/1001/workspace")).status(), 404);
+    const draftEndpoint = origin + draftRoute + "?" + new URLSearchParams({ path: draftPath });
+    assert.equal((await other.request.get(draftEndpoint)).status(), 404);
 
     const reader = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await reader.goto(origin + "/login");
@@ -246,8 +364,20 @@ export async function verifyEntryFlow(origin: string) {
       headers: { origin }, data: { action: "open" },
     });
     assert.equal(forbidden.status(), 403);
+    assert.equal((await reader.request.get(draftEndpoint)).status(), 403);
+    assert.equal((await reader.request.patch(origin + draftRoute, { headers: { origin },
+      data: { path: draftPath, markdown: "Unauthorized change", sourceRevision: "0".repeat(40), version: 0 },
+    })).status(), 403);
+    await reader.getByRole("link", { name: "Open workspace", exact: true }).click();
+    const readerPane = reader.locator(".workspace-pane[data-focused='true']");
+    await readerPane.locator("summary[aria-label='Pane actions']").click();
+    await readerPane.getByRole("button", { name: "Source", exact: true }).click();
+    const readerEditor = readerPane.getByRole("textbox", { name: "Markdown editor" });
+    await readerEditor.waitFor();
+    assert.equal(await readerEditor.getAttribute("contenteditable"), "false");
+    assert.equal(await readerPane.getByRole("button", { name: "Edit draft", exact: true }).count(), 0);
   } finally {
     await stopVerificationBrowser(server);
   }
-  console.log(`${browserType.name()} entry, fixture setup and signed publication, authorized workspace panes and palette, and browser shutdown passed.`);
+  console.log(`${browserType.name()} entry, fixture setup and signed publication, authorized workspace and private drafts, and browser shutdown passed.`);
 }

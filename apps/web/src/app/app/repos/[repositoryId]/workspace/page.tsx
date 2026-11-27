@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { canEditFixtureMarkdown } from "@nutshell/server/fixture-drafts";
 import { readFixtureSnapshot } from "@nutshell/server/fixture-sync";
 import { getSession, readRepository } from "@nutshell/server/runtime";
 import { hasIndexedSnapshot, workspaceData } from "./workspace-data";
@@ -24,6 +25,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ repo
     <p className="lede">{snapshot.status === "invalid" ? "The current repository head could not be indexed." : "This repository is waiting for its first indexed snapshot."}</p>
   </main>;
 
-  const data = workspaceData(repository, session.user.id, snapshot);
-  return <WorkspaceShell key={data.layoutKey + ":" + data.revision} data={data} />;
+  const canEdit = await canEditFixtureMarkdown(request, repositoryId);
+  const data = workspaceData(repository, session.user.id, snapshot, canEdit);
+  return <WorkspaceShell key={data.layoutKey} data={data} />;
 }

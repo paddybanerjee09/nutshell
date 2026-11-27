@@ -1,6 +1,6 @@
 ---
 id: feature-workspace-editor
-date: "2026-11-26"
+date: "2026-11-27"
 status: active
 tags: [feature, ui, editor, codemirror, graph]
 ---
@@ -15,12 +15,18 @@ Follow [R-04 shell](../../../SPEC.md#7-r-04-workspace-shell-and-navigation), [R-
 
 Use the [versioned workspace preference](../../decisions/2026-11-27-workspace-layout-preferences.md) for recursive panes and docks. Open actual accessible items and pane commands through the keyboard palette. Render Markdown with raw HTML disabled, internal links restricted to the current snapshot, and unavailable media labeled in the reading view.
 
+The local draft API requires the current writer grant on every operation. Drafts are scoped by repository, connection epoch, author, and literal vault path. Saves require the exact current indexed commit and source digest with the expected draft version. PostgreSQL preserves the author's prior bytes on conflicts. Saving a draft leaves the published repository source unchanged.
+
+CodeMirror decorates parsed Markdown over the original source. Live preview reveals raw tokens on the focused caret and selection lines and freezes the decoration set during composition. Source and Read remain available through the pane menu or command palette. Editor panes share one in-memory buffer per document. Unmodified mixed line endings are preserved, while pasted newlines follow a uniformly CRLF or CR document's existing separator.
+
 ## Consequences
 
-CodeMirror source editing, private media, semantic history, and graph interaction have separate implementation and acceptance work. Keep graph layout separate from canonical relationships and reuse shared domain services. Consult R-03 when changing the marketing preview.
+Source proposals, private media, semantic history, and graph interaction have separate implementation and acceptance work. Keep graph layout separate from canonical relationships and reuse shared domain services. Consult R-03 when changing the marketing preview.
 
 ## Affected files
 
 - [UI_GUIDE.md](../../design/UI_GUIDE.md) and [logo](../../../assets/brand/nutshell-logo.png).
 - [SPEC.md](../../../SPEC.md) and [SYSTEM.md](../../architecture/SYSTEM.md).
+- [Draft store](../../../packages/server/src/fixture-drafts.ts) and [draft route](../../../apps/web/src/app/api/repos/%5BrepositoryId%5D/draft/route.ts).
+- [CodeMirror editor](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/markdown-editor.tsx) and [preview parser tests](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/markdown-preview.test.ts).
 - [Workspace shell](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/workspace-shell.tsx), [reading and metadata](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/workspace-content.tsx), and [browser verification](../../../scripts/local-browser.ts).
