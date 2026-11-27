@@ -3,35 +3,34 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: github-app-adapter-2026-11-27
-task_state: ready_for_review
-task_revision: 86
-repository_id: 1467144605
-branch: feature/github-app-adapter
-base_branch: main
-pr_number: 16
-pr_url: https://github.com/paddybanerjee09/nutshell/pull/16
+task_id: null
+task_state: idle
+task_revision: 87
+repository_id: null
+branch: null
+base_branch: null
+pr_number: null
+pr_url: null
 last_verified_head: null
-lead_agent: root
-integration_checkout: 'C:\Users\paddy\dev\nutshell'
+lead_agent: null
+integration_checkout: null
 cleanup_pr_url: null
 ---
-# GitHub App adapter
+# Current task
 
 ## Context
 
-Implement and verify the GitHub App API boundary against controlled provider responses, including token rotation, repository authority, immutable reads, setup proposals, and exact-head Checks.
+No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
 
 ## Decision
 
-The transport delegate owns bounded GitHub requests and installation credentials. The repository delegate owns current access, immutable source reads, and Check targeting. The authorization delegate owns GitHub App configuration, App user token refresh, and encrypted storage integration. The lead owns setup proposal targeting, integration, verification, and source workflow.
+The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
 
 ## Consequences
 
-Controlled GitHub App and setup-tree suites passed 41 tests. Configured provider responses exercised credentials, immutable repository reads, and exact PR targeting. No live product credentials or disposable repository were supplied. Next verify the source check and merge the exact PR, then confirm canonical cleanup.
+See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
 
 ## Affected files
 
-- [GitHub synchronization context](features/github-sync/CONTEXT.md).
-- [Repository authority contract](architecture/GITHUB_CONTRACT.md).
-- [Acceptance ledger](runs/ACCEPTANCE.md).
+- [Task template](templates/TASK.md)
+- [Vault index](_INDEX.md)
