@@ -7,14 +7,28 @@ import type { BrowserServer, Page } from "playwright";
 
 const personaPath = "/api/auth/nutshell/persona";
 
+async function waitForBrowserClose(closed: Promise<boolean>, timeout: number) {
+  const deadline = new AbortController();
+  try {
+    return await Promise.race([closed, delay(timeout, false, { signal: deadline.signal })]);
+  } finally {
+    deadline.abort();
+  }
+}
+
 async function stopVerificationBrowser(server: BrowserServer) {
   const closed = server.close().then(() => true, () => false);
-  if (await Promise.race([closed, delay(8_000, false, { ref: false })])) return;
-  console.warn("Chromium needed bounded process termination after verification.");
-  const killed = server.kill().then(() => true);
-  if (!await Promise.race([killed, delay(5_000, false, { ref: false })])) {
-    throw new Error("Chromium verification teardown timed out.");
+  if (await waitForBrowserClose(closed, 30_000)) return;
+
+  // Playwright's Windows force-kill calls taskkill synchronously. Use the
+  // already-owned child handle so the termination deadline stays effective.
+  const child = server.process();
+  if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  if (await waitForBrowserClose(closed, 10_000)) {
+    throw new Error("The verification browser required forced termination.");
   }
+  child.unref();
+  throw new Error("Verification browser teardown timed out.");
 }
 
 async function signIn(page: Page, button: RegExp) {
@@ -30,10 +44,11 @@ export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
   }
-  const { chromium } = await import("playwright");
-  const server = await chromium.launchServer({ headless: true, host: "127.0.0.1", timeout: 30_000 });
+  const { chromium, firefox } = await import("playwright");
+  const browserType = process.platform === "win32" ? firefox : chromium;
+  const server = await browserType.launchServer({ headless: true, host: "127.0.0.1", timeout: 30_000 });
   try {
-    const browser = await chromium.connect(server.wsEndpoint(), { timeout: 10_000 });
+    const browser = await browserType.connect(server.wsEndpoint(), { timeout: 10_000 });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const output = ".local/verification";
     await mkdir(output, { recursive: true });
@@ -70,5 +85,5 @@ export async function verifyEntryFlow(origin: string) {
   } finally {
     await stopVerificationBrowser(server);
   }
-  console.log("Browser entry, session reload, and repository isolation passed.");
+  console.log(`${browserType.name()} entry, session reload, repository isolation, and browser shutdown passed.`);
 }

@@ -6,6 +6,11 @@ import next from "next";
 import { loadConfig } from "@nutshell/server/config";
 import { closeRuntime, healthCheck } from "@nutshell/server/runtime";
 
+function reportStartupFailure(error: unknown) {
+  const code = error instanceof Error && "code" in error && typeof error.code === "string" ? ` (${error.code})` : "";
+  console.error(`Nutshell web startup failed${code}. Check the runtime configuration, database, port, and build output.`);
+}
+
 async function start() {
   const args = process.argv.slice(2);
   const optimized = args.length === 1 && args[0] === "--optimized";
@@ -37,20 +42,11 @@ async function start() {
     socket.once("close", () => sockets.delete(socket));
   });
 
-  try {
-    await app.prepare();
-    await healthCheck();
-    server.listen(port, hostname);
-    await once(server, "listening");
-  } catch (error) {
-    await Promise.allSettled([app.close(), closeRuntime()]);
-    throw error;
-  }
-
-  let stopping = false;
-  async function shutdown() {
-    if (stopping) return;
-    stopping = true;
+  const stopping = new AbortController();
+  const { signal } = stopping;
+  async function shutdown(exitCode = 0) {
+    if (signal.aborted) return;
+    stopping.abort();
     const timeout = setTimeout(() => {
       for (const socket of sockets) socket.destroy();
     }, 2_000);
@@ -60,27 +56,47 @@ async function start() {
     const results = await Promise.allSettled([app.close(), closeRuntime()]);
     if (process.connected) process.disconnect();
     // Next's dev watchers can remain active after its cleanup promise settles.
-    process.exit(results.some((result) => result.status === "rejected") ? 1 : 0);
+    process.exit(results.some((result) => result.status === "rejected") ? 1 : exitCode);
   }
 
   const stop = () => void shutdown();
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
   process.once("disconnect", stop);
   process.on("message", (message: unknown) => {
     if (message === "shutdown" ||
       (message !== null && typeof message === "object" && "type" in message && message.type === "shutdown")) stop();
   });
 
-  console.log(`Nutshell web listening at ${url.origin}`);
-  process.send?.({ type: "ready" });
+  if (process.send && !process.connected) {
+    await shutdown();
+    return;
+  }
+
+  try {
+    await app.prepare();
+    if (signal.aborted) return;
+    await healthCheck();
+    if (signal.aborted) return;
+    server.listen(port, hostname);
+    await once(server, "listening", { signal });
+    if (signal.aborted) return;
+
+    console.log(`Nutshell web listening at ${url.origin}`);
+    if (process.connected) process.send?.({ type: "ready" }, (error) => {
+      if (error) stop();
+    });
+  } catch (error) {
+    if (signal.aborted) return;
+    reportStartupFailure(error);
+    await shutdown(1);
+  }
 }
 
 try {
   await start();
 } catch (error) {
-  const code = error instanceof Error && "code" in error && typeof error.code === "string" ? ` (${error.code})` : "";
-  console.error(`Nutshell web startup failed${code}. Check the runtime configuration, database, port, and build output.`);
+  reportStartupFailure(error);
   process.exitCode = 1;
   if (process.connected) process.disconnect();
 }

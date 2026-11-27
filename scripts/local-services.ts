@@ -1,4 +1,4 @@
-import { fork, type ChildProcess } from "node:child_process";
+import { fork } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -8,54 +8,97 @@ import { loadConfig } from "@nutshell/server/config";
 const controlPath = ".local/runtime-control.json";
 const startupTimeout = 90_000;
 const drainTimeout = 12_000;
-const forceTimeout = 2_000;
+const forceTimeout = 5_000;
 
 function launch(path: string, args: string[], env: NodeJS.ProcessEnv) {
   const child = fork(path, args, { env, execArgv: [], stdio: ["ignore", "inherit", "inherit", "ipc"] });
   const exited = new Promise<string>((resolve) => {
     child.once("exit", (code, signal) => resolve(path + " stopped (" + (signal ?? code) + ")."));
-    child.once("error", () => resolve(path + " could not be launched."));
+    child.on("error", (error) => {
+      if (child.pid === undefined) resolve(path + " could not be launched: " + error.message);
+    });
   });
   const ready = new Promise<void>((resolve) => {
     child.on("message", (value: unknown) => {
       if (value !== null && typeof value === "object" && "type" in value && value.type === "ready") resolve();
     });
   });
-  return { child, exited, ready };
+  return { path, child, exited, ready };
 }
 
-async function drain(child: ChildProcess, exited: Promise<string>) {
-  if (child.connected) child.send({ type: "shutdown" }, () => {});
-  await Promise.race([exited, delay(drainTimeout, undefined, { ref: false })]);
-  if (child.exitCode === null && child.signalCode === null && child.pid !== undefined) {
-    child.kill("SIGKILL");
-    await Promise.race([exited, delay(forceTimeout, undefined, { ref: false }).then(() => {
-      throw new Error("A Nutshell child process did not exit after termination.");
-    })]);
+async function waitForExit(exited: Promise<string>, timeout: number) {
+  const deadline = new AbortController();
+  try {
+    return await Promise.race([exited.then(() => true), delay(timeout, false, { signal: deadline.signal })]);
+  } finally {
+    deadline.abort();
   }
 }
 
-export async function startServices(env: NodeJS.ProcessEnv, optimized: boolean) {
-  const config = loadConfig(env);
-  const web = launch("apps/web/src/serve.ts", optimized ? ["--optimized"] : [], env);
-  const worker = launch("apps/worker/src/main.ts", [], env);
-  const exited = Promise.race([web.exited, worker.exited]);
-  const stop = () => Promise.all([drain(web.child, web.exited), drain(worker.child, worker.exited)]);
+async function drain({ path, child, exited }: ReturnType<typeof launch>) {
+  if (child.pid === undefined) return;
+  if (child.connected) child.send({ type: "shutdown" }, () => {});
+  if (await waitForExit(exited, drainTimeout)) return;
   try {
+    child.kill("SIGKILL");
+    if (await waitForExit(exited, forceTimeout)) return;
+    throw new Error(`${path} (PID ${child.pid}) did not report exit after termination.`);
+  } finally {
+    // A missing exit notification must not keep the supervisor alive through its IPC or process handle.
+    child.channel?.unref();
+    child.unref();
+  }
+}
+
+function describeFailure(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function stopAfterFailure(stop: () => Promise<void>, error: unknown): Promise<never> {
+  try {
+    await stop();
+  } catch (cleanupError) {
+    throw new AggregateError([error, cleanupError], `${describeFailure(error)}\n${describeFailure(cleanupError)}`, { cause: cleanupError });
+  }
+  throw error;
+}
+
+export async function startServices(env: NodeJS.ProcessEnv, optimized: boolean, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  const config = loadConfig(env);
+  const children: ReturnType<typeof launch>[] = [];
+  let stopped: Promise<void> | undefined;
+  function stop() {
+    stopped ??= Promise.allSettled(children.map(drain)).then((results) => {
+      const failures = results.filter((result) => result.status === "rejected");
+      if (failures.length) {
+        throw new AggregateError(failures.map((result) => result.reason), failures.map((result) => describeFailure(result.reason)).join("\n"));
+      }
+    });
+    return stopped;
+  }
+  const deadline = new AbortController();
+  const startupSignal = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
+  try {
+    children.push(launch("apps/web/src/serve.ts", optimized ? ["--optimized"] : [], env));
+    children.push(launch("apps/worker/src/main.ts", [], env));
+    const exited = Promise.race(children.map((child) => child.exited));
     const failOnExit = exited.then((message) => { throw new Error(message); });
-    const timeout = delay(startupTimeout, undefined, { ref: false }).then(() => {
+    const timeout = delay(startupTimeout, undefined, { signal: startupSignal }).catch((error: unknown) => {
+      throw signal?.aborted ? signal.reason : error;
+    }).then(() => {
       throw new Error("Timed out starting the web and worker processes.");
     });
-    await Promise.race([Promise.all([web.ready, worker.ready]), failOnExit, timeout]);
+    await Promise.race([Promise.all(children.map((child) => child.ready)), failOnExit, timeout]);
     return { config, exited, stop };
   } catch (error) {
-    await stop();
-    throw error;
+    return await stopAfterFailure(stop, error);
+  } finally {
+    deadline.abort();
   }
 }
 
 export async function runDevelopment(env: NodeJS.ProcessEnv) {
-  const services = await startServices(env, false);
   const token = randomBytes(32).toString("base64url");
   const controller = new AbortController();
   const requestStop = () => controller.abort();
@@ -71,8 +114,15 @@ export async function runDevelopment(env: NodeJS.ProcessEnv) {
   });
   process.once("SIGINT", requestStop);
   process.once("SIGTERM", requestStop);
+  let services: Awaited<ReturnType<typeof startServices>> | undefined;
   let lease = false;
+  async function release() {
+    await services?.stop();
+    if (lease) await unlink(controlPath);
+  }
   try {
+    services = await startServices(env, false, controller.signal);
+    controller.signal.throwIfAborted();
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
       server.listen(0, "127.0.0.1", resolve);
@@ -85,13 +135,14 @@ export async function runDevelopment(env: NodeJS.ProcessEnv) {
     console.log("Nutshell is ready at " + services.config.origin + " (database and worker ready).");
     const stopped = await Promise.race([stopping, services.exited]);
     if (typeof stopped === "string") throw new Error(stopped);
+  } catch (error) {
+    if (!controller.signal.aborted || error !== controller.signal.reason) await stopAfterFailure(release, error);
   } finally {
     process.removeListener("SIGINT", requestStop);
     process.removeListener("SIGTERM", requestStop);
     server.close();
-    await services.stop();
-    if (lease) await unlink(controlPath);
   }
+  await release();
 }
 
 export async function stopDevelopment() {
