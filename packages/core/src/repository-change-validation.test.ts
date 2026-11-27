@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildFixtureSetupTree } from "./fixture-setup-tree.ts";
 import { repositoryChangeSchema, repositoryConfigSchema, repositoryEntitySchema, type RepositoryChange } from "./repo-snapshot.ts";
-import { validateRepositoryChanges, type RepositoryChangeValidationResult } from "./repository-change-validation.ts";
+import { bootstrapRepositoryCoverage, validateRepositoryChanges, type RepositoryChangeValidationResult } from "./repository-change-validation.ts";
 
 const configPath = ".nutshell/config.json";
 const entityId = "ent_capture";
@@ -19,6 +19,7 @@ function setup(files: ReadonlyMap<string, string>) {
 
 function fixture() {
   const files = setup(new Map([[trackedCode, "prior source"]]));
+  coverage(files, ["src/**"]);
   const entity = repositoryEntitySchema.parse(JSON.parse(files.get(entityPath)!));
   files.set(entityPath, JSON.stringify({ ...entity, code_paths: ["src/capture/**"] }));
   return files;
@@ -150,19 +151,54 @@ describe("trusted repository change validation", () => {
   it("uses language-independent source coverage while bootstrapping instead of candidate exclusions", () => {
     const base = new Map([["README.md", "# Owner readme"], ["root.py", "prior source"]]);
     const head = setup(base);
-    coverage(head, [], ["**"]);
-    for (const path of ["root.py", "app/screen.kt", "lib/capture.go", "docs/guide.md", ".gitignore"]) head.set(path, "candidate change");
-    const before = validate(base, head);
+    const sourcePaths = ["root.py", "app/screen.kt", "lib/capture.go", "docs/screen.mdx"];
+    const exemptPaths = ["docs/guide.md", "docs/release.RST", ".gitignore", configPath];
+    for (const path of [...sourcePaths, ...exemptPaths.filter((path) => path !== configPath)]) head.set(path, "candidate change");
+    const weakened = new Map(head);
+    coverage(weakened, [], ["**"]);
+    const before = validate(base, weakened);
     expect(before.ok).toBe(false);
-    for (const path of ["root.py", "app/screen.kt", "lib/capture.go"]) {
+    expect(before.issues.filter(({ code }) => code === "policy-weakening")).toHaveLength(2);
+    for (const path of sourcePaths) {
       expect(mapping(before, path)?.covered).toBe(true);
       expect(before.issues).toContainEqual(expect.objectContaining({ path, code: "covered-unmapped", severity: "error" }));
     }
-    for (const path of ["docs/guide.md", ".gitignore"]) expect(mapping(before, path)?.covered).toBe(false);
+    for (const path of exemptPaths) expect(mapping(before, path)?.covered).toBe(false);
     addChange(head, { entity_ids: [], product_impact: "internal", memory_paths: [] });
-    expect(validate(base, head)).toMatchObject({ ok: true, issues: [
-      { severity: "warning" }, { severity: "warning" }, { severity: "warning" },
-    ] });
+    const after = validate(base, head);
+    expect(after.ok).toBe(true);
+    expect(after.issues).toHaveLength(sourcePaths.length);
+    for (const path of sourcePaths) expect(after.issues).toContainEqual(expect.objectContaining({ path, code: "covered-unmapped", severity: "warning" }));
+  });
+
+  it("prevents the first policy-only proposal from dropping coverage inherited by its successor", () => {
+    const source = "app/pipeline.rb";
+    const base = new Map([[source, "prior source"]]);
+    const initial = setup(base);
+    const emptyIncludes = new Map(initial);
+    coverage(emptyIncludes, [], [...bootstrapRepositoryCoverage.exclude]);
+    expect(validate(base, emptyIncludes)).toMatchObject({ ok: false, issues: [{ path: configPath, code: "policy-weakening" }] });
+
+    const universalExclude = new Map(initial);
+    coverage(universalExclude, ["**"], ["**"]);
+    expect(validate(base, universalExclude)).toMatchObject({ ok: false, issues: [{ path: configPath, code: "policy-weakening" }] });
+
+    expect(validate(base, initial)).toMatchObject({ ok: true, issues: [] });
+    expect(validate(initial, setup(initial))).toMatchObject({ ok: true, mappings: [], issues: [] });
+    const successor = new Map(initial);
+    successor.set(source, "changed after setup");
+    expect(validate(initial, successor)).toMatchObject({ ok: false, issues: [{ path: source, code: "covered-unmapped", severity: "error" }] });
+    addChange(successor, { entity_ids: [], product_impact: "internal", memory_paths: [] });
+    expect(validate(initial, successor)).toMatchObject({ ok: true, issues: [{ path: source, code: "covered-unmapped", severity: "warning" }] });
+  });
+
+  it("preserves configured coverage from before the shared bootstrap policy", () => {
+    const base = fixture();
+    const head = new Map(base);
+    const source = "app/old_restricted_policy.py";
+    head.set(source, "outside the configured source directory");
+    expect(validate(base, head)).toMatchObject({ ok: true, issues: [] });
+    expect(mapping(validate(base, head), source)?.covered).toBe(false);
   });
 
   it("preserves prior records and refuses unsupported new corrections or reversals", () => {

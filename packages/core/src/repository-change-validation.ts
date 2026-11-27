@@ -6,7 +6,6 @@ export const repositoryChangePolicyVersion = 1;
 const configPath = ".nutshell/config.json";
 const changesDirectory = ".nutshell/changes/";
 const handoff = new Set(["AGENTS.md", "README.md", "SPEC.md"]);
-const ordinaryMetadata = new Set(["readme", "license", "notice", "copying", "changelog", ".gitignore", ".gitattributes", ".editorconfig", ".mailmap"]);
 const placeholders = new Set(["none", "na", "notapplicable", "todo", "tbd", "placeholder", "noimpact", "noproductimpact", "nochange", "unchanged"]);
 const pathSchema = repositoryEntitySchema.shape.code_paths.element;
 const maxPaths = 5_000;
@@ -14,6 +13,21 @@ const maxIssues = 200;
 const maxWork = 2_000_000;
 const maxManagedFile = 256 * 1024;
 const maxManagedTree = 8 * 1024 * 1024;
+
+type Coverage = { readonly include: readonly string[]; readonly exclude: readonly string[] };
+
+/** Initial service policy, also persisted by setup so the same coverage carries forward. */
+export const bootstrapRepositoryCoverage: Coverage = Object.freeze({
+  include: Object.freeze(["**"]),
+  exclude: Object.freeze([
+    ".nutshell/**",
+    "**/*.md", "**/*.markdown", "**/*.rst", "**/*.adoc",
+    "**/*.MD", "**/*.MARKDOWN", "**/*.RST", "**/*.ADOC",
+    "README", "LICENSE", "NOTICE", "COPYING", "CHANGELOG",
+    "readme", "license", "notice", "copying", "changelog",
+    ".gitignore", ".gitattributes", ".editorconfig", ".mailmap",
+  ]),
+});
 
 export type RepositoryChangeValidationInput = {
   /** Complete tracked path inventories. Managed paths carry their immutable text. */
@@ -47,12 +61,6 @@ function literalPath(value: unknown): value is string {
 
 function protectedPath(path: string) {
   return handoff.has(path) || path.startsWith(".nutshell/") || (path.startsWith("nutshell-vault/") && /\.md$/iu.test(path));
-}
-
-function bootstrapCoverage(path: string) {
-  // Before configuration, treat all non-documentation and non-metadata paths as possible source.
-  return !protectedPath(path) && !/\.(?:md|markdown|rst|adoc)$/iu.test(path)
-    && !ordinaryMetadata.has(path.toLowerCase());
 }
 
 function meaningfulText(value: string) {
@@ -110,7 +118,7 @@ function differentLiteralRoots(left: string, right: string) {
   return !a.includes("*") && !b.includes("*") && a !== b;
 }
 
-function checkCoveragePolicy(base: RepositoryProjection["config"]["coverage"], head: RepositoryProjection["config"]["coverage"], report: Report) {
+function checkCoveragePolicy(base: Coverage, head: Coverage, report: Report) {
   // Only simple containment and disjoint roots are proven here. Unproven weakenings need separate approval.
   for (const pattern of sorted(base.include)) {
     if (base.exclude.some((item) => containsGlob(item, pattern)) || head.include.some((item) => containsGlob(item, pattern))) continue;
@@ -143,7 +151,7 @@ function preserveBootstrapRecords(base: ReadonlyMap<string, string>, changes: re
 class MappingLimit extends Error {}
 
 function mapChanges(paths: readonly string[], base: RepositoryProjection | undefined, head: RepositoryProjection,
-  fresh: readonly RepositoryChange[], report: Report): RepositoryChangeMapping[] {
+  coverage: Coverage, fresh: readonly RepositoryChange[], report: Report): RepositoryChangeMapping[] {
   const entities = new Map<string, { codePatterns: Set<string>; memory: Set<string> }>();
   function collect(entity: RepositoryEntity) {
     let indexed = entities.get(entity.id);
@@ -159,8 +167,8 @@ function mapChanges(paths: readonly string[], base: RepositoryProjection | undef
   for (const entity of base?.entities ?? []) collect(entity);
   for (const entity of head.entities) collect(entity);
   const indexed = [...entities].map(([id, { codePatterns, memory }]) => ({ id, patterns: [...codePatterns].map((pattern) => pattern.split("/")), memory }));
-  const include = base?.config.coverage.include.map((pattern) => pattern.split("/")) ?? [];
-  const exclude = base?.config.coverage.exclude.map((pattern) => pattern.split("/")) ?? [];
+  const include = coverage.include.map((pattern) => pattern.split("/"));
+  const exclude = coverage.exclude.map((pattern) => pattern.split("/"));
   const globalClassifications = fresh.filter((change) => change.product_impact !== "user_visible" && change.entity_ids.length === 0);
   const byEntity = new Map<string, RepositoryChange[]>();
   for (const change of fresh) for (const entityId of change.entity_ids) {
@@ -177,7 +185,7 @@ function mapChanges(paths: readonly string[], base: RepositoryProjection | undef
   return paths.map((path) => {
     const segments = path.split("/");
     const matches = (pattern: readonly string[]) => matchesGlob(pattern, segments, charge);
-    const covered = base ? include.some(matches) && !exclude.some(matches) : bootstrapCoverage(path);
+    const covered = include.some(matches) && !exclude.some(matches);
     const matchesEntities = indexed.filter(({ patterns }) => { charge(); return patterns.some(matches); });
     const entityIds = sorted(matchesEntities.map(({ id }) => id));
     const declarations = new Set<RepositoryChange>();
@@ -281,8 +289,9 @@ export function validateRepositoryChanges({ baseFiles, headFiles, changedPaths, 
     return result();
   }
   const head = projection.snapshot;
-  if (base) checkCoveragePolicy(base.config.coverage, head.config.coverage, report);
-  else preserveBootstrapRecords(baseFiles, head.changes, report);
+  const trustedCoverage = base?.config.coverage ?? bootstrapRepositoryCoverage;
+  checkCoveragePolicy(trustedCoverage, head.config.coverage, report);
+  if (!base) preserveBootstrapRecords(baseFiles, head.changes, report);
   const fresh: RepositoryChange[] = [];
   for (const record of head.changes) {
     if (prior.has(record.id) || baseFiles.has(changePath(record.id))) continue;
@@ -291,7 +300,7 @@ export function validateRepositoryChanges({ baseFiles, headFiles, changedPaths, 
   }
 
   try {
-    return result(mapChanges(sorted(changed), base, head, fresh, report));
+    return result(mapChanges(sorted(changed), base, head, trustedCoverage, fresh, report));
   } catch (error) {
     if (!(error instanceof MappingLimit)) throw error;
     report(".", "mapping-limit", "The immutable comparison exceeds its source mapping work budget.");

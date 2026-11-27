@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildFixtureSetupTree } from "./fixture-setup-tree.ts";
 import { projectRepositoryTree } from "./repo-snapshot.ts";
+import { bootstrapRepositoryCoverage } from "./repository-change-validation.ts";
 
 const fixture = { name: "Field Notes", description: "Keep observations from the field.", entityId: "ent_field_notes" };
 const indexPath = "nutshell-vault/_INDEX.md";
@@ -26,7 +27,7 @@ describe("fixture setup tree", () => {
     expect(result.ok && result.snapshot.entities[0]).toMatchObject({
       id: fixture.entityId, title: fixture.name, summary: fixture.description, code_paths: ["src/**"],
     });
-    expect(result.ok && result.snapshot.config.coverage.include).toEqual(["src/**"]);
+    expect(result.ok && result.snapshot.config.coverage).toEqual(bootstrapRepositoryCoverage);
     expect(result.ok && result.snapshot.changes[0]?.entity_ids).toEqual([fixture.entityId]);
   });
 
@@ -41,7 +42,7 @@ describe("fixture setup tree", () => {
     expect(tree.get(indexPath)).toContain("[nutshell-vault/templates/TASK.md]");
     const result = projectRepositoryTree(tree);
     expect(result.ok && result.snapshot.entities[0]).toMatchObject({ id: distinct.entityId, title: distinct.name, code_paths: [] });
-    expect(result.ok && result.snapshot.config.coverage.include).toEqual([]);
+    expect(result.ok && result.snapshot.config.coverage).toEqual(bootstrapRepositoryCoverage);
   });
 
   it("catalogs existing active vault notes and preserves historical notes outside the index", () => {

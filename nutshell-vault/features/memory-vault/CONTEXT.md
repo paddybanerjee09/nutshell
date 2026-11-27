@@ -19,7 +19,7 @@ Use `pnpm nutshell context --query <text> --budget <estimated tokens>` for Git H
 
 ## Consequences
 
-The Git validator resolves both refs before reading either tree. Protected record parsing uses service code. Configured comparisons use the base coverage, and bootstrap uses service-owned defaults. A proposed weakening requires separate approval. The trusted source workflow checks the task revision and actual PR identity. Housekeeping validates the matching merge, canonical task blob, and one-file scope before GitHub applies its expected-head guard. Revision-aware context retrieval surfaces catalog problems and budget limits. See [the acceptance ledger](../../runs/ACCEPTANCE.md) for observed evidence.
+The Git validator resolves both refs before reading either tree. Protected record parsing uses service code. Configured comparisons use the base coverage. Initial setup retains the service-owned coverage floor for future changes. A proposed weakening requires separate approval. The trusted source workflow checks the task revision and actual PR identity. Housekeeping validates the matching merge, canonical task blob, and one-file scope before GitHub applies its expected-head guard. Revision-aware context retrieval surfaces catalog problems and budget limits. See [the acceptance ledger](../../runs/ACCEPTANCE.md) for observed evidence.
 
 ## Affected files
 
