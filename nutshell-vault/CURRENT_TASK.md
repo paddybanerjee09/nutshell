@@ -4,8 +4,8 @@ date: "2026-11-26"
 status: active
 tags: [control, task, pull-requests]
 task_id: snapshot-workspace-2026-11-26
-task_state: pr_open
-task_revision: 28
+task_state: ready_for_review
+task_revision: 29
 repository_id: 1467144605
 branch: feature/snapshot-workspace
 base_branch: main
@@ -28,7 +28,7 @@ Use the published snapshot for document and record content. Keep tabs and split 
 
 ## Consequences
 
-PR #6 remains open. The workspace passed the Windows gate with 95 tests and six browser viewports. The keyboard parity and web startup repairs passed an independent optimized journey. Follow-up runs exposed intermittent fixture startup and sign-in timing. Validate the hydration-safe controls and the scoped PostgreSQL connection changes on the final candidate before promotion.
+Windows `pnpm alpha:setup` and the final `pnpm alpha:verify` passed. The gate ran 99 tests, the optimized app, the PostgreSQL worker, Firefox with real workspace controls at six viewports, and signed fixture publication and shutdown. Confirm GitHub's trusted check and the exact PR #6 merge before guarded cleanup.
 
 ## Affected files
 
