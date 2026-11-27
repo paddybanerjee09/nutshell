@@ -75,6 +75,7 @@ const edgeTypes = { connection: GraphConnection };
 
 export function WorkspaceGraph({ nodes, edges, selectedId, onSelect, active = true }: WorkspaceGraphProps) {
   const root = useRef<HTMLDivElement>(null);
+  const canvasSize = useRef<{ width: number; height: number } | null>(null);
   const pins = useRef(new Map<string, GraphPosition>());
   const framed = useRef(new WeakSet<Layout>());
   const dragged = useRef(false);
@@ -119,6 +120,32 @@ export function WorkspaceGraph({ nodes, edges, selectedId, onSelect, active = tr
     });
     return () => cancelAnimationFrame(frameId);
   }, [active, flow, layout, phase, paused, cameraDuration]);
+
+  useEffect(() => {
+    const canvas = root.current;
+    if (!active || !flow || !canvas) return;
+    let frameId: number | undefined;
+    const observer = new ResizeObserver(() => {
+      if (frameId !== undefined) return;
+      // Let React Flow's own measurement catch up before fitting the viewport.
+      frameId = requestAnimationFrame(() => {
+        frameId = undefined;
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        if (!width || !height) return;
+        const previous = canvasSize.current;
+        canvasSize.current = { width, height };
+        if (!previous || (previous.width === width && previous.height === height)) return;
+        if (layout.settled) framed.current.add(layout);
+        void flow.fitView({ ...fitOptions, duration: cameraDuration });
+      });
+    });
+    observer.observe(canvas);
+    return () => {
+      observer.disconnect();
+      if (frameId !== undefined) cancelAnimationFrame(frameId);
+    };
+  }, [active, flow, layout, cameraDuration]);
 
   function centerNode(id: string, onlyIfOutOfView = false) {
     const position = positions.get(id);

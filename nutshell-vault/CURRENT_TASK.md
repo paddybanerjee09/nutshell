@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: workspace-graphs-2026-11-27
 task_state: pr_open
-task_revision: 50
+task_revision: 51
 repository_id: 1467144605
 branch: feature/workspace-graphs
 base_branch: main
@@ -28,7 +28,7 @@ Use one React Flow renderer with bounded d3-force layout, distinct graph semanti
 
 ## Consequences
 
-Source PR #10 has pinned graph dependencies and a tested bounded model. Five model tests passed. The isolated PostgreSQL fixture validated its declared edge and archive exclusion. Next, integrate the force renderer and workspace navigation and run the browser journey.
+Source PR #10 has pinned graph dependencies and a tested bounded model. Five model tests passed. The isolated PostgreSQL fixture validated its declared edge and archive exclusion. The optimized Firefox journey passed both graph modes, pointer and keyboard interactions, and unchanged product relationships. Visual review found a stale desktop camera after narrowing the pane. A bounded resize fit and visible-node assertion are in place for the repeat verification.
 
 ## Affected files
 
