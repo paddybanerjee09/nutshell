@@ -3,7 +3,7 @@ import { betterAuth } from "better-auth";
 import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, exists } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { z } from "zod";
@@ -64,7 +64,7 @@ function createRuntime() {
     session: { cookieCache: { enabled: false } },
     plugins: [localPersonaPlugin(config.origin)],
   });
-  return { db, auth, pool };
+  return { db, auth, config, pool };
 }
 
 let runtime: ReturnType<typeof createRuntime> | undefined;
@@ -94,16 +94,37 @@ export async function closeRuntime(): Promise<void> {
 
 export type Repository = { id: string; name: string; description: string };
 
+export function getFixtureDatabase() {
+  const { config, db } = getRuntime();
+  if (config.mode !== "local-alpha" || config.deployment !== "local") throw new Error("Fixture access requires local alpha mode.");
+  return db;
+}
+
+function repositoryAccessFilter(userId: string, id?: number) {
+  const { db } = getRuntime();
+  return and(
+    eq(repository.active, true),
+    id === undefined ? undefined : eq(repository.id, id),
+    exists(db.select({ id: installation.id }).from(installation)
+      .where(and(eq(installation.id, repository.installationId), eq(installation.active, true)))),
+    exists(db.select({ id: membership.repositoryId }).from(membership)
+      .where(and(eq(membership.repositoryId, repository.id), eq(membership.userId, userId), eq(membership.active, true)))),
+    exists(db.select({ id: providerGrant.repositoryId }).from(providerGrant)
+      .where(and(eq(providerGrant.repositoryId, repository.id), eq(providerGrant.userId, userId), eq(providerGrant.canRead, true)))),
+  );
+}
+
+export async function resolveRepositoryReadFilter(headers: Headers, id: string) {
+  const numericId = Number(id);
+  if (!/^[1-9]\d{0,15}$/u.test(id) || !Number.isSafeInteger(numericId)) return undefined;
+  const auth = await getSession(headers);
+  return auth ? repositoryAccessFilter(auth.user.id, numericId) : undefined;
+}
+
 async function authorizedRepositories(userId: string, id?: number): Promise<Repository[]> {
   const rows = await getRuntime().db.select({
     id: repository.id, name: repository.name, description: repository.description,
-  }).from(repository).innerJoin(installation, and(
-    eq(installation.id, repository.installationId), eq(installation.active, true),
-  )).innerJoin(membership, and(
-    eq(membership.repositoryId, repository.id), eq(membership.userId, userId), eq(membership.active, true),
-  )).innerJoin(providerGrant, and(
-    eq(providerGrant.repositoryId, repository.id), eq(providerGrant.userId, userId), eq(providerGrant.canRead, true),
-  )).where(and(eq(repository.active, true), id === undefined ? undefined : eq(repository.id, id)))
+  }).from(repository).where(repositoryAccessFilter(userId, id))
     .orderBy(asc(repository.name), asc(repository.id));
 
   return rows.map((row) => ({ ...row, id: String(row.id) }));
@@ -115,10 +136,9 @@ export async function listRepositories(headers: Headers): Promise<Repository[] |
 }
 
 export async function readRepository(headers: Headers, id: string): Promise<Repository | null> {
-  const numericId = Number(id);
-  if (!/^[1-9]\d{0,15}$/u.test(id) || !Number.isSafeInteger(numericId)) return null;
-  const auth = await getSession(headers);
-  if (!auth) return null;
-  const [result] = await authorizedRepositories(auth.user.id, numericId);
-  return result ?? null;
+  const filter = await resolveRepositoryReadFilter(headers, id);
+  if (!filter) return null;
+  const [result] = await getRuntime().db.select({ name: repository.name, description: repository.description })
+    .from(repository).where(filter);
+  return result ? { id, ...result } : null;
 }

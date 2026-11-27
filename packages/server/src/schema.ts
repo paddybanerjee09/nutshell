@@ -1,4 +1,5 @@
-import { bigint, boolean, index, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import type { RepositoryProjection } from "@nutshell/core/snapshot";
+import { bigint, boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 const time = (name: string) => timestamp(name, { withTimezone: true });
 const numericId = (name: string) => bigint(name, { mode: "number" });
@@ -60,6 +61,7 @@ export const repository = pgTable("repository", {
   name: text("name").notNull(),
   description: text("description").notNull(),
   active: boolean("active").notNull().default(true),
+  connectionEpoch: integer("connection_epoch").notNull().default(1),
 });
 
 export const membership = pgTable("repository_membership", {
@@ -67,6 +69,58 @@ export const membership = pgTable("repository_membership", {
   repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
   active: boolean("active").notNull().default(true),
 }, (table) => [primaryKey({ columns: [table.userId, table.repositoryId] })]);
+
+export const fixtureTree = pgTable("fixture_tree", {
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  revision: text("revision").notNull(),
+  files: jsonb("files").$type<{ path: string; body: string }[]>().notNull(),
+}, (table) => [primaryKey({ columns: [table.repositoryId, table.revision] })]);
+
+export const fixtureSnapshot = pgTable("fixture_snapshot", {
+  repositoryId: numericId("repository_id").notNull(),
+  revision: text("revision").notNull(),
+  schemaVersion: integer("schema_version").notNull(),
+  policyVersion: integer("policy_version").notNull(),
+  projection: jsonb("projection").$type<RepositoryProjection>().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.repositoryId, table.revision, table.schemaVersion, table.policyVersion] }),
+  foreignKey({ columns: [table.repositoryId, table.revision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] })
+    .onDelete("cascade"),
+]);
+
+export const fixtureState = pgTable("fixture_state", {
+  repositoryId: numericId("repository_id").primaryKey().references(() => repository.id, { onDelete: "cascade" }),
+  headRevision: text("head_revision").notNull(),
+  indexedRevision: text("indexed_revision"),
+  indexedEpoch: integer("indexed_epoch"),
+  indexedSchemaVersion: integer("indexed_schema_version"),
+  indexedPolicyVersion: integer("indexed_policy_version"),
+}, (table) => [
+  foreignKey({ columns: [table.repositoryId, table.headRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
+  foreignKey({
+    columns: [table.repositoryId, table.indexedRevision, table.indexedSchemaVersion, table.indexedPolicyVersion],
+    foreignColumns: [fixtureSnapshot.repositoryId, fixtureSnapshot.revision, fixtureSnapshot.schemaVersion, fixtureSnapshot.policyVersion],
+  }),
+]);
+
+export const fixtureDelivery = pgTable("fixture_delivery", {
+  id: text("id").primaryKey(),
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  installationId: numericId("installation_id").notNull(),
+  revision: text("revision").notNull(),
+  connectionEpoch: integer("connection_epoch").notNull(),
+  schemaVersion: integer("schema_version").notNull(),
+  policyVersion: integer("policy_version").notNull(),
+  status: text("status", { enum: ["queued", "published", "obsolete", "invalid", "failed"] }).notNull().default("queued"),
+  failureCode: text("failure_code"),
+  attempts: integer("attempts").notNull().default(0),
+  receivedAt: time("received_at").notNull().defaultNow(),
+  availableAt: time("available_at").notNull().defaultNow(),
+  processedAt: time("processed_at"),
+}, (table) => [
+  index("fixture_delivery_queue_idx").on(table.status, table.availableAt, table.receivedAt),
+  index("fixture_delivery_revision_idx").on(table.repositoryId, table.revision, table.connectionEpoch),
+]);
 
 export const providerGrant = pgTable("local_provider_grant", {
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),

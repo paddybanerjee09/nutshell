@@ -8,6 +8,13 @@
       "when": 1795651200000,
       "tag": "0000_local_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795651200001,
+      "tag": "0001_fixture_sync",
+      "breakpoints": true
     }
   ]
 }

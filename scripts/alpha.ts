@@ -42,6 +42,7 @@ async function verify() {
   try {
     await runWorkerProbe(config.databaseUrl);
     console.log("The worker completed a persisted job in the dedicated verification database.");
+    await runPnpm(["exec", "node", "scripts/fixture-sync-verify.ts"], env);
     await verifyEntryFlow(config.origin);
   } finally {
     await services.stop();
