@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: local-authoring-compatibility-2026-11-27
 task_state: pr_open
-task_revision: 107
+task_revision: 108
 repository_id: 1467144605
 branch: feature/local-authoring-compatibility
 base_branch: main
@@ -28,7 +28,7 @@ Keep separately owned setup-builder and semantic-history changes. Preserve owner
 
 ## Consequences
 
-Both failures reproduced without writes. GitHub created draft PR #20 from the confirmed canonical idle revision 105. Verify each edge with the affected suites, then run Windows alpha verification on the integrated head.
+The existing indexed owner vault now previews and applies the managed AGENTS append and record creation without editing its catalog or notes. Fourteen setup tests passed. A separate optimized Firefox run verified the exact private screenshot journey after PR #19. Verify local Git history replay and rerun integrated checks.
 
 ## Affected files
 
