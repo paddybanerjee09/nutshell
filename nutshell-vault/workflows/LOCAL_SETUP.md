@@ -76,6 +76,8 @@ The Windows optimized build uses two Next.js page-data workers after a worker ex
 
 Verification runs the test files in sequence because PostgreSQL integration tests change shared fixture grants and connection epochs. On Windows, Vitest uses worker threads to avoid the observed fork shutdown timeouts.
 
+The verification database lease checks the configured URL and the connected database name and loopback address. Setup, verification, and fixture reset use the same PostgreSQL advisory lock. The reset transaction validates the original fixture repositories and personas before clearing generated scenario state, refreshing connection epochs, and restoring seed grants. This preserves unrelated repositories, jobs, and screenshot assets.
+
 Web startup reports the failed phase and waits for HTTP 200 from its own loopback health route before signalling readiness. Transient unavailability permits up to three checks within the supervisor deadline. Provisioning and migration each allow 15 seconds per local connection. The PostgreSQL integration suites use explicit setup, test, and cleanup deadlines.
 
 The pinned runtime uses Node 24.18.0, pnpm 11.25.0, PostgreSQL 18.7, Next.js 16.4.6, Better Auth 1.7.28, Drizzle 0.45.4, and pg-boss 12.40.0.
