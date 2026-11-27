@@ -1,20 +1,20 @@
 import { projectRepositoryTree, type RepositoryProjection } from "@nutshell/core/snapshot";
 import { and, eq, exists, inArray, lte, sql } from "drizzle-orm";
 import { fixtureRepositories } from "./local-fixtures.ts";
-import { getFixtureDatabase, resolveRepositoryReadFilter } from "./runtime.ts";
-import { fixtureDelivery, fixtureSnapshot, fixtureState, fixtureTree, installation, repository } from "./schema.ts";
+import { getFixtureDatabase, resolveRepositoryReadFilter, type FixtureTransaction } from "./runtime.ts";
+import { fixtureDelivery, fixtureSetupProposal, fixtureSnapshot, fixtureState, fixtureTree, installation, repository } from "./schema.ts";
 
-const schemaVersion = 1;
-const policyVersion = 1;
+export const fixtureSchemaVersion = 1;
+export const fixturePolicyVersion = 1;
+const schemaVersion = fixtureSchemaVersion;
+const policyVersion = fixturePolicyVersion;
 const maxAttempts = 5;
 const revisionPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const deliveryPattern = /^[A-Za-z0-9_.-]{1,128}$/u;
 
-type FixtureDatabase = ReturnType<typeof getFixtureDatabase>;
-type FixtureTransaction = Parameters<Parameters<FixtureDatabase["transaction"]>[0]>[0];
-type FixtureFile = { path: string; body: string };
+export type FixtureFile = { path: string; body: string };
 type FixtureDelivery = typeof fixtureDelivery.$inferSelect;
-type DeliveryInput = { deliveryId: string; repositoryId: number; installationId: number; revision: string };
+export type DeliveryInput = { deliveryId: string; repositoryId: number; installationId: number; revision: string };
 
 export type FixtureSnapshotRead = {
   status: "pending" | "current" | "stale" | "invalid";
@@ -23,7 +23,7 @@ export type FixtureSnapshotRead = {
   snapshot: RepositoryProjection | null;
 };
 
-async function lockFixtureConnection(tx: FixtureTransaction, repositoryId: number, installationId: number) {
+export async function lockFixtureConnection(tx: FixtureTransaction, repositoryId: number, installationId: number, lock: "share" | "update" = "update") {
   const isFixture = fixtureRepositories.some((item) => item.id === repositoryId && item.installationId === installationId);
   if (!isFixture) return null;
 
@@ -34,7 +34,7 @@ async function lockFixtureConnection(tx: FixtureTransaction, repositoryId: numbe
 
   const [connection] = await tx.select({ epoch: repository.connectionEpoch }).from(repository)
     .where(and(eq(repository.id, repositoryId), eq(repository.active, true), eq(repository.installationId, installationId)))
-    .for("update");
+    .for(lock);
   return connection ?? null;
 }
 
@@ -49,6 +49,16 @@ export async function acceptFixtureDelivery(input: DeliveryInput): Promise<"acce
     const connection = await lockFixtureConnection(tx, repositoryId, installationId);
     if (!connection) return "unavailable";
 
+    // A delayed setup event remains scoped to the connection that actually merged the proposal.
+    const [setup] = await tx.select({
+      repositoryId: fixtureSetupProposal.repositoryId,
+      epoch: fixtureSetupProposal.connectionEpoch,
+      mergedRevision: fixtureSetupProposal.mergedRevision,
+    }).from(fixtureSetupProposal).where(eq(fixtureSetupProposal.deliveryId, deliveryId));
+    if (setup && (setup.repositoryId !== repositoryId || setup.epoch !== connection.epoch || setup.mergedRevision !== revision)) {
+      return "unavailable";
+    }
+
     // The receipt and the work lease share one committed row.
     const [stored] = await tx.insert(fixtureDelivery).values({
       id: deliveryId, repositoryId, installationId, revision, connectionEpoch: connection.epoch, schemaVersion, policyVersion,
@@ -57,9 +67,7 @@ export async function acceptFixtureDelivery(input: DeliveryInput): Promise<"acce
   });
 }
 
-export async function setFixtureHead(repositoryId: number, revision: string, files: readonly FixtureFile[]): Promise<void> {
-  const fixture = fixtureRepositories.find((item) => item.id === repositoryId);
-  if (!fixture || !revisionPattern.test(revision)) throw new Error("Expected a fixture repository and a full lowercase commit SHA.");
+export function normalizeFixtureFiles(files: readonly FixtureFile[]) {
   if (files.length > 5_000) throw new Error("The fixture tree exceeds the path limit.");
 
   const paths = new Set<string>();
@@ -74,23 +82,40 @@ export async function setFixtureHead(repositoryId: number, revision: string, fil
   }
   if (treeBytes > 8 * 1024 * 1024) throw new Error("The fixture tree exceeds the total byte limit.");
 
-  const sortedFiles = [...files].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+  return [...files].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+}
+
+export async function readFixtureTree(tx: FixtureTransaction, repositoryId: number, revision: string) {
+  const [tree] = await tx.select({ files: fixtureTree.files }).from(fixtureTree)
+    .where(and(eq(fixtureTree.repositoryId, repositoryId), eq(fixtureTree.revision, revision)));
+  return tree?.files;
+}
+
+export async function storeFixtureTree(tx: FixtureTransaction, repositoryId: number, revision: string, files: FixtureFile[]) {
+  const [stored] = await tx.insert(fixtureTree).values({ repositoryId, revision, files })
+    .onConflictDoNothing().returning({ revision: fixtureTree.revision });
+  if (!stored) {
+    const existing = await readFixtureTree(tx, repositoryId, revision);
+    if (existing?.length !== files.length || !existing.every(({ path, body }, index) =>
+      path === files[index]?.path && body === files[index]?.body)) {
+      throw new Error("This fixture revision already identifies a different immutable tree.");
+    }
+  }
+}
+
+export async function writeFixtureHead(tx: FixtureTransaction, repositoryId: number, revision: string) {
+  await tx.insert(fixtureState).values({ repositoryId, headRevision: revision })
+    .onConflictDoUpdate({ target: fixtureState.repositoryId, set: { headRevision: revision } });
+}
+
+export async function setFixtureHead(repositoryId: number, revision: string, files: readonly FixtureFile[]): Promise<void> {
+  const fixture = fixtureRepositories.find((item) => item.id === repositoryId);
+  if (!fixture || !revisionPattern.test(revision)) throw new Error("Expected a fixture repository and a full lowercase commit SHA.");
+  const sortedFiles = normalizeFixtureFiles(files);
   await getFixtureDatabase().transaction(async (tx) => {
     if (!await lockFixtureConnection(tx, repositoryId, fixture.installationId)) throw new Error("The fixture repository is unavailable.");
-
-    const [stored] = await tx.insert(fixtureTree).values({ repositoryId, revision, files: sortedFiles })
-      .onConflictDoNothing().returning({ revision: fixtureTree.revision });
-    if (!stored) {
-      const [existing] = await tx.select({ files: fixtureTree.files }).from(fixtureTree)
-        .where(and(eq(fixtureTree.repositoryId, repositoryId), eq(fixtureTree.revision, revision)));
-      if (existing?.files.length !== sortedFiles.length || !existing.files.every(({ path, body }, index) =>
-        path === sortedFiles[index]?.path && body === sortedFiles[index]?.body)) {
-        throw new Error("This fixture revision already identifies a different immutable tree.");
-      }
-    }
-
-    await tx.insert(fixtureState).values({ repositoryId, headRevision: revision })
-      .onConflictDoUpdate({ target: fixtureState.repositoryId, set: { headRevision: revision } });
+    await storeFixtureTree(tx, repositoryId, revision, sortedFiles);
+    await writeFixtureHead(tx, repositoryId, revision);
   });
 }
 
@@ -105,11 +130,10 @@ async function publishFixtureDelivery(tx: FixtureTransaction, job: FixtureDelive
     .where(eq(fixtureState.repositoryId, repositoryId));
   if (state?.headRevision !== revision) return { status: "obsolete", failureCode: null } as const;
 
-  const [tree] = await tx.select({ files: fixtureTree.files }).from(fixtureTree)
-    .where(and(eq(fixtureTree.repositoryId, repositoryId), eq(fixtureTree.revision, revision)));
+  const tree = await readFixtureTree(tx, repositoryId, revision);
   if (!tree) return { status: "invalid", failureCode: "missing_tree" } as const;
 
-  const projected = projectRepositoryTree(new Map(tree.files.map(({ path, body }) => [path, body])));
+  const projected = projectRepositoryTree(new Map(tree.map(({ path, body }) => [path, body])));
   if (!projected.ok) return { status: "invalid", failureCode: "invalid_tree" } as const;
 
   await tx.insert(fixtureSnapshot).values({ repositoryId, revision, schemaVersion, policyVersion, projection: projected.snapshot })

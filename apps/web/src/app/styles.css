@@ -179,6 +179,50 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .repository-list span { font-weight: 600; }
 .back-link { margin-bottom: 12px; }
 
+.repository-setup {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: var(--ns-border-width) solid var(--ns-border-alt);
+}
+
+.repository-setup h2 {
+  margin: 0 0 8px;
+  color: var(--ns-muted);
+  font-size: var(--ns-font-size-ui);
+  font-weight: 600;
+}
+
+.repository-setup h3 {
+  margin: 0;
+  font-size: var(--ns-font-size-body);
+}
+
+.repository-setup p { margin: 6px 0 12px; }
+.setup-revision { margin: 0 0 12px; }
+.setup-revision dt { color: var(--ns-muted); }
+.setup-revision dd { margin: 4px 0 0; }
+
+.setup-revision code {
+  display: inline-block;
+  max-width: 100%;
+  padding: 3px 6px;
+  background: var(--ns-code-surface);
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-input);
+  font: var(--ns-font-size-ui-dense)/1.5 var(--ns-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.setup-button {
+  min-height: 44px;
+  padding: 8px 12px;
+  background: var(--ns-chrome-alt);
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-button);
+}
+
+.setup-button:hover:not([aria-disabled="true"]) { background: var(--ns-hover); }
+
 .quiet-button {
   background: transparent;
   border: 0;

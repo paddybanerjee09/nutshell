@@ -64,11 +64,15 @@ pnpm alpha:dev
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Setup uses the existing project-scoped portable database when both URLs are absent. It generates separate session and fixture webhook secrets in ignored `.env` and applies Drizzle migrations and fixture inserts. Existing fixture access and persisted sessions survive repeated setup. Run setup again when updating an older database or environment file.
 
+To initialize the Field Notes fixture, sign in as Coordinator, open Field Notes, create a setup proposal, and select **Simulate setup merge**. The repository page shows the proposal revision and the indexed merge revision. If the local webhook delivery fails after a simulated merge, retry it using the page action. The retry reuses the same delivery. The Reader can view setup status and the Other repository user can configure Harbor Atlas.
+
 Use `pnpm alpha:stop` to stop the supervised web and worker. The database is started independently. See the portable stop command above if it is your project's server.
 
 Install the browser for your platform with `pnpm exec playwright install firefox` on Windows or `pnpm exec playwright install --only-shell chromium` elsewhere. When reusing this checkout's project-local browsers, set `PLAYWRIGHT_BROWSERS_PATH` to the absolute path of `.local/playwright-preflight/browsers` before installing. Run `pnpm alpha:verify`. The optimized verification process uses `nutshell_alpha_test` and binds to [http://127.0.0.1:3001](http://127.0.0.1:3001). It checks the entry flow, repository isolation, a persisted worker probe, signed fixture deliveries, authorized snapshot reads, invalid-revision handling, and browser shutdown. Browser evidence goes to `.local/verification/`. The fixture reset command remains planned.
 
 On this Windows host, Chromium's native child stayed alive after the browser connection closed, including with a synthetic page and a direct DevTools connection. Playwright Firefox exited successfully in the independent Windows probe. The verifier uses Firefox on Windows and reports a failed check if graceful browser shutdown cannot be confirmed. See the [acceptance ledger](../runs/ACCEPTANCE.md#decision) for the application checks.
+
+Verification runs the test files in sequence because PostgreSQL integration tests change shared fixture grants and connection epochs. On Windows, Vitest uses worker threads to avoid the observed fork shutdown timeouts.
 
 The pinned runtime uses Node 24.18.0, pnpm 11.25.0, PostgreSQL 18.7, Next.js 16.4.6, Better Auth 1.7.28, Drizzle 0.45.4, and pg-boss 12.40.0.
 

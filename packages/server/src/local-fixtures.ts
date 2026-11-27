@@ -32,7 +32,7 @@ export const fixtureRepositories = [
 ];
 
 export const fixtureGrants = [
-  { userId: personas.coordinator.id, repositoryId: 1001, canRead: true, canWrite: true },
-  { userId: personas.reader.id, repositoryId: 1001, canRead: true, canWrite: false },
-  { userId: personas.other.id, repositoryId: 1002, canRead: true, canWrite: true },
+  { userId: personas.coordinator.id, repositoryId: 1001, canRead: true, canWrite: true, canConfigure: true },
+  { userId: personas.reader.id, repositoryId: 1001, canRead: true, canWrite: false, canConfigure: false },
+  { userId: personas.other.id, repositoryId: 1002, canRead: true, canWrite: true, canConfigure: true },
 ];

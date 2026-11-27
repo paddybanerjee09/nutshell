@@ -40,6 +40,47 @@ async function signIn(page: Page, button: RegExp) {
   await page.waitForURL("**/app");
 }
 
+async function verifySetup(page: Page, origin: string) {
+  const setupPath = "/api/repos/1001/setup";
+  const setup = page.getByRole("region", { name: "Repository setup" });
+  const endpoint = origin + setupPath;
+  const responseFor = () => page.waitForResponse((candidate) =>
+    candidate.request().method() === "POST" && new URL(candidate.url()).pathname === setupPath);
+  const post = (data: object, requestOrigin = origin) => page.request.post(endpoint, { headers: { origin: requestOrigin }, data });
+
+  assert.equal((await post({ action: "open" }, "https://untrusted.invalid")).status(), 403);
+  const creation = responseFor();
+  await setup.getByRole("button", { name: "Create setup proposal" }).click();
+  const result = await creation;
+  assert.equal(result.status(), 200);
+  const { proposal } = await result.json() as { proposal: { id: string; headRevision: string } };
+  assert.ok(proposal.id);
+  assert.match(proposal.headRevision, /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
+  await setup.getByRole("heading", { name: "Awaiting setup merge" }).waitFor();
+  const duplicate = await post({ action: "open" });
+  assert.equal(duplicate.status(), 200);
+  assert.deepEqual((await duplicate.json()).proposal, proposal);
+  assert.equal((await post({ action: "merge", expectedHead: "0".repeat(40) })).status(), 409);
+
+  const merge = responseFor();
+  await setup.getByRole("button", { name: "Simulate setup merge" }).click();
+  const merged = await merge;
+  assert.equal(merged.status(), 200);
+  const { proposal: mergedProposal } = await merged.json() as { proposal: { mergeRevision: string } };
+  assert.match(mergedProposal.mergeRevision, /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u);
+  const repeatedMerge = await post({ action: "merge", expectedHead: proposal.headRevision });
+  assert.equal(repeatedMerge.status(), 200);
+  assert.deepEqual((await repeatedMerge.json()).proposal, mergedProposal);
+  await setup.getByRole("heading", { name: "Repository synced" }).waitFor({ timeout: 35_000 });
+
+  const resultSnapshot = await page.request.get(origin + "/api/repos/1001/snapshot");
+  assert.equal(resultSnapshot.status(), 200);
+  const snapshot = await resultSnapshot.json();
+  assert.equal(snapshot.status, "current");
+  assert.equal(snapshot.revision, mergedProposal.mergeRevision);
+  assert.ok(snapshot.snapshot.entities.length > 0);
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -72,6 +113,8 @@ export async function verifyEntryFlow(origin: string) {
     await page.getByRole("link", { name: /Field Notes/ }).click();
     await page.waitForURL("**/app/repos/1001");
     await page.getByRole("heading", { name: "Field Notes" }).waitFor();
+    await verifySetup(page, origin);
+    await page.screenshot({ path: output + "/fixture-setup-desktop.png" });
     const denied = await page.goto(origin + "/app/repos/1002");
     assert.equal(denied?.status(), 404);
     assert.equal(await page.getByText("Harbor Atlas").count(), 0);
@@ -82,8 +125,22 @@ export async function verifyEntryFlow(origin: string) {
     await signIn(other, /^Other repository user/);
     await other.getByRole("link", { name: /Harbor Atlas/ }).waitFor();
     assert.equal(await other.getByText("Field Notes").count(), 0);
+    assert.equal((await other.request.get(origin + "/api/repos/1001/setup")).status(), 404);
+
+    const reader = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await reader.goto(origin + "/login");
+    await signIn(reader, /^Reader/);
+    await reader.getByRole("link", { name: /Field Notes/ }).click();
+    await reader.getByRole("region", { name: "Repository setup" }).waitFor();
+    await reader.getByRole("heading", { name: "Repository synced" }).waitFor();
+    assert.equal(await reader.getByRole("button", { name: /Create setup proposal|Simulate setup merge/ }).count(), 0);
+    assert.ok(await reader.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const forbidden = await reader.request.post(origin + "/api/repos/1001/setup", {
+      headers: { origin }, data: { action: "open" },
+    });
+    assert.equal(forbidden.status(), 403);
   } finally {
     await stopVerificationBrowser(server);
   }
-  console.log(`${browserType.name()} entry, session reload, repository isolation, and browser shutdown passed.`);
+  console.log(`${browserType.name()} entry, session reload, repository isolation, simulated setup and signed publication, and browser shutdown passed.`);
 }

@@ -15,6 +15,13 @@
       "when": 1795651200001,
       "tag": "0001_fixture_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795651200002,
+      "tag": "0002_fixture_onboarding",
+      "breakpoints": true
     }
   ]
 }
