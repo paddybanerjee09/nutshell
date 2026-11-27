@@ -68,7 +68,7 @@ Use `pnpm alpha:stop` to stop the supervised web and worker. The database is sta
 
 Run `pnpm exec playwright install --only-shell chromium` if Playwright Chromium is absent, then `pnpm alpha:verify`. The optimized verification process uses `nutshell_alpha_test` and binds to [http://127.0.0.1:3001](http://127.0.0.1:3001). It checks the entry flow, repository isolation, and a persisted worker probe. The test output goes to `.local/verification/`. The fixture reset command remains planned.
 
-On this Windows session, the runtime checks passed and Chromium teardown timed out afterward. The verifier bounds teardown and returns a failure when it times out. The [acceptance ledger](../runs/ACCEPTANCE.md#decision) records the commands and observed evidence.
+On this Windows session, the runtime checks passed and Chromium teardown timed out afterward. The verifier bounds teardown and returns a failure on timeout. A later development restart also failed before readiness with a child termination timeout. PostgreSQL remained running. The [acceptance ledger](../runs/ACCEPTANCE.md#decision) records the commands and observed evidence.
 
 The pinned runtime uses Node 24.18.0, pnpm 11.25.0, PostgreSQL 18.7, Next.js 16.4.6, Better Auth 1.7.28, Drizzle 0.45.4, and pg-boss 12.40.0.
 

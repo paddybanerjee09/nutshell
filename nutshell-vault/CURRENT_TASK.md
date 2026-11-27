@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: local-runtime-2026-11-26
 task_state: blocked
-task_revision: 12
+task_revision: 13
 repository_id: 1467144605
 branch: feature/local-runtime
 base_branch: main
@@ -28,7 +28,7 @@ Keep database and authorization in the server package, use a separate worker pro
 
 ## Consequences
 
-The runtime started and stopped cleanly in development. On PR #3's runnable head, 46 tests, the optimized build, the persisted worker probe, and Chromium assertions passed. The verification command stalled in Chromium teardown after the assertions. Isolated synthetic pages reproduced the shutdown issue in bundled Chromium and both installed Chromium-based browsers. The bounded verifier reports the timeout. Keep PR #3 in draft and rerun alpha:verify when browser shutdown works on the host.
+The runtime started and stopped cleanly in the first development check. On PR #3's runnable head, 46 tests, the optimized build, the persisted worker probe, and Chromium assertions passed. Browser teardown then stalled and reproduced with bundled Chromium, Edge, and Chrome on synthetic pages. The bounded verifier reports the timeout. A later development restart also failed before readiness and reported a child termination timeout. PostgreSQL remains running; the web and worker are stopped. Keep PR #3 in draft and rerun local verification when the host can start and stop the child processes reliably.
 
 ## Affected files
 
