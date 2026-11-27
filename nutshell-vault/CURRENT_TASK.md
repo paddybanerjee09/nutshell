@@ -4,8 +4,8 @@ date: "2026-11-26"
 status: active
 tags: [control, task, pull-requests]
 task_id: fixture-onboarding-2026-11-26
-task_state: pr_open
-task_revision: 23
+task_state: ready_for_review
+task_revision: 24
 repository_id: 1467144605
 branch: feature/fixture-onboarding
 base_branch: main
@@ -28,7 +28,7 @@ Preserve owner-managed files and instructions. Pin the setup proposal and check 
 
 ## Consequences
 
-Draft PR #5 opened from canonical idle revision 21. Core owns setup tree construction, server owns durable proposal state and configuration authority, and web owns the repository setup actions. Verify repeat setup, a real browser journey, and signed publication before promotion.
+Windows `pnpm alpha:setup` and `pnpm alpha:verify` passed. The verifier ran 84 tests, built the optimized app, exercised the real PostgreSQL worker and Firefox onboarding journey, and completed the signed fixture checks and shutdown. Verify the final source head on PR #5 and clear the task after GitHub confirms the exact merge.
 
 ## Affected files
 
