@@ -1,3 +1,4 @@
+import { projectRepositoryTree, type RepositoryChange, type RepositorySnapshotIssue } from "@nutshell/core/snapshot";
 import { openGitBlobs } from "./context-source.ts";
 import { archivePrefix, checkVaultDocumentPath, gitArchiveHeader, maxFileBytes, readGit, readResolvedGitVault, resolveCommit, unpackUtf8 } from "./vault-files.ts";
 
@@ -6,6 +7,7 @@ const maxTreePaths = 5_000;
 const maxGitOutputBytes = 8 * 1024 * 1024;
 const maxManagedBytes = 8 * 1024 * 1024;
 const maxPathBytes = 512;
+const maxHistoryRevisions = 64;
 const treeRow = /^([0-7]{6}) (blob|tree|commit) ([0-9a-f]{40}|[0-9a-f]{64}) +(-|[0-9]+)\t([\s\S]+)$/u;
 
 type CommitTree = { files: Map<string, string>; managed: Map<string, { hash: string; size: number }> };
@@ -94,6 +96,34 @@ export async function readGitComparison(cwd: string, baseRef: string, headRef: s
     const baseFiles = await materialize(cwd, baseTree, batch);
     const headFiles = headTree === baseTree ? baseFiles : await materialize(cwd, headTree, batch);
     return { kind: "repository" as const, source, baseFiles, headFiles, changedPaths: paths };
+  } finally {
+    await batch.close();
+  }
+}
+
+export function hasOnlyHistoricalReferenceIssues(issues: readonly RepositorySnapshotIssue[]) {
+  return issues.length > 0 && issues.every(({ path, code }) => path.startsWith(".nutshell/changes/") &&
+    (code === "memory-target" || code === "change-entity"));
+}
+
+export async function readLocalChangeHistory(cwd: string, head: string) {
+  const listing = readGit(cwd, ["log", "--first-parent", "--no-show-signature", "--no-notes", "--no-decorate",
+    "--format=%H", `--max-count=${maxHistoryRevisions + 1}`, head, "--", ".nutshell/changes"],
+    8_192, "read local change history");
+  const revisions = listing.toString("ascii").trim().split(/\r?\n/u).filter(Boolean);
+  if (revisions.length > maxHistoryRevisions) throw new Error(`Local change history exceeds ${maxHistoryRevisions} record revisions.`);
+
+  const batch = openGitBlobs(cwd);
+  let acceptedChanges = new Map<string, RepositoryChange>();
+  try {
+    for (const revision of revisions.reverse()) {
+      if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(revision)) throw new Error("Invalid local history revision.");
+      const files = await materialize(cwd, tree(cwd, revision), batch);
+      const result = projectRepositoryTree(files, { acceptedChanges });
+      if (!result.ok) return result;
+      acceptedChanges = new Map(result.snapshot.changes.map((change) => [change.id, change]));
+    }
+    return { ok: true as const, acceptedChanges };
   } finally {
     await batch.close();
   }

@@ -65,14 +65,19 @@ async function reportVault(files: ReadonlyMap<string, string>, source: Source, j
 }
 
 async function reportGitComparison(options: Extract<Options, { kind: "git" }>, cwd: string) {
-  const { readGitComparison } = await import("./git-comparison.ts");
+  const { hasOnlyHistoricalReferenceIssues, readGitComparison, readLocalChangeHistory } = await import("./git-comparison.ts");
   const comparison = await readGitComparison(cwd, options.base, options.head, options.command === "validate");
   const { source } = comparison;
   if (comparison.kind === "vault") return reportVault(comparison.files, source, options.json);
 
   const { validateRepositoryChanges } = await import("@nutshell/core/change-validation");
   const { baseFiles, headFiles, changedPaths } = comparison;
-  const report = validateRepositoryChanges({ baseFiles, headFiles, changedPaths });
+  let report = validateRepositoryChanges({ baseFiles, headFiles, changedPaths });
+  if (!report.ok && report.issues.every(({ message }) => message.startsWith("Invalid base snapshot. ")) &&
+      hasOnlyHistoricalReferenceIssues(report.issues)) {
+    const history = await readLocalChangeHistory(cwd, source.base);
+    if (history.ok) report = validateRepositoryChanges({ baseFiles, headFiles, changedPaths, acceptedChanges: history.acceptedChanges });
+  }
   if (options.json) {
     const scope = options.command === "impact" ? "repository-impact" : "repository-change-validation";
     console.log(JSON.stringify({ scope, source, ...report }, null, 2));

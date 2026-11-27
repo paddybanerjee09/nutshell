@@ -2,7 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { bootstrapRepositoryCoverage } from "@nutshell/core/change-validation";
+import { buildRepositorySetupTree } from "@nutshell/core/fixture-setup-tree";
 import { projectRepositoryTree } from "@nutshell/core/snapshot";
+import { validateVault } from "@nutshell/core/vault";
 import { expect, onTestFinished, test, vi } from "vitest";
 import { readAuthoringTree } from "./authoring-files.ts";
 import { runInitCommand } from "./init-command.ts";
@@ -104,4 +106,52 @@ test("init refuses conflicts before touching owner content or creating its other
   expect(existsSync(join(cwd, "AGENTS.md"))).toBe(false);
   expect(existsSync(join(cwd, ".nutshell"))).toBe(false);
   expect(existsSync(join(cwd, "nutshell-vault", "archive"))).toBe(false);
+});
+
+test.each([true, false])("init preserves an existing valid owner vault with indexed AGENTS=%s", (hasOwnerInstructions) => {
+  const cwd = scratchDirectory();
+  const index = "nutshell-vault/_INDEX.md";
+  const context = "nutshell-vault/features/nutshell-setup/CONTEXT.md";
+  const owner = "\uFEFF# Owner instructions\r\n\r\nKeep the existing catalog.  \r\n";
+  const skeleton = buildRepositorySetupTree([], {
+    name: "Existing vault", description: "Local workflow test", entityId: "ent_existing_vault",
+  }, "local");
+  for (const { path, body } of skeleton) {
+    if (path === context || path.startsWith(".nutshell/") || (!hasOwnerInstructions && path === "AGENTS.md")) continue;
+    const absolute = join(cwd, path);
+    mkdirSync(dirname(absolute), { recursive: true });
+    const content = path === index
+      ? body.split("\n").filter((line) => !line.includes(context) && (hasOwnerInstructions || !line.includes("[AGENTS.md]"))).join("\r\n")
+      : path === "AGENTS.md" ? owner : body;
+    writeFileSync(absolute, content);
+  }
+  const before = readAuthoringTree(cwd);
+  expect(validateVault(before)).toEqual([]);
+
+  if (!hasOwnerInstructions) {
+    expect(() => runInitCommand(["--write"], cwd)).toThrow("Add AGENTS.md and its catalog row");
+    expect(readAuthoringTree(cwd)).toEqual(before);
+    return;
+  }
+
+  const report = readInitReports(cwd);
+  const preview = report();
+  expect(preview.files).toEqual([
+    { path: ".nutshell/changes/chg_nutshell_setup.json", action: "create" },
+    { path: ".nutshell/config.json", action: "create" },
+    { path: ".nutshell/entities/ent_nutshell_repository.json", action: "create" },
+    { path: "AGENTS.md", action: "append" },
+  ]);
+  expect(readAuthoringTree(cwd)).toEqual(before);
+  expect(report("--write")).toEqual({ ...preview, mode: "write", status: "written" });
+  for (const [path, body] of before) {
+    if (path !== "AGENTS.md") expect(readFileSync(join(cwd, path))).toEqual(Buffer.from(body));
+  }
+  expect(readFileSync(join(cwd, "AGENTS.md")).subarray(0, Buffer.byteLength(owner))).toEqual(Buffer.from(owner));
+  expect(existsSync(join(cwd, context))).toBe(false);
+  expect(projectRepositoryTree(readAuthoringTree(cwd))).toMatchObject({
+    ok: true,
+    snapshot: { entities: [{ memory_paths: [index] }], changes: [{ memory_paths: [index] }] },
+  });
+  expect(report("--write").status).toBe("configured");
 });

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { parseFrontmatter } from "./frontmatter.ts";
 import { projectRepositoryTree, repositoryEntitySchema, type RepositoryChange, type RepositoryProjection } from "./repo-snapshot.ts";
 import { bootstrapRepositoryCoverage } from "./repository-change-validation.ts";
+import { validateVault } from "./vault.ts";
 
 const root = "nutshell-vault/";
 const catalogPath = root + "_INDEX.md";
@@ -200,7 +201,7 @@ function makeCatalog(files: ReadonlyMap<string, string>, contextDescription: str
   });
 }
 
-function addSetupRecords(files: Map<string, string>, details: SetupDetails, copy: SetupCopy) {
+function addSetupRecords(files: Map<string, string>, details: SetupDetails, copy: SetupCopy, memoryPath: string) {
   const sourcePaths = [...files.keys()].some((path) => path.startsWith("src/")) ? ["src/**"] : [];
   const config: RepositoryProjection["config"] = {
     schema_version: 1,
@@ -221,7 +222,7 @@ function addSetupRecords(files: Map<string, string>, details: SetupDetails, copy
     summary: details.description,
     lifecycle: "active",
     code_paths: sourcePaths,
-    memory_paths: [contextPath],
+    memory_paths: [memoryPath],
     relations: [],
   });
   const change: RepositoryChange = {
@@ -233,7 +234,7 @@ function addSetupRecords(files: Map<string, string>, details: SetupDetails, copy
     product_impact: "internal",
     rationale: copy.rationale,
     technical_summary: copy.technicalSummary,
-    memory_paths: [contextPath],
+    memory_paths: [memoryPath],
     evidence: [],
   };
   for (const [path, record] of [
@@ -265,16 +266,22 @@ export function buildRepositorySetupTree(
   }
   // Local initialization validates an existing configuration and its records in place.
   if (variant !== "local" || !tree.has(configPath)) {
+    const existingVault = tree.has(catalogPath) && validateVault(tree).length === 0;
+    if (existingVault && !tree.has("AGENTS.md")) {
+      throw new Error("Add AGENTS.md and its catalog row before setup can install the managed section without changing your index.");
+    }
     const owner = tree.get("AGENTS.md") ?? "";
     if (owner.length > 256 * 1024) throw new Error("AGENTS.md exceeds the managed document size limit.");
     tree.set("AGENTS.md", installInstructions(owner));
-    if (!tree.has("README.md")) tree.set("README.md", "# Repository overview\n\nSee [the vault index](nutshell-vault/_INDEX.md) for shared repository knowledge.\n");
-    if (!tree.has("SPEC.md")) tree.set("SPEC.md", "# Repository requirements\n\n" + copy.requirements + "\n");
-    for (const [path, body] of initialVault(copy, noteDate)) {
-      if (!tree.has(path)) tree.set(path, body);
+    if (!existingVault) {
+      if (!tree.has("README.md")) tree.set("README.md", "# Repository overview\n\nSee [the vault index](nutshell-vault/_INDEX.md) for shared repository knowledge.\n");
+      if (!tree.has("SPEC.md")) tree.set("SPEC.md", "# Repository requirements\n\n" + copy.requirements + "\n");
+      for (const [path, body] of initialVault(copy, noteDate)) {
+        if (!tree.has(path)) tree.set(path, body);
+      }
+      if (!tree.has(catalogPath)) tree.set(catalogPath, makeCatalog(tree, copy.catalog, noteDate));
     }
-    if (!tree.has(catalogPath)) tree.set(catalogPath, makeCatalog(tree, copy.catalog, noteDate));
-    addSetupRecords(tree, details.data, copy);
+    addSetupRecords(tree, details.data, copy, tree.has(contextPath) ? contextPath : catalogPath);
   }
 
   for (const path of tree.keys()) {
