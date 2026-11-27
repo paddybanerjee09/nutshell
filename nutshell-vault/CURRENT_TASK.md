@@ -4,13 +4,13 @@ date: "2026-11-26"
 status: active
 tags: [control, task, pull-requests]
 task_id: source-task-check-2026-11-26
-task_state: in_progress
-task_revision: 5
+task_state: ready_for_review
+task_revision: 7
 repository_id: 1467144605
 branch: feature/source-task-check
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 2
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/2
 last_verified_head: null
 lead_agent: codex-lead
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Use the shared validator and immutable Git inputs. Run the source check from the
 
 ## Consequences
 
-PR #1 merged and GitHub's expected-head cleanup advanced the canonical task to idle revision 4. Open this feature's draft PR with the lifecycle baseline, then integrate and verify the lifecycle and CI checks.
+The shared lifecycle policy, check runner, and workflow are integrated. Focused tests passed for mismatched PR identity and stale cleanup, and the workflow passed local YAML and shell checks. Recheck the exact PR #2 head, then merge and use the shared housekeeping guard for cleanup.
 
 ## Affected files
 

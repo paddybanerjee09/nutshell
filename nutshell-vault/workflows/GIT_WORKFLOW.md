@@ -50,9 +50,13 @@ If the PR is closed without merging, retain the task as blocked/closed-unmerged.
 
 Pending cleanup blocks starting the next feature. The local idle file is not evidence that canonical cleanup finished; track its pending PR/status in durable PR metadata and check current remote state on resume. If cleanup cannot be authorized, preserve the checkpoint and report the blocked gate. A repeated completion event is idempotent. Cleanup-only PRs do not create a recursive task/cleanup cycle.
 
+For this source repository, the owner authorized a one-file housekeeping commit while current branch policy permits it. With a verified matching merge and task blob, use GitHub's [createCommitOnBranch mutation](https://docs.github.com/en/graphql/reference/commits#createcommitonbranch) with the verified canonical commit as `expectedHeadOid`. GitHub rejects a moved head. Refresh the default branch and verify the cleanup commit's parent, changed paths, and task revision before starting the next feature. [PR #1](https://github.com/paddybanerjee09/nutshell/pull/1) records the first observed cleanup.
+
 ### Enforcement without false claims
 
 Agent instructions establish the workflow; local validators can check task identity, metadata, changed paths and memory shape. GitHub-enforced PR/check requirements exist only when the repository's actual protection/ruleset is configured and applicable. A Markdown instruction or passing local command does not configure remote enforcement.
+
+The source workflow associates the task with the current GitHub PR and publishes `nutshell/source-task` on the candidate head. It installs pinned dependencies from the trusted base and validates candidate Git objects as data. The [pull_request_target guidance](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request_target) governs the boundary.
 
 Where supported, the repository owner can require PRs and trusted checks on the default branch. GitHub permits requiring a PR without necessarily requiring human approval; preserve any existing review requirements. Availability depends on plan and configuration. Do not weaken policy or add a bypass merely to make cleanup succeed. [GitHub ruleset requirements](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
 

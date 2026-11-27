@@ -8,7 +8,7 @@ tags: [control, index, routing, retrieval]
 
 ## Context
 
-Read this file first after applicable agent instructions, then [CURRENT_TASK.md](CURRENT_TASK.md). Use paths, descriptions, and tags below to select only the context relevant to the task. The application is not implemented; note status does not certify working code.
+Read this file first after applicable agent instructions, then [CURRENT_TASK.md](CURRENT_TASK.md). Use paths, descriptions, and tags below to select only the context relevant to the task. The [acceptance ledger](runs/ACCEPTANCE.md) records observed implementation and verification.
 
 ## Decision
 
@@ -38,7 +38,7 @@ This is the sole router. Every active managed Markdown file has exactly one row,
 | [nutshell-vault/features/tasks-notes/CONTEXT.md](features/tasks-notes/CONTEXT.md) | Planned assignments, deadlines, structured notes, and save conflicts. | planned | feature, tasks, notes, collaboration |
 | [nutshell-vault/features/workspace-editor/CONTEXT.md](features/workspace-editor/CONTEXT.md) | Planned workspace shell, Markdown live preview, and graph interaction. | planned | feature, ui, editor, codemirror, graph |
 | [nutshell-vault/product/OVERVIEW.md](product/OVERVIEW.md) | Purpose, audience, product loop, and planned alpha scope. | planned | product, purpose, scope, brand |
-| [nutshell-vault/runs/ACCEPTANCE.md](runs/ACCEPTANCE.md) | Observed verification ledger; application gates currently not run. | active | verification, acceptance, evidence |
+| [nutshell-vault/runs/ACCEPTANCE.md](runs/ACCEPTANCE.md) | Local setup, application, provider, and source PR verification evidence. | active | verification, acceptance, evidence |
 | [nutshell-vault/templates/NOTE.md](templates/NOTE.md) | Required metadata and four-section shape for concise durable notes. | active | template, note, decision |
 | [nutshell-vault/templates/TASK.md](templates/TASK.md) | Current-task fields, lead ownership, overwrite rules, and reset semantics. | active | template, task, control |
 | [nutshell-vault/workflows/GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) | Real source feature PR lifecycle, small commits, and guarded merge cleanup. | active | workflow, git, pull-requests, task-lifecycle |
