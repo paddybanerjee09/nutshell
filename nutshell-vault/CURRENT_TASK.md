@@ -3,36 +3,34 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: trusted-change-validation-2026-11-27
-task_state: ready_for_review
-task_revision: 95
-repository_id: 1467144605
-branch: feature/trusted-change-validation
-base_branch: main
-pr_number: 18
-pr_url: https://github.com/paddybanerjee09/nutshell/pull/18
+task_id: null
+task_state: idle
+task_revision: 96
+repository_id: null
+branch: null
+base_branch: null
+pr_number: null
+pr_url: null
 last_verified_head: null
-lead_agent: root
-integration_checkout: 'C:\Users\paddy\dev\nutshell'
+lead_agent: null
+integration_checkout: null
 cleanup_pr_url: null
 ---
-# Trusted change validation
+# Current task
 
 ## Context
 
-Diagnose covered changes and their product classifications from immutable base and candidate trees. Keep the policy independent of candidate config, exclusions, and validator scripts.
+No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
 
 ## Decision
 
-One delegate owns changed-path policy and tests. One delegate owns the immutable Git CLI comparison. One delegate owns exact-head GitHub comparison inputs. The lead integrates shared contracts, simulated checks, and verification.
+The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
 
 ## Consequences
 
-Draft PR #18 passed 68 focused tests, lint, strict root and build-time web checks, working-tree vault validation, the optimized Windows Firefox journey, a persisted worker probe, and signed fixture processing and shutdown. Controlled GitHub tests covered pointed base and head Checks. Next pass the exact source check, merge, and verify canonical cleanup.
+See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
 
 ## Affected files
 
-- [Contract](architecture/GITHUB_CONTRACT.md).
-- [GitHub synchronization context](features/github-sync/CONTEXT.md).
-- [Memory context](features/memory-vault/CONTEXT.md).
-- [Acceptance ledger](runs/ACCEPTANCE.md).
+- [Task template](templates/TASK.md)
+- [Vault index](_INDEX.md)
