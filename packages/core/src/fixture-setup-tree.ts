@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseFrontmatter } from "./frontmatter.ts";
 import { projectRepositoryTree, repositoryEntitySchema, type RepositoryChange, type RepositoryProjection } from "./repo-snapshot.ts";
+import { bootstrapRepositoryCoverage } from "./repository-change-validation.ts";
 
 const root = "nutshell-vault/";
 const catalogPath = root + "_INDEX.md";
@@ -196,7 +197,7 @@ function addSetupRecords(files: Map<string, string>, details: SetupDetails, rati
       { slug: "service", label: "Service" },
       { slug: "module", label: "Module" },
     ],
-    coverage: { include: sourcePaths, exclude: [] },
+    coverage: { include: [...bootstrapRepositoryCoverage.include], exclude: [...bootstrapRepositoryCoverage.exclude] },
   };
   const entity = repositoryEntitySchema.parse({
     schema_version: 1,

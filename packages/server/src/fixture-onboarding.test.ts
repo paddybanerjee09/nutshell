@@ -70,7 +70,7 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture onboard
     return headers;
   }
 
-  it("requires configuration authority and refreshes a stale base without creating a second proposal", async () => {
+  it("requires configuration authority and refreshes stale policy and base on the same proposal", async () => {
     const owner = await login("coordinator");
     const writer = await login("reader");
     const id = String(repositoryId);
@@ -88,6 +88,13 @@ describe.skipIf(process.env.NUTSHELL_VERIFY !== "1")("PostgreSQL fixture onboard
     testProposals.push(proposal.id);
     testRevisions.add(proposal.headRevision);
     expect(proposal).toMatchObject({ provider: "fixture", status: "open", baseRevision: first });
+
+    await db.query("UPDATE fixture_setup_proposal SET policy_version = 1 WHERE repository_id = $1 AND id = $2", [repositoryId, proposal.id]);
+    expect(await readFixtureOnboarding(owner, id)).toMatchObject({ configured: false, proposal: null });
+    expect(await simulateFixtureSetupMerge(owner, id, proposal.headRevision)).toEqual({ status: "conflict" });
+    expect(await openFixtureSetup(owner, id)).toEqual(opened);
+    expect((await db.query("SELECT policy_version FROM fixture_setup_proposal WHERE repository_id = $1 AND id = $2",
+      [repositoryId, proposal.id])).rows).toEqual([{ policy_version: 2 }]);
 
     const updatedBase = [...baseFiles, { path: "src/owner.ts", body: "// Owner file\n" }];
     await setFixtureHead(repositoryId, second, updatedBase);

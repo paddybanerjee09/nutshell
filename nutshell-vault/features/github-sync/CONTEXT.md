@@ -17,6 +17,8 @@ The GitHub App transport fixes requests to GitHub.com, bounds response bodies an
 
 The adapter verifies current user access for a stable repository and installation, reads managed blobs at immutable Git revisions, and targets the observed head of an open same-repository PR for Checks. Archived repositories retain authorized read access. Check results and branch enforcement are reported separately.
 
+Pull validation compares exact base and head tree inventories, including path additions and removals, object changes, and file modes. It loads managed text through the existing bounded blob reader. The service checks coverage and semantic declarations against trusted base policy and passes both observed revisions to Check publication. GitHub's Check targets the head SHA. The adapter rechecks the base before posting. A connected service can supply its retained accepted records. Without that evidence, validation requires historical links to resolve in the immutable base.
+
 The fixture webhook validates the configured raw-body HMAC and accepts default-branch push deliveries through the [receipt outbox](../../decisions/2026-11-26-fixture-receipt-outbox.md). The core projector validates the immutable tree and the authenticated snapshot API returns the published revision, provider head, and status.
 
 The setup tree builder reads the immutable base, preserves tracked owner content, and appends one delimited instructions section to `AGENTS.md`. It generates missing vault and record files, refuses conflicting managed content, and validates the resulting tree with the same projector used by the worker.
@@ -24,6 +26,8 @@ The setup tree builder reads the immutable base, preserves tracked owner content
 [Fixture setup](../../decisions/2026-11-26-fixture-setup-proposals.md) requires an explicit configuration grant and uses a revision-bound proposal. The setup route sends the stored merge delivery to the signed ingress and reuses the same identity on retry.
 
 The GitHub setup adapter prepares the same managed files, creates a GitHub branch with the user's grant, and commits with the expected branch head. It targets the verified default branch from a separate setup PR and reuses observed matching proposals after a retry.
+
+Simulated setup and Markdown proposals use the same changed-path validation with repository-scoped retained events. The simulated merge checks the proposed tree again. Pending setup proposals from the earlier policy can be refreshed on the same proposal after revalidation. Signed default-branch ingestion continues to validate the actual published tree.
 
 ## Consequences
 
@@ -41,3 +45,4 @@ Controlled transport, repository, and setup tests covered authority separation, 
 - [Fixture webhook](../../../apps/web/src/app/api/github/webhook/route.ts) and [verification journey](../../../scripts/fixture-sync-verify.ts).
 - [GitHub App transport](../../../packages/server/src/github-app-transport.ts) and [controlled transport tests](../../../packages/server/src/github-app-transport.test.ts).
 - [GitHub App adapter](../../../packages/server/src/github-app.ts), [repository and Check authority](../../../packages/server/src/github-app-repository.ts), and [GitHub setup proposals](../../../packages/server/src/github-app-setup.ts).
+- [Trusted change validator](../../../packages/core/src/repository-change-validation.ts), [GitHub Check orchestration](../../../packages/server/src/github-app-validation.ts), and [simulated proposal validation](../../../packages/server/src/fixture-change-validation.ts).

@@ -203,13 +203,13 @@ export function readWorkingTree(cwd: string) {
   return { kind: "working-tree" as const, files: snapshot.files };
 }
 
-function readGit(cwd: string, args: string[], maxBuffer: number, detail: string): Buffer {
+export function readGit(cwd: string, args: string[], maxBuffer: number, detail: string): Buffer {
   try {
-    return execFileSync("git", args, {
+    return execFileSync("git", ["--no-pager", ...args], {
       cwd, maxBuffer, timeout: gitTimeout, env: gitEnvironment, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
     });
   } catch {
-    throw new Error(`Unable to ${detail}. Check the local repository and vault input limits.`);
+    throw new Error(`Unable to ${detail}. Check the local repository and input limits.`);
   }
 }
 
@@ -223,7 +223,8 @@ export function resolveCommit(cwd: string, ref: string): string {
   return sha;
 }
 
-async function gitArchiveHeader(cwd: string, hash: string, path: string): Promise<string> {
+export async function gitArchiveHeader(cwd: string, hash: string, path: string): Promise<string> {
+  if (!objectId.test(hash)) throw new Error("Expected a resolved Git blob ID.");
   const child = spawn("git", ["cat-file", "blob", hash], {
     cwd, env: gitEnvironment, timeout: gitTimeout, stdio: ["ignore", "pipe", "ignore"], windowsHide: true,
   });
@@ -288,9 +289,7 @@ export function listGitVault(cwd: string, head: string, includeArchive: boolean)
   return files;
 }
 
-export async function readGitSnapshot(cwd: string, baseRef: string, headRef: string) {
-  const base = resolveCommit(cwd, baseRef);
-  const head = resolveCommit(cwd, headRef);
+export async function readResolvedGitVault(cwd: string, head: string) {
   const snapshot: SnapshotFiles = { bytes: 0, files: new Map() };
   for (const [path, { hash, size }] of listGitVault(cwd, head, true)) {
     if (path.startsWith(archivePrefix)) {
@@ -300,5 +299,11 @@ export async function readGitSnapshot(cwd: string, baseRef: string, headRef: str
       record(snapshot, path, unpackUtf8(readGit(cwd, ["cat-file", "blob", hash], maxFileBytes, `read ${JSON.stringify(path)}`), path));
     }
   }
-  return { kind: "git" as const, base, head, files: snapshot.files };
+  return snapshot.files;
+}
+
+export async function readGitSnapshot(cwd: string, baseRef: string, headRef: string) {
+  const base = resolveCommit(cwd, baseRef);
+  const head = resolveCommit(cwd, headRef);
+  return { kind: "git" as const, base, head, files: await readResolvedGitVault(cwd, head) };
 }

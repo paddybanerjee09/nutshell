@@ -62,7 +62,7 @@ The examples use synthetic names. Fields shown are required except where explici
 
 The record directories are fixed in v1. Register the four default kinds and optionally add bounded unique custom slugs/labels, such as `level`. Kinds affect organization and presentation only: they never grant access, select executable behavior or relax required fields. Candidate snapshots may add valid display-only kinds; deleting or renaming a used slug requires an explicit migration, not silent reinterpretation.
 
-Configure coverage for the actual repository instead of assuming a JavaScript layout. A proposed config change is not permission to exempt its own PR. Use service minimums plus trusted service/base-revision coverage policy; snapshot the policy version used. Bootstrap without a trusted config uses service-owned defaults. Weakening requires explicit authorized policy acceptance outside the proposing PR's own validation result.
+Configure coverage for the actual repository instead of assuming a JavaScript layout. A proposed config change is not permission to exempt its own PR. Use service minimums plus trusted service/base-revision coverage policy; snapshot the policy version used. Initial setup retains the service-owned floor for subsequent comparisons. It covers source across repository layouts, excluding conventional Markdown, root metadata, and managed record paths from source classification. Protected records and notes still undergo structural validation. Weakening requires explicit authorized policy acceptance outside the proposing PR's own validation result.
 
 #### Entity
 

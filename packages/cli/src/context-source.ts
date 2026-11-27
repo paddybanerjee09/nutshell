@@ -18,7 +18,7 @@ import {
 type Selection = { kind: "working-tree" } | { kind: "git"; ref: string };
 type GitBlob = { hash: string; size: number };
 
-function openGitBlobs(cwd: string) {
+export function openGitBlobs(cwd: string) {
   const child = spawn("git", ["cat-file", "--batch"], {
     cwd, env: gitEnvironment, stdio: ["pipe", "pipe", "ignore"], windowsHide: true,
   });

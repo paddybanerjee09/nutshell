@@ -5,14 +5,14 @@ import type { FixtureFile } from "./fixture-sync.ts";
 import type { FixtureTransaction } from "./runtime.ts";
 import { fixtureHistoryEntry, fixtureSnapshot, fixtureState } from "./schema.ts";
 
-async function acceptedChanges(tx: FixtureTransaction, repositoryId: number) {
+export async function readAcceptedFixtureChanges(tx: FixtureTransaction, repositoryId: number) {
   const rows = await tx.select({ id: fixtureHistoryEntry.id, change: fixtureHistoryEntry.payload })
     .from(fixtureHistoryEntry).where(eq(fixtureHistoryEntry.repositoryId, repositoryId));
   return new Map(rows.map(({ id, change }) => [id, change]));
 }
 
 export async function projectFixtureHistoryCandidate(tx: FixtureTransaction, repositoryId: number, files: readonly FixtureFile[]) {
-  const accepted = await acceptedChanges(tx, repositoryId);
+  const accepted = await readAcceptedFixtureChanges(tx, repositoryId);
   let hasPublishedBase = accepted.size > 0;
   if (!hasPublishedBase) {
     const [state] = await tx.select({ revision: fixtureState.indexedRevision }).from(fixtureState)
@@ -46,7 +46,7 @@ export async function recordFixtureHistory(
 // Setup runs under the same active installation, repository and epoch lock as publication.
 // Legacy snapshots have one observed indexed revision. Earlier introductions remain unknown.
 export async function baselineFixtureHistory(tx: FixtureTransaction, repositoryId: number, epoch: number) {
-  const accepted = await acceptedChanges(tx, repositoryId);
+  const accepted = await readAcceptedFixtureChanges(tx, repositoryId);
   if (accepted.size) return;
 
   const [indexed] = await tx.select({ revision: fixtureSnapshot.revision, snapshot: fixtureSnapshot.projection })
