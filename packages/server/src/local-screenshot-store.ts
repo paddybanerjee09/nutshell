@@ -10,10 +10,11 @@ async function storagePath(key: string, create: boolean) {
   if (!storageKeyPattern.test(key)) throw new Error("Invalid screenshot storage locator.");
   let directory = await realpath(".");
   for (const part of [".local", "media", process.env.NUTSHELL_VERIFY === "1" ? "verify" : "alpha"]) {
-    const child = join(directory, part);
+    // The private store is runtime state. Keep it out of the build's file trace.
+    const child = join(/* turbopackIgnore: true */ directory, part);
     if (create) await mkdir(child, { recursive: true, mode: 0o700 });
     const info = await lstat(child);
-    if (!info.isDirectory() || info.isSymbolicLink() || relative(child, await realpath(child)) !== "") {
+    if (!info.isDirectory() || info.isSymbolicLink() || relative(child, await realpath(/* turbopackIgnore: true */ child)) !== "") {
       throw new Error("Local screenshot storage must use private directories within the checkout.");
     }
     directory = child;
