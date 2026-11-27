@@ -3,35 +3,34 @@ id: control-current-task
 date: "2026-11-26"
 status: active
 tags: [control, task, pull-requests]
-task_id: fixture-onboarding-2026-11-26
-task_state: ready_for_review
-task_revision: 24
-repository_id: 1467144605
-branch: feature/fixture-onboarding
-base_branch: main
-pr_number: 5
-pr_url: https://github.com/paddybanerjee09/nutshell/pull/5
+task_id: null
+task_state: idle
+task_revision: 25
+repository_id: null
+branch: null
+base_branch: null
+pr_number: null
+pr_url: null
 last_verified_head: null
-lead_agent: codex-lead
-integration_checkout: 'C:\Users\paddy\dev\nutshell'
+lead_agent: null
+integration_checkout: null
 cleanup_pr_url: null
 ---
 # Current task
 
 ## Context
 
-Give an authorized fixture repository administrator one durable setup proposal and an explicit simulated merge so the normal local workspace can initialize a repository snapshot.
+No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
 
 ## Decision
 
-Preserve owner-managed files and instructions. Pin the setup proposal and check to the underlying fixture revision. Reuse repository authorization and send the simulated merge through the signed local webhook and worker.
+The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
 
 ## Consequences
 
-Windows `pnpm alpha:setup` and `pnpm alpha:verify` passed. The verifier ran 84 tests, built the optimized app, exercised the real PostgreSQL worker and Firefox onboarding journey, and completed the signed fixture checks and shutdown. Verify the final source head on PR #5 and clear the task after GitHub confirms the exact merge.
+See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
 
 ## Affected files
 
-- [Synchronization context](features/github-sync/CONTEXT.md)
-- [GitHub and record contract](architecture/GITHUB_CONTRACT.md)
-- [Acceptance ledger](runs/ACCEPTANCE.md)
+- [Task template](templates/TASK.md)
+- [Vault index](_INDEX.md)
