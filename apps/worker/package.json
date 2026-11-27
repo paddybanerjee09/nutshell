@@ -1,0 +1,9 @@
+{
+  "name": "@nutshell/worker",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@nutshell/server": "workspace:*",
+    "pg-boss": "12.40.0"
+  }
+}

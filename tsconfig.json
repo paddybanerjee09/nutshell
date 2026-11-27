@@ -4,6 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
+    "skipLibCheck": true,
     "noEmit": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
@@ -11,5 +12,5 @@
     "noUncheckedIndexedAccess": true,
     "types": ["node"]
   },
-  "include": ["packages/**/*.ts"]
+  "include": ["packages/**/*.ts", "apps/worker/**/*.ts", "scripts/**/*.ts"]
 }

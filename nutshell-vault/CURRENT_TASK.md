@@ -4,13 +4,13 @@ date: "2026-11-26"
 status: active
 tags: [control, task, pull-requests]
 task_id: local-runtime-2026-11-26
-task_state: in_progress
-task_revision: 9
+task_state: ready_for_review
+task_revision: 11
 repository_id: 1467144605
 branch: feature/local-runtime
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 3
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/3
 last_verified_head: null
 lead_agent: codex-lead
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Keep database and authorization in the server package, use a separate worker pro
 
 ## Consequences
 
-PR #2 merged and GitHub confirmed canonical idle at revision 8 after an expected-head write. Verify this runtime with the local database, browser and worker, then exercise the trusted GitHub source check on the final feature head.
+Repeated setup, development health/start/stop, PostgreSQL session isolation, durable worker restart, and optimized browser entry checks ran locally. The HTTP auth route now binds to the configured loopback origin after checking Host. Run the exact committed head through alpha:verify and GitHub's trusted status before merge.
 
 ## Affected files
 

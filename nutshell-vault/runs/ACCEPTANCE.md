@@ -15,18 +15,18 @@ Record the exact command or reproducible action, relevant paths/revision, observ
 
 | Gate | Area | Status | Evidence |
 | --- | --- | --- | --- |
-| A01 | Local setup and startup | Partial | Node 24.18.0 and pnpm 11.25.0 ran. PostgreSQL 18.7 authenticated on 127.0.0.1:55432 and preserved a test row through restart. Alpha setup, migrations, web, and worker remain unrun. See [local setup](../workflows/LOCAL_SETUP.md#observed-on-the-windows-development-machine). |
-| A02 | Lint, typecheck, tests, optimized build | Partial | `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed for the vault validator and CLI. Optimized web build remains unrun. |
-| A03 | Test database and reset isolation | Not run | No application run |
-| A04 | Sessions and protected surfaces | Not run | No application run |
-| A05 | Revocation, delayed work, token authority | Not run | No application run |
+| A01 | Local setup and startup | Pass | Repeated `pnpm alpha:setup` migrated and seeded both dedicated databases. `pnpm alpha:dev` started web and worker and returned HTTP 200 from /api/health on 127.0.0.1:3000. `pnpm alpha:stop` stopped both. A queued pg-boss probe survived a worker restart and completed. |
+| A02 | Lint, typecheck, tests, optimized build | Pass | Runtime verification ran `pnpm lint`, `pnpm typecheck`, `pnpm test` with 46 tests, and `pnpm --filter @nutshell/web build` for an optimized Next.js build. Exact feature head evidence belongs to [PR #3](https://github.com/paddybanerjee09/nutshell/pull/3). |
+| A03 | Test database and reset isolation | Partial | Configuration tests verified explicit test database selection and refused the same database name for development and verification. The fixture reset command remains planned. |
+| A04 | Sessions and protected surfaces | Partial | `NUTSHELL_VERIFY=1` server tests against PostgreSQL exercised real-session cookies, same-origin persona input, session persistence, and repository isolation across three fixture identities. Further product surfaces remain unrun. |
+| A05 | Revocation, delayed work, token authority | Partial | PostgreSQL tests verified that revoked membership, provider grants, installations, and sessions denied subsequent reads. Delayed indexing and live provider token boundaries remain unrun. |
 | A06 | Parser and bounded input validation | Not run | No application run |
 | A07 | Revision-aware retrieval and budget | Not run | No application run |
-| A08 | Coverage and trusted validation policy | Partial | The source workflow installs the trusted base's pinned dependencies and validates immutable candidate objects. Local YAML and Bash syntax checks and controlled runner tests passed. Changed-path coverage and the first GitHub workflow run remain outstanding. |
+| A08 | Coverage and trusted validation policy | Partial | The default-branch workflow validated immutable Git objects and posted a failure on PR #3's first draft SHA without an observed PR association. [GitHub run](https://github.com/paddybanerjee09/nutshell/actions/runs/45927166147). Changed-path coverage remains planned. |
 | A09 | HMAC, duplicate events, recovery | Not run | No application run |
 | A10 | Idempotent setup and simulated merge | Not run | No application run |
 | A11 | Invalid snapshots and immutable history | Not run | No application run |
-| A12 | Exact brand and visual contract | Not run | No rendered application |
+| A12 | Exact brand and visual contract | Partial | Inspected the entry at 1440×900 and sign-in at 390×844. The exact slogan and full artwork rendered, and the built PNG's SHA-256 matched the original. Workspace and interactive preview checks remain outstanding. |
 | A13 | Shell, panes, docking, layout | Not run | No application run |
 | A14 | Markdown source-preserving editing | Not run | No application run |
 | A15 | Drafts, proposals, and edit conflicts | Not run | No application run |
@@ -35,10 +35,10 @@ Record the exact command or reproducible action, relevant paths/revision, observ
 | A18 | Task persistence and permissions | Not run | No application run |
 | A19 | Notes and optimistic conflicts | Not run | No application run |
 | A20 | Private media and evidence state | Not run | No application run |
-| A21 | Marketing and synthetic preview | Not run | No application run |
-| A22 | Mode and exposure guards | Not run | No application run |
+| A21 | Marketing and synthetic preview | Partial | Chromium followed the marketing CTA into the local sign-in flow. The interactive editor and graph preview remains planned. |
+| A22 | Mode and exposure guards | Partial | Configuration tests refused implicit modes, hosted fixture access, non-loopback origins, and unavailable live mode. The optimized local web bound to 127.0.0.1:3001. |
 | A23 | Live-adapter controlled contract tests | Not run | No application run |
-| A24 | Complete local browser journey | Not run | Playwright 1.65.1 launched Chrome Headless Shell 159.0.8154.6 and exercised a test form. No application browser journey. |
+| A24 | Complete local browser journey | Partial | Playwright 1.65.1 exercised local sign-in, session reload, authorized repository entry, and denial across two fixture identities on the optimized local build. Vault editing, proposal/merge, collaboration, and graph journeys remain unrun. |
 | A25 | Truthful memory, commits, and handoff | Partial | Starter and validator use source [PR #1](https://github.com/paddybanerjee09/nutshell/pull/1). The web/worker handoff remains outstanding. |
 | A26 | Exact active index coverage and routed body reads | Partial | `pnpm nutshell validate --working-tree` checked the current catalog. Vitest fixtures exercised missing, duplicate, stale, and inactive entries. Query-based body selection remains unrun. |
 | A27 | One lead-owned task and guarded revisions | Partial | `pnpm test` exercised an idle-to-feature transition, exact provider identity, a competing active task, and stale revisions. The source workflow runs on GitHub after its first merge. |
