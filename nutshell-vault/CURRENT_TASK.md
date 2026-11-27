@@ -3,34 +3,35 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: null
-task_state: idle
-task_revision: 87
-repository_id: null
-branch: null
-base_branch: null
-pr_number: null
-pr_url: null
+task_id: configured-github-access-2026-11-27
+task_state: ready_for_review
+task_revision: 90
+repository_id: 1467144605
+branch: feature/configured-github-access
+base_branch: main
+pr_number: 17
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/17
 last_verified_head: null
-lead_agent: null
-integration_checkout: null
+lead_agent: root
+integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
 ---
-# Current task
+# Configured GitHub access
 
 ## Context
 
-No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
+Wire explicit live configuration and GitHub App sign-in to the web runtime. Enforce current provider grants and stable repository ownership alongside a local association. Keep synthetic entry points local and fail closed through unimplemented provider operations.
 
 ## Decision
 
-The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
+The configuration delegate owns explicit mode, origin and isolated connection checks. The repository delegate owns current user authorization for stored live associations. The web delegate owns the mode-specific sign-in and repository entry surfaces. The lead owns runtime integration, shared schema and verification.
 
 ## Consequences
 
-See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
+Draft PR #17 has 36 passing focused tests, strict TypeScript, migrated local databases, and an optimized Windows Firefox and persisted-worker run. The repaired Markdown test binds keys to the intended note and pane and confirms shared edits. The fresh live-mode PostgreSQL smoke used controlled OAuth initiation and no external provider requests. Next pass the exact source check, merge, and verify canonical cleanup.
 
 ## Affected files
 
-- [Task template](templates/TASK.md)
-- [Vault index](_INDEX.md)
+- [Auth and permissions context](features/auth-permissions/CONTEXT.md).
+- [GitHub synchronization context](features/github-sync/CONTEXT.md).
+- [Acceptance ledger](runs/ACCEPTANCE.md).

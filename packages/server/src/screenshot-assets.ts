@@ -46,7 +46,7 @@ export async function uploadScreenshotAsset(headers: Headers, repositoryId: stri
 export async function recordFixtureScreenshotCapture(headers: Headers, repositoryId: string, input: UploadInput): Promise<UploadResult> {
   if (process.env.NUTSHELL_VERIFY !== "1") return { status: "unavailable" };
   const config = loadConfig();
-  if (config.databaseUrl !== config.testDatabaseUrl || new URL(config.origin).hostname !== "127.0.0.1") {
+  if (config.mode !== "local-alpha" || config.databaseUrl !== config.testDatabaseUrl || new URL(config.origin).hostname !== "127.0.0.1") {
     return { status: "unavailable" };
   }
   return persistScreenshot(headers, repositoryId, input, "fixture_capture");

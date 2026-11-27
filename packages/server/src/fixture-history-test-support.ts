@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { loadConfig } from "./config.ts";
+import { loadLocalConfig } from "./config.ts";
 import { normalizeFixtureFiles, type FixtureFile } from "./fixture-sync.ts";
 
 export async function preserveFixtureTestHistory(db: pg.Pool, repositoryId: number, files: readonly FixtureFile[]): Promise<FixtureFile[]> {
@@ -15,7 +15,7 @@ export async function preserveFixtureTestHistory(db: pg.Pool, repositoryId: numb
 }
 
 export async function isolateFixtureOnboardingHistory(db: pg.Pool, repositoryId: 1001 | 1002): Promise<() => Promise<void>> {
-  const config = loadConfig();
+  const config = loadLocalConfig();
   if (process.env.NUTSHELL_VERIFY !== "1" || config.databaseUrl !== config.testDatabaseUrl) {
     throw new Error("Fixture history isolation requires the dedicated verification database.");
   }

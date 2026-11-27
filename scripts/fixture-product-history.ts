@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { loadConfig } from "@nutshell/server/config";
+import { loadLocalConfig } from "@nutshell/server/config";
 import { isFixtureRevision, readFixtureTree, setFixtureHead } from "@nutshell/server/fixture-sync";
 import { closeRuntime, getFixtureDatabase } from "@nutshell/server/runtime";
 import { sendFixturePush } from "../apps/web/src/app/api/fixture-push.ts";
@@ -43,7 +43,7 @@ let phase = "preflight";
 
 async function verifyProductHistory() {
   assert.equal(process.env.NUTSHELL_VERIFY, "1");
-  const config = loadConfig();
+  const config = loadLocalConfig();
   assert.equal(config.databaseUrl, config.testDatabaseUrl);
   const secret = config.webhookSecret;
   assert.ok(secret, "The fixture webhook secret is required.");

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { loadConfig } from "@nutshell/server/config";
+import { loadLocalConfig } from "@nutshell/server/config";
 import { ensureLocalDatabase } from "@nutshell/server/provision";
 import { migrateAndSeed } from "@nutshell/server/setup";
 import { runWorkerProbe } from "../apps/worker/src/probe.ts";
@@ -32,7 +32,7 @@ async function verify() {
     NUTSHELL_VERIFY: "1",
     NUTSHELL_ORIGIN: "http://127.0.0.1:3001",
   };
-  const config = loadConfig(env);
+  const config = loadLocalConfig(env);
   await prepare(config.testDatabaseUrl);
   await runPnpm(["lint"]);
   await runPnpm(["typecheck"]);
@@ -57,7 +57,7 @@ try {
   switch (process.argv[2]) {
     case "setup": {
       loadLocalEnv(true);
-      const config = loadConfig({ ...process.env, NUTSHELL_VERIFY: "0" });
+      const config = loadLocalConfig({ ...process.env, NUTSHELL_VERIFY: "0" });
       await prepare(config.databaseUrl);
       await prepare(config.testDatabaseUrl);
       console.log("Local PostgreSQL migrations and fixture setup completed.");

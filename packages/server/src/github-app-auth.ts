@@ -1,17 +1,10 @@
-import { createPrivateKey } from "node:crypto";
 import type { BetterAuthOptions, BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { z } from "zod";
+import { isConfiguredSecret, type GitHubAppSettings } from "./github-app-settings.ts";
 
-export type GitHubAppSettings = {
-  appId: string;
-  clientId: string;
-  clientSecret: string;
-  privateKey: string;
-  webhookSecret: string;
-};
+export { readGitHubAppSettings, type GitHubAppSettings } from "./github-app-settings.ts";
 
-type Environment = Readonly<Record<string, string | undefined>>;
 type OAuthOptions = { fetch?: typeof fetch; now?: () => number };
 type OAuthCredentials = Pick<GitHubAppSettings, "clientId" | "clientSecret">;
 
@@ -48,33 +41,6 @@ export class GitHubAppUserTokenError extends Error {
     this.name = "GitHubAppUserTokenError";
     this.kind = kind;
   }
-}
-
-function required(env: Environment, name: string, validate: (value: string) => boolean) {
-  const value = env[name];
-  if (!value || !validate(value)) throw new Error(`Set a valid ${name}.`);
-  return value;
-}
-
-function secret(value: string, minimum: number) {
-  return value.length >= minimum && value.length <= 1024 && value.trim() === value && !/\p{Cc}/u.test(value);
-}
-
-export function readGitHubAppSettings(env: Environment = process.env): GitHubAppSettings {
-  const appId = required(env, "GITHUB_APP_ID", (value) => /^[1-9][0-9]{0,19}$/u.test(value));
-  const clientId = required(env, "GITHUB_APP_CLIENT_ID", (value) => /[A-Za-z]/u.test(value) && /^[A-Za-z0-9_.-]{8,128}$/u.test(value));
-  const clientSecret = required(env, "GITHUB_APP_CLIENT_SECRET", (value) => secret(value, 16) && /^[A-Za-z0-9_.-]+$/u.test(value));
-  const webhookSecret = required(env, "GITHUB_APP_WEBHOOK_SECRET", (value) => secret(value, 32));
-  const privateKey = required(env, "GITHUB_APP_PRIVATE_KEY", (value) => value.length <= 16_384)
-    .replaceAll("\\r\\n", "\n").replaceAll("\\n", "\n").trim();
-  try {
-    if (!/^-----BEGIN (?:RSA )?PRIVATE KEY-----\r?\n/u.test(privateKey)) throw new Error();
-    const key = createPrivateKey(privateKey);
-    if (key.asymmetricKeyType !== "rsa" || (key.asymmetricKeyDetails?.modulusLength ?? 0) < 2048) throw new Error();
-  } catch {
-    throw new Error("GITHUB_APP_PRIVATE_KEY must be an unencrypted RSA private key of at least 2048 bits.");
-  }
-  return { appId, clientId, clientSecret, privateKey, webhookSecret };
 }
 
 export function validGitHubAppToken(value: unknown, type: "access" | "refresh"): value is string {
@@ -157,7 +123,7 @@ function verifiedOrigin(value: string) {
 export function createGitHubAppAuthOptions(config: { origin: string; authSecret: string; app: GitHubAppSettings },
   options: OAuthOptions & { database: NonNullable<BetterAuthOptions["database"]> }): BetterAuthOptions {
   const origin = verifiedOrigin(config.origin);
-  if (!secret(config.authSecret, 32)) throw new Error("Set a valid BETTER_AUTH_SECRET.");
+  if (!isConfiguredSecret(config.authSecret, 32)) throw new Error("Set a valid BETTER_AUTH_SECRET.");
   const oauth = createGitHubAppOAuthClient(config.app, options);
   const callback = origin + authCallback;
   const appTokenPolicy: BetterAuthPlugin = {

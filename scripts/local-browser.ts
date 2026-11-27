@@ -202,12 +202,66 @@ async function verifyMarkdownDraft(page: Page, origin: string, output: string) {
   const version = draft?.version ?? 0;
   const ready = await page.goto(origin + "/app/repos/1001/workspace");
   assert.equal(ready?.status(), 200);
-  const pane = page.locator(".workspace-pane[data-focused='true']");
+  const focusedPane = page.locator(".workspace-pane[data-focused='true']");
   const explorer = page.getByRole("navigation", { name: "Repository explorer" });
-  const editor = pane.getByRole("textbox", { name: "Markdown editor" });
-  const editable = editor.and(pane.locator('[contenteditable="true"]'));
   const mac = process.platform === "darwin";
   const documentEnd = mac ? "Meta+ArrowDown" : "Control+End";
+
+  function selectedNote(pane: Locator) {
+    return pane.getByRole("tab", { name: "CONTEXT.md", exact: true, selected: true });
+  }
+
+  async function draftStep<T>(stage: string, perform: () => Promise<T>): Promise<T> {
+    try {
+      return await perform();
+    } catch (error) {
+      const panes = await page.locator(".workspace-pane").evaluateAll((nodes, path) => nodes.map((node) => ({
+        id: node.getAttribute("data-pane-id"), focused: node.getAttribute("data-focused"),
+        expectedNote: node.querySelector('[role="tab"][aria-selected="true"]')?.getAttribute("title") === path,
+        mode: node.querySelector(".workspace-markdown-editor")?.getAttribute("data-mode"),
+        editable: node.querySelector(".cm-content")?.getAttribute("contenteditable"),
+        editorFocused: node.contains(document.activeElement) && document.activeElement?.matches(".cm-content"),
+      })), draftPath).catch(() => []);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Markdown draft ${stage} failed. Panes: ${JSON.stringify(panes)}\n${message}`, { cause: error });
+    }
+  }
+
+  async function bindDraftPane(stage: string, afterPane?: string) {
+    return draftStep(stage, async () => {
+      if (afterPane) {
+        await page.waitForFunction((originalPane) => {
+          const rendered = Array.from(document.querySelectorAll(".workspace-pane"));
+          return rendered.length === 2 && rendered.some((node) => node.getAttribute("data-focused") === "true"
+            && node.getAttribute("data-pane-id") !== originalPane);
+        }, afterPane);
+      }
+      await selectedNote(focusedPane).waitFor();
+      const id = await focusedPane.getAttribute("data-pane-id");
+      assert.ok(id);
+      assert.notEqual(id, afterPane);
+      const pane = page.locator(`.workspace-pane[data-pane-id=${JSON.stringify(id)}]`);
+      assert.equal(await selectedNote(pane).getAttribute("title"), draftPath);
+      const editor = pane.getByRole("textbox", { name: "Markdown editor", exact: true });
+      const editable = editor.and(pane.locator('[contenteditable="true"]'));
+      const pastedText = editor.locator(".cm-md-heading").filter({ hasText: /^Draft fixture$/u });
+      return { id, pane, editable, pastedText };
+    });
+  }
+
+  async function pressDraftKey(view: Awaited<ReturnType<typeof bindDraftPane>>, stage: string, key: string) {
+    return draftStep(stage, async () => {
+      assert.equal(await selectedNote(view.pane).getAttribute("title"), draftPath);
+      await view.editable.press(key);
+      await page.waitForFunction((paneId) => {
+        const editor = document.activeElement;
+        const pane = editor?.closest(".workspace-pane");
+        return editor?.matches('.cm-content[contenteditable="true"]') && pane?.getAttribute("data-focused") === "true"
+          && pane.getAttribute("data-pane-id") === paneId;
+      }, view.id);
+    });
+  }
+
   async function openDocument() {
     for (const name of [/^features$/u, /^nutshell-setup$/u]) {
       const folder = explorer.locator("summary").filter({ hasText: name });
@@ -215,19 +269,18 @@ async function verifyMarkdownDraft(page: Page, origin: string, output: string) {
     }
     await explorer.getByRole("button", { name: draftPath, exact: true }).click();
   }
-  async function paneAction(name: string) {
+  async function paneAction(pane: Locator, name: string) {
     await pane.locator("summary[aria-label='Pane actions']").click();
     await pane.getByRole("button", { name, exact: true }).click();
   }
 
   await openDocument();
-  await pane.getByRole("button", { name: "Edit draft", exact: true }).click();
-  await pane.getByText("Private draft", { exact: true }).waitFor();
-  await editable.waitFor();
-  await editor.focus();
-  await editor.press(documentEnd);
+  const first = await bindDraftPane("opening the first document pane");
+  await first.pane.getByRole("button", { name: "Edit draft", exact: true }).click();
+  await first.pane.getByText("Private draft", { exact: true }).waitFor();
+  await pressDraftKey(first, "moving to the end before paste", documentEnd);
   const addition = "\n\n## Draft fixture\n\n**認識** e\u0301 🌰 [[_INDEX|Index]]\n\n```txt\n[[literal]]\n```\n";
-  const paste = () => editor.evaluate((element, text) => {
+  const paste = () => first.editable.evaluate((element, text) => {
     const event = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
     // Firefox drops the DataTransfer contents on a synthetic ClipboardEvent.
     Object.defineProperty(event, "clipboardData", { value: {
@@ -236,68 +289,62 @@ async function verifyMarkdownDraft(page: Page, origin: string, output: string) {
     element.dispatchEvent(event);
     return event.defaultPrevented;
   }, addition);
-  const pastedText = editor.locator(".cm-md-heading").filter({ hasText: /^Draft fixture$/u });
   assert.equal(await paste(), true);
-  await editor.press(documentEnd);
-  await pastedText.waitFor();
-  await editor.press(mac ? "Meta+z" : "Control+z");
-  await pastedText.waitFor({ state: "hidden" });
-  await editor.press(mac ? "Meta+Shift+z" : "Control+y");
-  await pastedText.waitFor();
-  await pastedText.click();
-  await pane.getByText("## Draft fixture", { exact: true }).waitFor();
-  await editor.press(documentEnd);
-  await pastedText.waitFor();
+  await pressDraftKey(first, "moving away from the pasted heading", documentEnd);
+  await first.pastedText.waitFor();
+  await pressDraftKey(first, "undoing the paste", mac ? "Meta+z" : "Control+z");
+  await first.pastedText.waitFor({ state: "hidden" });
+  await pressDraftKey(first, "redoing the paste", mac ? "Meta+Shift+z" : "Control+y");
+  await first.pastedText.waitFor();
+  await first.pastedText.click();
+  await first.pane.getByText("## Draft fixture", { exact: true }).waitFor();
+  await pressDraftKey(first, "moving the caret off the revealed heading", documentEnd);
+  await first.pastedText.waitFor();
 
-  await paneAction("Source");
-  await pane.getByText("## Draft fixture", { exact: true }).waitFor();
-  await paneAction("Live preview");
-  await pastedText.waitFor();
-  await paneAction("Split right");
-  await page.waitForFunction(() => document.querySelectorAll(".workspace-pane").length === 2);
-  await openDocument();
-  const edit = pane.getByRole("button", { name: "Edit draft", exact: true });
-  if (await edit.isVisible()) await edit.click();
-  await pane.getByText("Private draft", { exact: true }).waitFor();
-  await editable.waitFor();
-  await editor.press(documentEnd);
-  await pastedText.waitFor();
-  assert.ok(await pane.getByRole("group", { name: "Document view" }).evaluate((bar) => {
+  await paneAction(first.pane, "Source");
+  await first.pane.getByText("## Draft fixture", { exact: true }).waitFor();
+  await paneAction(first.pane, "Live preview");
+  await first.pastedText.waitFor();
+  await paneAction(first.pane, "Split right");
+  const second = await bindDraftPane("focusing the split with the same selected document", first.id);
+  await second.pane.getByRole("button", { name: "Edit draft", exact: true }).click();
+  await second.pane.getByText("Private draft", { exact: true }).waitFor();
+  await pressDraftKey(second, "focusing the shared draft in the new split", documentEnd);
+  await Promise.all([first.pastedText.waitFor(), second.pastedText.waitFor()]);
+  assert.ok(await second.pane.getByRole("group", { name: "Document view" }).evaluate((bar) => {
     const panel = bar.closest("[role='tabpanel']");
     return panel && bar.getBoundingClientRect().top >= panel.getBoundingClientRect().top;
   }), "The draft status and save control must stay visible when the editor scrolls.");
   await page.screenshot({ path: output + "/markdown-draft-desktop.png" });
 
-  const save = pane.getByRole("button", { name: "Save draft", exact: true });
   const waitForSave = () => page.waitForResponse((candidate) =>
     candidate.request().method() === "PATCH" && new URL(candidate.url()).pathname === draftRoute);
-  const [saved] = await Promise.all([waitForSave(), save.click()]);
+  const [saved] = await Promise.all([waitForSave(), second.pane.getByRole("button", { name: "Save draft", exact: true }).click()]);
   assert.equal(saved.status(), 200);
   const savedDraft = (await saved.json()).draft;
   assert.equal(savedDraft.version, version + 1);
   assert.equal(savedDraft.markdown, base + addition);
   const current = async () => (await (await page.request.get(documentUrl)).json());
   assert.equal((await current()).source, source);
-  await pane.getByText("Draft saved", { exact: true }).waitFor();
+  await second.pane.getByText("Draft saved", { exact: true }).waitFor();
 
   await page.reload();
   await openDocument();
-  await pane.getByRole("button", { name: "Edit draft", exact: true }).click();
-  await pane.getByText("Private draft", { exact: true }).waitFor();
-  await editable.waitFor();
-  await editor.press(documentEnd);
-  await pastedText.waitFor();
+  const reopened = await bindDraftPane("reopening the saved document after reload");
+  await reopened.pane.getByRole("button", { name: "Edit draft", exact: true }).click();
+  await reopened.pane.getByText("Private draft", { exact: true }).waitFor();
+  await pressDraftKey(reopened, "focusing the persisted draft", documentEnd);
+  await reopened.pastedText.waitFor();
   const parallel = { path: draftPath, markdown: savedDraft.markdown + "\nSaved in another tab.\n", sourceRevision, version: savedDraft.version };
   assert.equal((await page.request.patch(endpoint, { headers: { origin: "https://untrusted.invalid" }, data: parallel })).status(), 403);
   assert.equal((await page.request.patch(endpoint, { headers: { origin }, data: parallel })).status(), 200);
-  await editor.focus();
-  await editor.press(documentEnd);
+  await pressDraftKey(reopened, "focusing the draft before a conflicting local edit", documentEnd);
   await page.keyboard.insertText("Unsaved local text.");
-  const [conflict] = await Promise.all([waitForSave(), save.click()]);
+  const [conflict] = await Promise.all([waitForSave(), reopened.pane.getByRole("button", { name: "Save draft", exact: true }).click()]);
   assert.equal(conflict.status(), 409);
   assert.equal((await conflict.json()).reason, "version");
-  await pane.getByRole("alert").waitFor();
-  await pane.getByText("Unsaved local text.", { exact: true }).waitFor();
+  await reopened.pane.getByRole("alert").waitFor();
+  await reopened.pane.getByText("Unsaved local text.", { exact: true }).waitFor();
   assert.equal((await current()).draft.markdown, parallel.markdown);
   await page.close({ runBeforeUnload: false });
 }

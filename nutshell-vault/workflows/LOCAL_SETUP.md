@@ -82,11 +82,15 @@ The workspace graphs use React Flow 13.0.3 with d3-force 3.0.1. The lockfile pin
 
 ### Configure the product runtime separately
 
-[.env.example](../../.env.example) records the current local mode, deployment, origin, dedicated database URLs, and session secret setting. Live product credentials and private asset settings belong with those integration slices.
+[.env.example](../../.env.example) records local mode, deployment, origin, dedicated database URLs, session secrets, and the GitHub App credential names.
 
 Local-alpha product operation requires real PostgreSQL, sessions, authorization, and durable jobs, but no product GitHub App or cloud storage account. The development source PR gate remains mandatory. Optimized local builds may use synthetic providers; hosted mode rejects them, and missing live configuration fails closed.
 
 For separately authorized live product acceptance, supply the registered development GitHub App, exact disposable repositories/operations, completed consents, backend credentials, and configured reachable callback/webhook endpoints. Follow [GITHUB_CONTRACT.md](../architecture/GITHUB_CONTRACT.md). Without these, implement the adapter and controlled contract tests; leave live acceptance not run.
+
+Configured GitHub sign-in requires `NUTSHELL_MODE=live`, explicit `NUTSHELL_DEPLOYMENT`, an HTTPS `NUTSHELL_ORIGIN`, a separate `DATABASE_URL`, and `BETTER_AUTH_SECRET`. Set `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, and `GITHUB_APP_WEBHOOK_SECRET` in the server environment. The GitHub App callback is the configured origin plus `/api/auth/callback/github`. Enable expiring user access tokens and use the permission list in the contract.
+
+With the live environment loaded, run `node scripts/live-migrate.ts` to migrate the separately provisioned database without seeding local identities. Build with `pnpm --filter @nutshell/web build`. For a loopback origin behind configured HTTPS termination, run `pnpm --filter @nutshell/web exec next start --hostname 127.0.0.1 --port 3000` and forward the configured Host. `alpha:setup`, `alpha:dev`, and the fixture worker require local-alpha mode. Configured sign-in and access to existing authorized associations are available here. Live onboarding and live indexing remain separate integration work.
 
 ## Consequences
 

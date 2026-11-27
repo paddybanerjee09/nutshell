@@ -67,6 +67,12 @@ export const repository = pgTable("repository", {
   connectionEpoch: integer("connection_epoch").notNull().default(1),
 });
 
+export const githubRepositoryAssociation = pgTable("github_repository_association", {
+  repositoryId: numericId("repository_id").primaryKey().references(() => repository.id, { onDelete: "cascade" }),
+  ownerId: numericId("owner_id").notNull(),
+  repositoryNodeId: text("repository_node_id").notNull().unique(),
+});
+
 export const membership = pgTable("repository_membership", {
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
   repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),

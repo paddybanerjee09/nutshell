@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
-import { loadConfig } from "@nutshell/server/config";
+import { loadLocalConfig } from "@nutshell/server/config";
 
 const controlPath = ".local/runtime-control.json";
 const startupTimeout = 90_000;
@@ -65,7 +65,7 @@ async function stopAfterFailure(stop: () => Promise<void>, error: unknown): Prom
 
 export async function startServices(env: NodeJS.ProcessEnv, optimized: boolean, signal?: AbortSignal) {
   signal?.throwIfAborted();
-  const config = loadConfig(env);
+  const config = loadLocalConfig(env);
   const children: ReturnType<typeof launch>[] = [];
   let stopped: Promise<void> | undefined;
   function stop() {

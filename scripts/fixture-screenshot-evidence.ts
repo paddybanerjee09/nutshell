@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { loadConfig } from "@nutshell/server/config";
+import { loadLocalConfig } from "@nutshell/server/config";
 import { isFixtureRevision, readFixtureTree, setFixtureHead } from "@nutshell/server/fixture-sync";
 import { closeRuntime, getFixtureDatabase } from "@nutshell/server/runtime";
 import { readScreenshotAsset, recordFixtureScreenshotCapture } from "@nutshell/server/screenshot-assets";
@@ -10,7 +10,7 @@ import type { RepositoryChange } from "../packages/core/src/repo-snapshot.ts";
 
 async function publishScreenshotEvidence() {
   assert.equal(process.env.NUTSHELL_VERIFY, "1");
-  const config = loadConfig();
+  const config = loadLocalConfig();
   assert.equal(config.databaseUrl, config.testDatabaseUrl);
   assert.ok(config.webhookSecret, "The fixture webhook secret is required.");
   const [sourceRevision, uploadedAssetId, capturedAt] = process.argv.slice(2);

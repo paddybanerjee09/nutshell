@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { loadConfig } from "@nutshell/server/config";
+import { loadLocalConfig } from "@nutshell/server/config";
 import { processNextFixtureDelivery } from "@nutshell/server/fixture-sync";
 import { closeRuntime } from "@nutshell/server/runtime";
 import { PgBoss } from "pg-boss";
@@ -21,7 +21,7 @@ async function pollFixtureReceipts(signal: AbortSignal): Promise<void> {
 }
 
 export async function runWorker(): Promise<void> {
-  const { databaseUrl } = loadConfig();
+  const { databaseUrl } = loadLocalConfig();
   const boss = new PgBoss({
     connectionString: databaseUrl,
     application_name: "nutshell-worker",
