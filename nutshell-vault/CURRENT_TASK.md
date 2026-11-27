@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: team-tasks-2026-11-27
 task_state: pr_open
-task_revision: 57
+task_revision: 58
 repository_id: 1467144605
 branch: feature/team-tasks
 base_branch: main
@@ -28,7 +28,7 @@ Use current repository read authorization for access and self-assignment. Apply 
 
 ## Consequences
 
-Source PR #11 has tested PostgreSQL persistence, role-aware assignment, and versioned writes. Two database tests and four HTTP route tests passed. Team tasks workspace controls are integrated. Both local databases have migration 0005 and the optimized build passed. Firefox exposed ambiguous implicit select labels. The editor now names the controls explicitly, and the verifier closes its own pages with bounded cleanup when a journey fails. Repeat the two-session browser check.
+Source PR #11 has tested PostgreSQL persistence, role-aware assignment, and versioned writes. Two database tests and four HTTP route tests passed. Team tasks workspace controls are integrated. Both local databases have migration 0005 and the optimized build passed. Firefox exposed ambiguous implicit select labels. The editor now names the controls explicitly, and the verifier closes its own pages with bounded cleanup when a journey fails. Firefox passed the task creation, two-session status conflict, reconciliation, and reload assertions. The verifier now disconnects its own Playwright client before native server shutdown. Rerun the complete local journey to confirm graceful termination.
 
 ## Affected files
 

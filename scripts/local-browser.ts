@@ -734,11 +734,14 @@ export async function verifyEntryFlow(origin: string) {
   } catch (error) {
     journeyFailure = { error };
   }
-  if (journeyFailure && client) {
+  if (client) {
     const fixtures = client.contexts().flatMap((context) => context.pages());
     const closed = Promise.allSettled(fixtures.map((page) => page.close({ runBeforeUnload: false }))).then(() => true);
     await waitForBrowserClose(closed, 8_000);
-    await waitForBrowserClose(client.close().then(() => true, () => false), 5_000);
+    const disconnected = await waitForBrowserClose(client.close().then(() => true, () => false), 10_000);
+    if (!disconnected && !journeyFailure) {
+      journeyFailure = { error: new Error("The verification browser client did not disconnect in time.") };
+    }
   }
   try {
     await stopVerificationBrowser(server);
