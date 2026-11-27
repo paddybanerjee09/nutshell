@@ -4,8 +4,8 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: vault-context-2026-11-27
-task_state: pr_open
-task_revision: 32
+task_state: ready_for_review
+task_revision: 33
 repository_id: 1467144605
 branch: feature/vault-context
 base_branch: main
@@ -28,7 +28,7 @@ Reuse the shared index parser and bounded source readers. Default to the exact c
 
 ## Consequences
 
-Draft PR #7 opened from canonical idle revision 30. Core owns index routing, budgets, and section selection. The CLI owns bounded revision sources and readable and JSON output. Exercise both revision modes and archive isolation before promotion.
+Lint, strict typecheck, vault validation, and all 58 affected tests passed. The CLI smoke pinned explicit main and ranked workspace context, and a one-token working-tree query reported the mandatory budget. Confirm the exact source check and PR #7 merge before guarded cleanup.
 
 ## Affected files
 
