@@ -1,0 +1,97 @@
+.workspace-graph-view {
+  position: relative;
+  inline-size: 100%;
+  min-inline-size: 0;
+  block-size: clamp(260px, 54dvh, 520px);
+  overflow: hidden;
+  border: var(--ns-border-width) solid var(--ns-border);
+  background: var(--ns-canvas);
+}
+
+.workspace-graph-view .react-flow {
+  --xy-background-color: var(--ns-canvas);
+  --xy-edge-stroke: var(--ns-graph-edge);
+  --xy-edge-stroke-width: var(--ns-graph-edge-width);
+  background: var(--ns-canvas);
+}
+
+.workspace-graph-view .react-flow__edge .workspace-graph-edge {
+  stroke: var(--ns-graph-edge);
+  stroke-width: var(--ns-graph-edge-width);
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.workspace-graph-dot {
+  position: relative;
+  inline-size: var(--ns-control-hit-size);
+  block-size: var(--ns-control-hit-size);
+}
+
+.workspace-graph-view .react-flow__handle {
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  transform: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.workspace-graph-node {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  padding: 0;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: 50%;
+  background: var(--ns-selection);
+  color: var(--ns-text);
+  transition: opacity 120ms ease, background-color 120ms ease;
+  cursor: grab;
+}
+
+.workspace-graph-node:active { cursor: grabbing; }
+
+.workspace-graph-node[data-highlighted="true"],
+.workspace-graph-node:focus-visible {
+  border-color: var(--ns-graph-node-highlight);
+  background: var(--ns-graph-node-highlight);
+}
+
+.workspace-graph-node[data-dimmed="true"] { opacity: var(--ns-graph-unrelated-opacity); }
+.workspace-graph-view .workspace-graph-node:focus-visible { outline-offset: 3px; }
+
+.workspace-graph-node-label {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 50%;
+  inline-size: max-content;
+  max-inline-size: 142px;
+  overflow: hidden;
+  translate: -50% 0;
+  color: var(--ns-text);
+  font: var(--ns-font-size-ui-dense)/1.35 var(--ns-font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.workspace-graph-node[aria-pressed="true"] .workspace-graph-node-label { font-weight: 650; }
+
+.workspace-graph-actions {
+  position: absolute;
+  z-index: 2;
+  inset-inline-start: 8px;
+  inset-block-end: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-inline-size: calc(100% - 16px);
+  padding: 2px;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-dropdown);
+  background: var(--ns-chrome-alt);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-graph-node { transition: none; }
+}

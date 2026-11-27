@@ -411,6 +411,123 @@ async function verifyMarkdownProposal(page: Page, origin: string, output: string
   await page.close();
 }
 
+async function verifyWorkspaceGraphs(page: Page, origin: string, output: string) {
+  await page.goto(origin + "/app/repos/1001/workspace");
+  const controls = page.getByRole("navigation", { name: "Workspace controls" });
+  await controls.getByRole("button", { name: "Memory Graph", exact: true }).click();
+  const memory = page.getByRole("region", { name: "Memory Graph", exact: true });
+  const memoryCanvas = memory.getByTestId("workspace-graph-canvas");
+  const memoryEdge = memoryCanvas.getByTestId("workspace-graph-edge").first();
+  await memoryEdge.waitFor({ state: "attached" });
+  await memory.locator('[data-testid="workspace-graph-canvas"][data-layout="settled"]').waitFor();
+  assert.deepEqual(await memoryEdge.evaluate((edge) => {
+    const style = getComputedStyle(edge);
+    return [style.stroke, style.strokeWidth, edge.getAttribute("vector-effect")];
+  }), ["rgb(58, 58, 58)", "1px", "non-scaling-stroke"]);
+  await page.screenshot({ path: output + "/workspace-memory-graph.png" });
+  await memory.getByRole("button", { name: "List view", exact: true }).click();
+  const notes = memory.getByRole("list", { name: "Graph nodes" });
+  const indexNote = notes.getByRole("button", { name: "nutshell-vault/_INDEX.md", exact: true });
+  await indexNote.waitFor();
+  const findNote = memory.getByRole("searchbox", { name: "Search graph" });
+  await findNote.fill("Retired capture log");
+  await indexNote.waitFor({ state: "hidden" });
+  assert.equal(await notes.getByRole("button").count(), 0);
+  await findNote.fill("");
+  await indexNote.press("Enter");
+  const memoryDetail = memory.getByRole("complementary", { name: "Selected graph item" });
+  await memoryDetail.getByRole("button", { name: "Open note", exact: true }).click();
+  await page.getByRole("tab", { name: "_INDEX.md", selected: true }).waitFor();
+
+  await page.keyboard.press("Control+P");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("combobox", { name: "Search commands and files" }).fill("Product Map");
+  await palette.getByRole("option", { name: "Product Map", exact: true }).click();
+  const product = page.getByRole("region", { name: "Product Map", exact: true });
+  const canvas = product.getByTestId("workspace-graph-canvas");
+  await canvas.getByTestId("workspace-graph-edge").first().waitFor({ state: "attached" });
+  const capture = canvas.getByRole("button", { name: "Observation capture", exact: true });
+  const unrelated = canvas.getByRole("button", { name: "Field Notes", exact: true });
+  const store = canvas.getByRole("button", { name: "Observation store", exact: true });
+  await capture.hover();
+  await capture.and(canvas.locator('[data-highlighted="true"]')).waitFor();
+  await unrelated.and(canvas.locator('[data-dimmed="true"]')).waitFor();
+  assert.equal(await store.getAttribute("data-dimmed"), "false");
+  await page.waitForFunction(() => {
+    const unrelated = document.querySelector('.workspace-graph-node[aria-label="Field Notes"][data-dimmed="true"]');
+    return unrelated && getComputedStyle(unrelated).opacity === "0.2";
+  });
+  const viewport = canvas.locator(".react-flow__viewport");
+  const beforeZoom = await viewport.evaluate((node) => getComputedStyle(node).transform);
+  await product.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await page.waitForFunction((before) => {
+    const viewport = document.querySelector('[data-testid="workspace-graph-canvas"] .react-flow__viewport');
+    return viewport && getComputedStyle(viewport).transform !== before;
+  }, beforeZoom);
+  await product.getByRole("button", { name: "Fit graph", exact: true }).click();
+  await product.getByRole("button", { name: "Pause layout", exact: true }).click();
+  await product.locator('[data-testid="workspace-graph-canvas"][data-layout="paused"]').waitFor();
+  const snapshotUrl = origin + "/api/repos/1001/snapshot";
+  const beforeLayout = await (await page.request.get(snapshotUrl)).json();
+  const canvasBounds = await canvas.locator(".react-flow__pane").boundingBox();
+  assert.ok(canvasBounds);
+  const beforePan = await viewport.evaluate((node) => getComputedStyle(node).transform);
+  await page.mouse.move(canvasBounds.x + 12, canvasBounds.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(canvasBounds.x + 64, canvasBounds.y + 46, { steps: 6 });
+  await page.mouse.up();
+  assert.notEqual(await viewport.evaluate((node) => getComputedStyle(node).transform), beforePan);
+
+  const nodeBounds = await capture.boundingBox();
+  assert.ok(nodeBounds);
+  const beforeDrag = await capture.evaluate((node) => node.closest<HTMLElement>(".react-flow__node")?.style.transform);
+  const start = { x: nodeBounds.x + nodeBounds.width / 2, y: nodeBounds.y + nodeBounds.height / 2 };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 38, start.y + 24, { steps: 6 });
+  await page.mouse.up();
+  assert.notEqual(await capture.evaluate((node) => node.closest<HTMLElement>(".react-flow__node")?.style.transform), beforeDrag);
+  const afterLayout = await (await page.request.get(snapshotUrl)).json();
+  assert.equal(afterLayout.revision, beforeLayout.revision);
+  assert.deepEqual(afterLayout.snapshot.entities, beforeLayout.snapshot.entities);
+
+  await product.getByRole("button", { name: "Resume layout", exact: true }).click();
+  await capture.press("Enter");
+  const productDetail = product.getByRole("complementary", { name: "Selected graph item" });
+  await productDetail.getByText(/depends on|depends_on/iu).first().waitFor();
+  await productDetail.getByText("Observation store", { exact: false }).first().waitFor();
+  await page.screenshot({ path: output + "/workspace-product-map.png" });
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await product.locator('[data-testid="workspace-graph-canvas"][data-layout="reduced-motion"]').waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth);
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector('[data-testid="workspace-graph-canvas"]');
+    if (!canvas) return false;
+    const bounds = canvas.getBoundingClientRect();
+    return ["Observation capture", "Observation store"].every((name) => {
+      const node = canvas.querySelector(`[data-testid="workspace-graph-node"][aria-label="${name}"]`);
+      if (!node) return false;
+      const extent = node.getBoundingClientRect();
+      return extent.width > 0 && extent.left >= bounds.left && extent.top >= bounds.top &&
+        extent.right <= bounds.right && extent.bottom <= bounds.bottom;
+    });
+  });
+  await page.screenshot({ path: output + "/workspace-product-map-mobile.png" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await product.getByRole("button", { name: "Focus neighborhood", exact: true }).click();
+  await unrelated.waitFor({ state: "hidden" });
+  await product.getByRole("button", { name: "Show full graph", exact: true }).click();
+  await product.getByRole("button", { name: "List view", exact: true }).click();
+  await product.getByRole("combobox", { name: "Graph kind" }).selectOption("service");
+  const entities = product.getByRole("list", { name: "Graph nodes" });
+  await entities.getByRole("button", { name: "Observation store", exact: true }).press("Enter");
+  await productDetail.getByRole("button", { name: "Open entity", exact: true }).click();
+  await page.getByRole("tab", { name: "Observation store", selected: true }).waitFor();
+  await page.close();
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -506,6 +623,8 @@ export async function verifyEntryFlow(origin: string) {
     await reader.close();
     const proposalPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
     await verifyMarkdownProposal(proposalPage, origin, output);
+    const graphPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
+    await verifyWorkspaceGraphs(graphPage, origin, output);
   } catch (error) {
     journeyFailure = { error };
   }
@@ -521,5 +640,5 @@ export async function verifyEntryFlow(origin: string) {
       `${describe(journeyFailure.error)}\n${describe(shutdownError)}`, { cause: shutdownError });
   }
   if (journeyFailure) throw journeyFailure.error;
-  console.log(`${browserType.name()} entry, signed fixture setup, workspace and private drafts, simulated change proposal publication, and browser shutdown passed.`);
+  console.log(`${browserType.name()} entry, signed fixture setup, workspace, private drafts, simulated proposal publication, both graph modes, and browser shutdown passed.`);
 }

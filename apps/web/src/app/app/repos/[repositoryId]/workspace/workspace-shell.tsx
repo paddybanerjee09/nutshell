@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent, ReactNode } from "react";
-import { ArrowLeft, Box, ChevronRight, FileText, FolderClosed, FolderTree, PanelRight, Search, X } from "lucide-react";
+import { ArrowLeft, Box, Boxes, ChevronRight, FileText, FolderClosed, FolderTree, Network, PanelRight, Search, X } from "lucide-react";
 import {
   canSplitPane,
   createWorkspaceLayout,
@@ -25,11 +25,17 @@ import { documentModeLabels, WorkspaceContent, WorkspaceDetails, WorkspaceStatus
 import type { DocumentMode } from "./workspace-content";
 import type { WorkspaceData, WorkspaceItem } from "./workspace-data";
 import { WorkspaceDraftProvider } from "./workspace-drafts";
+import { graphTitles, WorkspaceGraphPanel } from "./workspace-graph-panel";
 
 const sides: DockSide[] = ["left", "right"];
 const moduleLabels: Record<DockModule, string> = { explorer: "Explorer", details: "Details" };
 const layoutBreakpoint = 1_024;
 const dockWidthBounds = { min: 160, max: 420 };
+const graphTabs = [
+  { id: "view:memory-graph", title: graphTitles.memory, mode: "memory", icon: Network },
+  { id: "view:product-map", title: graphTitles.product, mode: "product", icon: Boxes },
+] as const;
+const graphTabsById = new Map<string, (typeof graphTabs)[number]>(graphTabs.map((tab) => [tab.id, tab]));
 
 type ExplorerFolder = { folders: Map<string, ExplorerFolder>; items: WorkspaceItem[] };
 type DraggedTab = { paneId: string; tabId: string };
@@ -141,7 +147,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
     } catch {
       // The workspace also works when browser preferences are disabled.
     }
-    setLayout(restoreWorkspaceLayout(saved, new Set(itemsById.keys()), data.initialItemId ?? undefined));
+    setLayout(restoreWorkspaceLayout(saved, new Set([...itemsById.keys(), ...graphTabsById.keys()]), data.initialItemId ?? undefined));
     setRestoredKey(data.layoutKey);
   }, [data.initialItemId, data.layoutKey, itemsById]);
 
@@ -217,7 +223,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
   }
 
   function openItem(id: string, paneId = activePane.id) {
-    if (!itemsById.has(id)) return;
+    if (!itemsById.has(id) && !graphTabsById.has(id)) return;
     if (tabCount >= maximumOpenTabs && !findPane(layout.root, paneId)?.tabs.includes(id)) {
       setNotice("Close a tab before opening another item.");
       return;
@@ -365,6 +371,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
       );
     }
     const item = node.activeTabId ? itemsById.get(node.activeTabId) ?? null : null;
+    const graph = node.activeTabId ? graphTabsById.get(node.activeTabId) : undefined;
     const view = documentModes[node.id];
     const panelId = viewId("panel", node.id);
     const selectedIndex = node.activeTabId ? node.tabs.indexOf(node.activeTabId) : -1;
@@ -387,9 +394,11 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
             onDrop={(event) => dropTab(event, node.id)}
           >
             {node.tabs.map((id, index) => {
-              const tab = itemsById.get(id);
+              const itemTab = itemsById.get(id);
+              const graphTab = graphTabsById.get(id);
+              const tab = itemTab ?? graphTab;
               if (!tab) return null;
-              const TabIcon = tab.kind === "document" ? FileText : Box;
+              const TabIcon = graphTab?.icon ?? (itemTab?.kind === "document" ? FileText : Box);
               const selected = node.activeTabId === id;
               return (
                 <div className="workspace-tab-slot" data-selected={selected} key={id} onDrop={(event) => dropTab(event, node.id, index)}>
@@ -401,7 +410,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
                     aria-selected={selected}
                     aria-controls={panelId}
                     tabIndex={selected ? 0 : -1}
-                    title={tab.path}
+                    title={itemTab?.path ?? graphTab?.title}
                     draggable
                     onClick={() => dispatch({ type: "activate-tab", paneId: node.id, tabId: id })}
                     onKeyDown={(event) => handleTabKey(event, node, index, id)}
@@ -424,20 +433,22 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
         </div>
         <div
           className="workspace-panel"
+          data-kind={graph ? "graph" : undefined}
           id={panelId}
           role="tabpanel"
           aria-labelledby={selectedIndex >= 0 ? viewId("tab-" + node.id, String(selectedIndex)) : undefined}
           aria-label={selectedIndex < 0 ? "Empty pane" : undefined}
           tabIndex={0}
         >
-          <WorkspaceContent
+          {graph ? <WorkspaceGraphPanel key={graph.id} data={data} mode={graph.mode}
+            active={node.id === activePane.id} onOpen={(id) => openItem(id, node.id)} /> : <WorkspaceContent
             item={item}
             items={data.items}
             mode={view && view.itemId === item?.id ? view.mode : undefined}
             indexedRevision={data.revision}
             onModeChange={(mode) => { if (item) setDocumentMode(node.id, item.id, mode); }}
             onOpen={(id) => openItem(id, node.id)}
-          />
+          />}
         </div>
       </section>
     );
@@ -539,6 +550,7 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
 
   const commands = [
     ...paneCommands(activePane),
+    ...graphTabs.map((tab) => ({ id: tab.id, label: tab.title, run: () => openItem(tab.id) })),
     ...(["explorer", "details"] as const).flatMap((module) => {
       const target = moduleSide(module) === "left" ? "right" : "left";
       return [
@@ -573,6 +585,12 @@ export function WorkspaceShell({ data }: { data: WorkspaceData }) {
                 aria-controls={dockVisible(moduleSide(module)) ? viewId("dock", moduleSide(module)) : undefined}
                 onClick={() => toggleModule(module)}
               />
+            </span>
+          ))}
+          {graphTabs.map((tab) => (
+            <span className="workspace-ribbon-item" data-tooltip={tab.title} key={tab.id}>
+              <IconButton icon={tab.icon} label={tab.title} aria-pressed={activePane.activeTabId === tab.id}
+                onClick={() => openItem(tab.id)} />
             </span>
           ))}
           <span className="workspace-ribbon-item" data-tooltip="Command palette">

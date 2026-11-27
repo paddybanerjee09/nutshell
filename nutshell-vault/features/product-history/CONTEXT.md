@@ -1,13 +1,13 @@
 ---
 id: feature-product-history
-date: "2026-11-26"
+date: "2026-11-27"
 status: planned
 tags: [feature, history, entities, evidence]
 ---
 
 ## Context
 
-Planned feature only. No indexed revisions or verified product events exist. Product semantic history is distinct from agent task notes and finalized planning decisions.
+Authorized indexed snapshots contain declared entities and change records. The Product Map shows the current entity relationships and indexed revision. Durable semantic history remains planned.
 
 ## Decision
 
@@ -21,4 +21,5 @@ Do not invent past changes or label generated descriptions as human-reviewed. Re
 
 - [SPEC.md](../../../SPEC.md) — cited product requirements.
 - [SYSTEM.md](../../architecture/SYSTEM.md) and [GITHUB_CONTRACT.md](../../architecture/GITHUB_CONTRACT.md) — data and event contracts.
-- Actual schemas, indexing code, and tests: not established.
+- [Repository schemas and projection](../../../packages/core/src/repo-snapshot.ts).
+- [Workspace relationship model](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/workspace/workspace-graph-model.ts).
