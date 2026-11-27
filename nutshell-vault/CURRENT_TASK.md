@@ -4,8 +4,8 @@ date: "2026-11-26"
 status: active
 tags: [control, task, pull-requests]
 task_id: fixture-sync-2026-11-26
-task_state: ready_to_merge
-task_revision: 19
+task_state: ready_for_review
+task_revision: 20
 repository_id: 1467144605
 branch: feature/fixture-sync
 base_branch: main
