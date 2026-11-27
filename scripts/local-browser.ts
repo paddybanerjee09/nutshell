@@ -674,6 +674,13 @@ async function verifyTeamNotes(coordinator: Page, reader: Page, origin: string, 
   const { note } = await created.json() as { note: Note };
   assert.deepEqual([note.creatorId, note.title, note.version, note.content.schemaVersion], ["local-reader", title, 1, 1]);
   assert.deepEqual(note.content.doc.content.map((node) => (node as { type: string }).type), ["heading", "paragraph"]);
+  const listed = await reader.request.get(endpoint);
+  assert.equal(listed.status(), 200);
+  assert.equal(listed.headers()["cache-control"], "private, no-store");
+  const visible = await listed.json() as { viewerId: string; canManage: boolean; notes: Note[] };
+  assert.equal(visible.viewerId, "local-reader");
+  assert.equal(visible.canManage, false);
+  assert.deepEqual(visible.notes.find(({ id }) => id === note.id), note);
   const itemPath = path + "/" + note.id;
   const item = origin + itemPath;
   const sendInvalid = (block: object) => coordinator.request.patch(item, {
