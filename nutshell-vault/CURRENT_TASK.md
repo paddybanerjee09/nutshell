@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: local-verification-recovery-2026-11-27
-task_state: in_progress
-task_revision: 112
+task_state: pr_open
+task_revision: 113
 repository_id: 1467144605
 branch: feature/local-verification-recovery
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 21
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/21
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Target the exact loopback verification database. Restrict reset to identified sy
 
 ## Consequences
 
-Canonical idle revision 111 is confirmed after PR #20. The database delegate owns scoped reset and tests. The lead owns command and process integration, worker recovery verification, and source workflow.
+GitHub created draft PR #21 from confirmed canonical idle revision 111. The database delegate owns scoped reset, its advisory lease, and tests. The lead owns the command and real worker restart proof.
 
 ## Affected files
 
