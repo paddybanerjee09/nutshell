@@ -1,7 +1,7 @@
 "use client";
 
 import type { TeamTask, TeamTaskStatus } from "@nutshell/server/team-tasks";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { WorkspaceData } from "./workspace-data";
 import { taskStatusLabels, useWorkspaceTasks } from "./workspace-tasks";
 import "./workspace-task-panel.css";
@@ -51,6 +51,7 @@ function TaskDetails({ task, data, onOpen }: { task: TeamTask; data: ListData; o
 }
 
 function TaskEditorForm({ client, data }: { client: TasksState; data: ListData }) {
+  const labelId = useId();
   const { editor, pending, loading, change, save, cancel, resolveConflict } = client;
   if (!editor) return null;
   const { fields, task, conflict } = editor;
@@ -80,24 +81,33 @@ function TaskEditorForm({ client, data }: { client: TasksState; data: ListData }
     <fieldset disabled={pending}>
       {editFields && <>
         <label>Title<input type="text" required value={fields.title} onChange={(event) => change({ title: event.currentTarget.value })} /></label>
-        <label>Description<textarea rows={4} value={fields.description} onChange={(event) => change({ description: event.currentTarget.value })} /></label>
+        <label><span id={labelId + "-description"}>Description</span>
+          <textarea aria-labelledby={labelId + "-description"} rows={4} value={fields.description}
+            onChange={(event) => change({ description: event.currentTarget.value })} />
+        </label>
         <div className="workspace-task-field-row">
-          <label>Assignee<select required value={fields.assigneeId} onChange={(event) => change({ assigneeId: event.currentTarget.value })}>
-            {!assignees.some(({ id }) => id === fields.assigneeId) &&
-              <option value={fields.assigneeId} disabled>{memberName(data, fields.assigneeId)}</option>}
-            {assignees.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-          </select></label>
+          <label><span id={labelId + "-assignee"}>Assignee</span>
+            <select aria-labelledby={labelId + "-assignee"} required value={fields.assigneeId}
+              onChange={(event) => change({ assigneeId: event.currentTarget.value })}>
+              {!assignees.some(({ id }) => id === fields.assigneeId) &&
+                <option value={fields.assigneeId} disabled>{memberName(data, fields.assigneeId)}</option>}
+              {assignees.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+            </select>
+          </label>
           <label>Deadline<input type="date" value={fields.deadline} onChange={(event) => change({ deadline: event.currentTarget.value })} /></label>
         </div>
       </>}
-      <label>Status<select value={fields.status} onChange={(event) => {
-        const status = event.currentTarget.value as TeamTaskStatus;
-        change({ status, blocker: status === "blocked" ? fields.blocker : "" });
-      }}>
-        {Object.entries(taskStatusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
-      </select></label>
-      {fields.status === "blocked" && <label>Blocker reason
-        <textarea required rows={2} value={fields.blocker} onChange={(event) => change({ blocker: event.currentTarget.value })} />
+      <label><span id={labelId + "-status"}>Status</span>
+        <select aria-labelledby={labelId + "-status"} value={fields.status} onChange={(event) => {
+          const status = event.currentTarget.value as TeamTaskStatus;
+          change({ status, blocker: status === "blocked" ? fields.blocker : "" });
+        }}>
+          {Object.entries(taskStatusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}
+        </select>
+      </label>
+      {fields.status === "blocked" && <label><span id={labelId + "-blocker"}>Blocker reason</span>
+        <textarea aria-labelledby={labelId + "-blocker"} required rows={2} value={fields.blocker}
+          onChange={(event) => change({ blocker: event.currentTarget.value })} />
       </label>}
       {editFields && <>
         {data.entities.length > 0 && <fieldset className="workspace-task-entities">
@@ -127,6 +137,7 @@ function TaskEditorForm({ client, data }: { client: TasksState; data: ListData }
 }
 
 export function WorkspaceTaskPanel({ data: repository, onOpen }: { data: WorkspaceData; onOpen: (id: string) => void }) {
+  const briefLabelId = useId();
   const client = useWorkspaceTasks();
   const { data, editor, selected, loading, load, pending, status, error, deleteConfirmation } = client;
   const [statusFilter, setStatusFilter] = useState("");
@@ -234,7 +245,9 @@ export function WorkspaceTaskPanel({ data: repository, onOpen }: { data: Workspa
             </div>}
             {activeBrief && <>
               <p role="status">{clipboard}</p>
-              <label className="workspace-task-brief">Task brief<textarea readOnly rows={8} value={activeBrief} /></label>
+              <label className="workspace-task-brief"><span id={briefLabelId}>Task brief</span>
+                <textarea aria-labelledby={briefLabelId} readOnly rows={8} value={activeBrief} />
+              </label>
             </>}
           </section>
         )}

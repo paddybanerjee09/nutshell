@@ -735,6 +735,9 @@ export async function verifyEntryFlow(origin: string) {
     journeyFailure = { error };
   }
   if (journeyFailure && client) {
+    const fixtures = client.contexts().flatMap((context) => context.pages());
+    const closed = Promise.allSettled(fixtures.map((page) => page.close({ runBeforeUnload: false }))).then(() => true);
+    await waitForBrowserClose(closed, 8_000);
     await waitForBrowserClose(client.close().then(() => true, () => false), 5_000);
   }
   try {
