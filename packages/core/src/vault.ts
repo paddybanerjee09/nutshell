@@ -47,6 +47,7 @@ export function readNote(path: string, source: string, report: Report) {
   return {
     metadata: result.data,
     body: lines.slice(bodyStart),
+    bodyStart,
     lineCount: lines.length - Number(lines.at(-1) === ""),
   };
 }
@@ -117,6 +118,16 @@ export function isLiteralPath(path: string) {
     path.split("/").every((part) => part && part !== "." && part !== "..");
 }
 
+export function isNewVaultNotePath(path: string) {
+  if (!path.isWellFormed() || !path.startsWith(vault) || !/\.md$/iu.test(path) || !isLiteralPath(path) || /[[\]|<>]/u.test(path)) return false;
+  const parts = path.slice(vault.length).split("/");
+  const folder = parts[0]?.toLowerCase();
+  const filename = parts.at(-1)?.toLowerCase();
+  return !["archive", "decisions", "templates"].includes(folder ?? "") &&
+    !["_index.md", "index.md", "current_task.md"].includes(filename ?? "") &&
+    parts.every((part) => part === part.trim() && part.toLowerCase() !== ".git");
+}
+
 function resolveIndexDestination(target: string) {
   if (/^[/\\]|[#:?]/u.test(target)) return;
   const resolved = ["nutshell-vault"];
@@ -147,7 +158,7 @@ function indexLink(cell: string) {
 
 export type VaultCatalogEntry = { path: string; description: string; status: string; tags: string[] };
 
-function catalogRows(lines: string[], report: Report): VaultCatalogEntry[] | undefined {
+function catalogRows(lines: string[], report: Report) {
   const rows = lines.map(tableCells);
   const tables = rows.reduce<number[]>((starts, cells, line) => {
     if (cells.join("|") === indexColumns.join("|")) starts.push(line);
@@ -167,8 +178,10 @@ function catalogRows(lines: string[], report: Report): VaultCatalogEntry[] | und
 
   const seen = new Set<string>();
   const entries: VaultCatalogEntry[] = [];
+  let endLine = start + 2;
   for (const [offset, cells] of rows.slice(start + 2).entries()) {
     if (!cells.length) break;
+    endLine++;
     const [label, description, rowStatus, tags] = cells;
     const link = label && indexLink(label);
     if (cells.length !== 4 || !link || !description || !rowStatus || !activeStatuses.has(rowStatus) ||
@@ -187,7 +200,7 @@ function catalogRows(lines: string[], report: Report): VaultCatalogEntry[] | und
     seen.add(path);
     entries.push({ path, description, status: rowStatus, tags: tags.split(",").map((tag) => tag.trim()) });
   }
-  return entries;
+  return { entries, endLine };
 }
 
 export function readVaultCatalog(source: string) {
@@ -195,12 +208,37 @@ export function readVaultCatalog(source: string) {
   const report: Report = (path, code, message) => { issues.push({ path, code, message }); };
   const index = readNote(indexPath, source, report);
   if (index && index.metadata.status !== "active") report(indexPath, "control-status", "Vault controls must have status active.");
-  const entries = index ? catalogRows(visibleLines(index.body), report) ?? [] : [];
+  const entries = index ? catalogRows(visibleLines(index.body), report)?.entries ?? [] : [];
   return { entries, issues };
 }
 
+export function appendVaultCatalogNote(catalog: string, path: string, markdown: string): string | null {
+  if (!isNewVaultNotePath(path)) return null;
+  let invalid = false;
+  const report: Report = () => { invalid = true; };
+  const index = readNote(indexPath, catalog, report);
+  const note = readNote(path, markdown, report);
+  if (!index || !note || index.metadata.status !== "active" || !activeStatuses.has(note.metadata.status)) return null;
+  const rows = catalogRows(visibleLines(index.body), report);
+  if (invalid || !rows || rows.entries.some((entry) => entry.path.toLowerCase() === path.toLowerCase())) return null;
+  const { tags, status } = note.metadata;
+  if (tags.some((tag) => /[,<>\p{Cc}]/u.test(tag))) return null;
+  const relativePath = path.slice(vault.length);
+  const target = relativePath.split("/").map(encodeURIComponent).join("/");
+  const row = `| [${path}](<${target}>) | Markdown note ${relativePath.split("/").at(-1)} | ${status} | ${tags.join(", ").replaceAll("|", "\\|")} |`;
+  const rawLines = catalog.match(/[^\n]*\n|[^\n]+$/gu) ?? [];
+  const insertAt = index.bodyStart + rows.endLine;
+  const prefix = rawLines.slice(0, insertAt).join("");
+  const suffix = rawLines.slice(insertAt).join("");
+  const newline = prefix.endsWith("\r\n") ? "\r\n" : "\n";
+  const updated = prefix.endsWith("\n") ? prefix + row + newline + suffix : prefix + newline + row;
+  const result = readVaultCatalog(updated);
+  return result.issues.length === 0 && result.entries.length === rows.entries.length + 1 &&
+    result.entries.some((entry) => entry.path === path) ? updated : null;
+}
+
 function validateIndex(lines: string[], activePaths: ReadonlyMap<string, string>, report: Report) {
-  const entries = catalogRows(lines, report);
+  const entries = catalogRows(lines, report)?.entries;
   if (!entries) return;
   const seen = new Set<string>();
   for (const { path, status: rowStatus } of entries) {

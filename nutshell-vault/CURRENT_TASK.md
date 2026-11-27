@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: managed-markdown-creation-2026-11-27
-task_state: in_progress
-task_revision: 117
+task_state: pr_open
+task_revision: 118
 repository_id: 1467144605
 branch: feature/managed-markdown-creation
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 22
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/22
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Reuse workspace editing and the current repository grants, guard the expected ba
 
 ## Consequences
 
-Canonical idle revision 116 is confirmed. The server delegate owns absent-source storage, draft creation/listing and proposal integration. The lead owns the shared index-row helper, workspace controls, browser verification and source workflow.
+GitHub created draft PR #22. The index-row helper passed the vault suite, including exact CRLF and BOM preservation against a fenced catalog example. Persist and verify absence-bound drafts, then connect the workspace and browser checks.
 
 ## Affected files
 
