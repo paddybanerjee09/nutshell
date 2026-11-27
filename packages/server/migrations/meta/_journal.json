@@ -36,6 +36,13 @@
       "when": 1795651200004,
       "tag": "0004_fixture_draft_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795651200005,
+      "tag": "0005_team_tasks",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import type { RepositoryProjection } from "@nutshell/core/snapshot";
 import { sql } from "drizzle-orm";
-import { bigint, boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, date, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 const time = (name: string) => timestamp(name, { withTimezone: true });
 const numericId = (name: string) => bigint(name, { mode: "number" });
@@ -191,3 +191,23 @@ export const fixtureDraftProposal = pgTable("fixture_draft_proposal", {
   foreignKey({ columns: [table.repositoryId, table.previousHeadRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
   foreignKey({ columns: [table.repositoryId, table.mergedRevision], foreignColumns: [fixtureTree.repositoryId, fixtureTree.revision] }),
 ]);
+
+export const teamTaskStatuses = ["todo", "in_progress", "blocked", "done"] as const;
+
+export const teamTask = pgTable("team_task", {
+  id: uuid("id").primaryKey(),
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  creatorId: text("creator_id").notNull().references(() => user.id),
+  assigneeId: text("assignee_id").notNull().references(() => user.id),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  deadline: date("deadline", { mode: "string" }),
+  status: text("status", { enum: teamTaskStatuses }).notNull().default("todo"),
+  blocker: text("blocker"),
+  entityIds: text("entity_ids").array().notNull().default(sql`'{}'`),
+  issueNumbers: numericId("issue_numbers").array().notNull().default(sql`'{}'`),
+  pullRequestNumbers: numericId("pull_request_numbers").array().notNull().default(sql`'{}'`),
+  version: integer("version").notNull().default(1),
+  createdAt: time("created_at").notNull().defaultNow(),
+  updatedAt: time("updated_at").notNull().defaultNow(),
+}, (table) => [index("team_task_scope_idx").on(table.repositoryId, table.updatedAt, table.id)]);

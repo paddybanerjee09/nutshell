@@ -10,6 +10,7 @@
     "./fixture-sync": "./src/fixture-sync.ts",
     "./runtime": "./src/runtime.ts",
     "./setup": "./src/setup.ts",
+    "./team-tasks": "./src/team-tasks.ts",
     "./provision": "./src/provision.ts"
   },
   "dependencies": {

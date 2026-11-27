@@ -1,7 +1,7 @@
 import { projectRepositoryTree, type RepositoryProjection } from "@nutshell/core/snapshot";
 import { and, eq, exists, inArray, lte, sql } from "drizzle-orm";
 import { fixtureRepositories } from "./local-fixtures.ts";
-import { getFixtureDatabase, resolveRepositoryReadFilter, type FixtureTransaction } from "./runtime.ts";
+import { getFixtureDatabase, lockRepositoryGrant, resolveRepositoryActor, resolveRepositoryReadFilter, type FixtureTransaction } from "./runtime.ts";
 import { fixtureDelivery, fixtureDraftProposal, fixtureSetupProposal, fixtureSnapshot, fixtureState, fixtureTree, installation, repository } from "./schema.ts";
 
 export const fixtureSchemaVersion = 1;
@@ -40,6 +40,29 @@ export async function lockFixtureConnection(tx: FixtureTransaction, repositoryId
     .where(and(eq(repository.id, repositoryId), eq(repository.active, true), eq(repository.installationId, installationId)))
     .for(lock);
   return connection ?? null;
+}
+
+export type FixtureRepositoryScope = {
+  tx: FixtureTransaction; repositoryId: number; installationId: number; epoch: number;
+  userId: string; canWrite: boolean; canConfigure: boolean;
+};
+
+export async function withFixtureRepositoryAccess<Result>(
+  headers: Headers, repositoryId: string, perform: (scope: FixtureRepositoryScope) => Promise<Result>,
+): Promise<Result | null> {
+  const fixture = fixtureRepositories.find(({ id }) => String(id) === repositoryId);
+  if (!fixture) return null;
+  const actor = await resolveRepositoryActor(headers);
+  if (!actor) return null;
+
+  return getFixtureDatabase().transaction(async (tx) => {
+    const connection = await lockFixtureConnection(tx, fixture.id, fixture.installationId, "share");
+    if (!connection) return null;
+    const grant = await lockRepositoryGrant(tx, actor, fixture.id);
+    if (!grant) return null;
+    return perform({ tx, repositoryId: fixture.id, installationId: fixture.installationId,
+      epoch: connection.epoch, userId: actor.userId, ...grant });
+  });
 }
 
 export async function acceptFixtureDelivery(input: DeliveryInput): Promise<"accepted" | "duplicate" | "unavailable"> {
