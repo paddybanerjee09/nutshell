@@ -1,0 +1,86 @@
+/*
+ * Nutshell design reference tokens — not an implemented app or component sheet.
+ * The user's baseline values are authoritative; see UI_GUIDE.md for behavior,
+ * contrast observations, and clearly labeled implementation decisions.
+ * No external font imports, global reset, layout, or interactive code lives here.
+ */
+
+:root {
+  /* Surfaces */
+  --ns-canvas: #1e1e1e;
+  --ns-chrome: #161616;
+  --ns-chrome-alt: #181818;
+  --ns-hover: #262626;
+  --ns-tab-inactive: #262626;
+  --ns-selection: #363636;
+  --ns-modal-input: #363636;
+  --ns-code-surface: #181818;
+  --ns-palette-row-highlight: #2a2a2a;
+
+  /* Accent is limited to the elements enumerated in the user brief. */
+  --ns-accent: #7f6df2;
+  --ns-accent-alt: #8b5cf6;
+  --ns-accent-tint: rgba(127, 109, 242, 0.15);
+
+  /* Text and icon states */
+  --ns-text: #dcddde; /* Implementation default for ordinary readable text. */
+  --ns-headline: #ffffff;
+  --ns-subtitle: #999999;
+  --ns-muted: #999999;
+  --ns-icon: #8e8e8e;
+  --ns-icon-hover-active: #dcddde;
+  --ns-primary-cta-label: #161616; /* Deliberate label choice: about 4.63:1 on #7f6df2. */
+
+  /* Structural and graph lines */
+  --ns-border: #2e2e2e;
+  --ns-border-alt: #333333;
+  --ns-border-width: 1px;
+  --ns-graph-edge: #3a3a3a;
+  --ns-graph-edge-width: 1px;
+  --ns-graph-node-highlight: #7f6df2;
+  --ns-graph-unrelated-opacity: 0.2;
+
+  /* Tight functional radii; tags are not full-radius capsule controls. */
+  --ns-radius-button: 4px;
+  --ns-radius-input: 4px;
+  --ns-radius-tag: 4px;
+  --ns-radius-dropdown: 6px;
+  --ns-radius-card: 6px;
+  --ns-radius-modal-min: 8px;
+  --ns-radius-modal-max: 12px;
+  --ns-radius-modal: 10px; /* Proposed default within the user's range. */
+  --ns-radius-preview: 12px;
+
+  /* Baseline dimensions; responsive constraints must keep controls reachable. */
+  --ns-ribbon-width: 40px;
+  --ns-status-height: 24px;
+  --ns-command-palette-width: 560px;
+  --ns-readable-width: 700px;
+  --ns-icon-size-min: 16px;
+  --ns-icon-size-max: 18px;
+  --ns-icon-stroke: 1.5px;
+
+  /* Typography: provide licensed local font files only if needed. */
+  --ns-font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ns-font-mono: "JetBrains Mono", "Fira Code", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --ns-font-size-ui: 13px;
+  --ns-font-size-ui-dense: 12px;
+  --ns-font-size-body: 16px;
+  --ns-line-height-body: 1.6;
+  --ns-font-size-status: 11px;
+  --ns-font-size-hero-min: 48px;
+  --ns-font-size-hero-max: 64px;
+  --ns-letter-spacing-hero: -0.03em;
+
+  /* Proposed fit-based layout defaults, not additional user-supplied values. */
+  --ns-pane-min-width: 280px;
+  --ns-pane-min-height: 180px;
+  --ns-control-hit-size: 32px;
+}
+
+/*
+ * Do not “fix” the baseline by silently changing the supplied colors.
+ * Optional high-contrast and reduced-motion preferences need deliberate,
+ * separately tested behavior in the actual application. The source logo is
+ * opaque and must remain unchanged; no filter, mask, or blend-mode token exists.
+ */

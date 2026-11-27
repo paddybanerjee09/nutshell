@@ -1,0 +1,12 @@
+{
+  "name": "@nutshell/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./vault": "./src/vault.ts"
+  },
+  "dependencies": {
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  }
+}
