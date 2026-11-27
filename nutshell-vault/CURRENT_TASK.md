@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: local-repository-authoring-2026-11-27
 task_state: pr_open
-task_revision: 98
+task_revision: 99
 repository_id: 1467144605
 branch: feature/local-repository-authoring
 base_branch: main
@@ -28,7 +28,7 @@ The filesystem delegate owns bounded managed reads and targeted writes. The init
 
 ## Consequences
 
-GitHub confirmed PR #18 merged and its guarded canonical cleanup advanced to idle revision 96. Draft PR #19 is open. Work in isolated scratch repositories for authoring tests. Verify the actual CLI without mutating this checkout's development task.
+Draft PR #19 is open. Scoped filesystem tests verified managed reads, archive metadata, scoped writes, exact owner bytes, and refusal of unsafe paths. The CLI passed initialization and authoring tests in isolated scratch repositories, including an actual immutable Git comparison. Next rerun the full Windows alpha workflow.
 
 ## Affected files
 

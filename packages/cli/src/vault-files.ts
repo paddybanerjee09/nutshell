@@ -179,7 +179,9 @@ export function listWorkingVault(root: string, includeArchive: boolean): string[
   return paths.sort();
 }
 
-export function readWorkingVaultDocument(root: string, path: string, consumeBytes: (bytes: number) => void): string | undefined {
+export function readWorkingVaultDocument(
+  root: string, path: string, consumeBytes: (bytes: number) => void, archiveHeaderOnly = false,
+): string | undefined {
   checkVaultDocumentPath(path);
   const parts = path.split("/");
   let fullPath = root;
@@ -191,7 +193,7 @@ export function readWorkingVaultDocument(root: string, path: string, consumeByte
       throw new Error(`Expected a directory while opening ${JSON.stringify(path)}.`);
     }
   }
-  return readLocalDocument(fullPath, path, false, consumeBytes);
+  return readLocalDocument(fullPath, path, archiveHeaderOnly, consumeBytes);
 }
 
 export function readWorkingTree(cwd: string) {
