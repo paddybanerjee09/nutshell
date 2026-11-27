@@ -3,35 +3,34 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: vault-context-2026-11-27
-task_state: ready_for_review
-task_revision: 33
-repository_id: 1467144605
-branch: feature/vault-context
-base_branch: main
-pr_number: 7
-pr_url: https://github.com/paddybanerjee09/nutshell/pull/7
+task_id: null
+task_state: idle
+task_revision: 34
+repository_id: null
+branch: null
+base_branch: null
+pr_number: null
+pr_url: null
 last_verified_head: null
-lead_agent: codex-lead
-integration_checkout: 'C:\Users\paddy\dev\nutshell'
+lead_agent: null
+integration_checkout: null
 cleanup_pr_url: null
 ---
 # Current task
 
 ## Context
 
-Implement revision-aware `nutshell context` with mandatory controls, ranked excerpts, a bounded budget, and explicit historical retrieval.
+No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
 
 ## Decision
 
-Reuse the shared index parser and bounded source readers. Default to the exact checked-out Git revision and offer explicit ref or working-tree selection. Read optional bodies only after ranking metadata.
+The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
 
 ## Consequences
 
-Lint, strict typecheck, vault validation, and all 58 affected tests passed. The CLI smoke pinned explicit main and ranked workspace context, and a one-token working-tree query reported the mandatory budget. Confirm the exact source check and PR #7 merge before guarded cleanup.
+See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
 
 ## Affected files
 
-- [Memory context](features/memory-vault/CONTEXT.md)
-- [Memory protocol](workflows/MEMORY_PROTOCOL.md)
-- [Acceptance ledger](runs/ACCEPTANCE.md)
+- [Task template](templates/TASK.md)
+- [Vault index](_INDEX.md)
