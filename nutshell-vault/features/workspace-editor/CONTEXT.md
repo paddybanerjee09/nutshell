@@ -37,7 +37,7 @@ Both graph views open as ordinary workspace tabs and share a React Flow canvas. 
 
 ## Consequences
 
-New managed notes, live-provider proposals, private media, semantic history, and the interactive marketing preview have separate implementation and acceptance work. Keep graph layout separate from canonical relationships and reuse shared domain services. Consult R-03 when changing the marketing preview.
+Live-provider proposals and native IME have separate acceptance. Keep graph layout separate from canonical relationships and reuse shared domain services. Consult R-03 when changing the marketing preview.
 
 ## Affected files
 

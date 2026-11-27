@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: managed-markdown-creation-2026-11-27
-task_state: pr_open
-task_revision: 120
+task_state: ready_for_review
+task_revision: 121
 repository_id: 1467144605
 branch: feature/managed-markdown-creation
 base_branch: main
 pr_number: 22
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/22
-last_verified_head: null
+last_verified_head: 76c0f76fb8d1d2a0fd625d57c93d318d33b2b1d0
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ Reuse workspace editing and the current repository grants, guard the expected ba
 
 ## Consequences
 
-Migration 0010 applied on both local databases. Seventeen targeted checks passed for the vault, PostgreSQL proposal and draft stores, and HTTP privacy. The form now opens the saved private draft in a workspace pane and restores it after reload. Run the integrated optimized browser and source checks.
+Migration 0010 applied on both local databases. The full Windows verification exited zero with 279 tests, the optimized app, persisted worker restart, full Firefox journey and scoped shutdown. Firefox preserved the private note after reload and indexed the exact file and catalog row through the simulated proposal. Confirm the latest trusted source check, then merge and clear only this task.
 
 ## Affected files
 
