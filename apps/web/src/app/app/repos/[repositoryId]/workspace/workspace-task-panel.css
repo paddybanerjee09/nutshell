@@ -1,0 +1,166 @@
+.workspace-panel[data-kind="tasks"] { padding: 0; }
+
+.workspace-tasks-panel {
+  container-type: inline-size;
+  min-inline-size: 0;
+  min-block-size: 100%;
+  font-size: var(--ns-font-size-ui);
+  overflow-wrap: anywhere;
+}
+
+.workspace-tasks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.workspace-tasks-header h1 { margin: 0; font-size: 20px; }
+.workspace-tasks-panel :is(h2, h3, p) { margin: 0 0 8px; }
+.workspace-tasks-panel h2 { font-size: 18px; }
+.workspace-tasks-panel h3 { font-size: 14px; }
+
+.workspace-task-filters, .workspace-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.workspace-task-filters, .workspace-task-message {
+  padding: 6px 12px;
+  border-block: var(--ns-border-width) solid var(--ns-border);
+  background: var(--ns-chrome-alt);
+}
+
+.workspace-task-muted, .workspace-task-list small { color: var(--ns-muted); }
+.workspace-task-filters span, .workspace-task-list small { font-size: var(--ns-font-size-ui-dense); }
+
+.workspace-tasks-body {
+  display: grid;
+  grid-template-columns: minmax(160px, 34%) minmax(0, 1fr);
+  align-items: start;
+  min-block-size: 280px;
+}
+
+.workspace-task-list {
+  align-self: stretch;
+  min-inline-size: 0;
+  padding: 4px;
+  border-inline-end: var(--ns-border-width) solid var(--ns-border);
+  background: var(--ns-chrome-alt);
+}
+
+.workspace-task-list ul { margin: 0; padding: 0; list-style: none; }
+.workspace-task-list p { padding: 8px; }
+
+.workspace-task-list button {
+  display: grid;
+  inline-size: 100%;
+  min-block-size: 40px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--ns-radius-button);
+  background: transparent;
+  text-align: start;
+}
+
+.workspace-task-list button:hover { background: var(--ns-hover); }
+.workspace-task-list button[aria-pressed="true"] { background: var(--ns-accent-tint); }
+
+.workspace-task-detail, .workspace-task-editor {
+  min-inline-size: 0;
+  padding: 12px 16px;
+}
+
+.workspace-task-description { white-space: pre-wrap; }
+
+.workspace-task-properties {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 12px;
+  margin: 0 0 12px;
+}
+
+.workspace-task-properties dt { color: var(--ns-muted); }
+.workspace-task-properties dd, .workspace-task-properties ul { margin: 0; }
+.workspace-task-properties ul { padding-inline-start: 15px; }
+
+.workspace-task-editor > fieldset {
+  display: grid;
+  gap: 10px;
+  min-inline-size: 0;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+}
+
+.workspace-task-editor label, .workspace-task-brief { display: grid; gap: 4px; min-inline-size: 0; }
+.workspace-task-brief { margin-block: 8px; }
+.workspace-task-brief textarea { font-family: var(--ns-font-mono); }
+.workspace-task-field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+.workspace-task-entities {
+  display: grid;
+  align-items: start;
+  gap: 3px;
+  min-inline-size: 0;
+  max-block-size: 220px;
+  margin: 0;
+  padding: 5px 8px;
+  overflow: auto;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+}
+
+.workspace-task-entities label { display: flex; align-items: center; min-block-size: var(--ns-control-hit-size); }
+
+.workspace-tasks-panel :is(input:not([type="checkbox"]), select, textarea) {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  min-block-size: var(--ns-control-hit-size);
+  padding: 4px 8px;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-input);
+  background: var(--ns-modal-input);
+  color: var(--ns-text);
+  font: inherit;
+}
+
+.workspace-tasks-panel :is(.workspace-tasks-header, .workspace-task-actions, .workspace-task-message) button {
+  min-block-size: var(--ns-control-hit-size);
+  padding: 4px 8px;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-button);
+  background: var(--ns-hover);
+  color: var(--ns-text);
+}
+
+.workspace-tasks-panel :is(.workspace-tasks-header, .workspace-task-actions, .workspace-task-message) button:hover:not(:disabled) {
+  background: var(--ns-selection);
+}
+
+.workspace-task-conflict {
+  margin: 8px 0;
+  padding: 8px;
+  border: var(--ns-border-width) solid var(--ns-border-alt);
+  background: var(--ns-chrome-alt);
+}
+
+.workspace-task-conflict summary { margin-bottom: 6px; cursor: pointer; }
+
+@container (max-width: 540px) {
+  .workspace-tasks-body { display: block; }
+  .workspace-task-list {
+    max-block-size: 180px;
+    overflow: auto;
+    border-inline-end: 0;
+    border-block-end: var(--ns-border-width) solid var(--ns-border);
+  }
+  .workspace-task-field-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (pointer: coarse) {
+  .workspace-tasks-panel :is(button, select, input:not([type="checkbox"]), .workspace-task-entities label) { min-block-size: 44px; }
+}

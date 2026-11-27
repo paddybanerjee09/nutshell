@@ -528,6 +528,109 @@ async function verifyWorkspaceGraphs(page: Page, origin: string, output: string)
   await page.close();
 }
 
+async function verifyTeamTasks(page: Page, reader: Page, origin: string, output: string) {
+  const taskPath = "/api/repos/1001/tasks";
+  const endpoint = origin + taskPath;
+  const snapshotUrl = origin + "/api/repos/1001/snapshot";
+  type Task = { id: string; title: string; status: string; assigneeId: string; deadline: string | null; blocker: string | null; entityIds: string[]; version: number };
+  async function openTasks(view: Page) {
+    const controls = view.getByRole("navigation", { name: "Workspace controls" });
+    await controls.getByRole("button", { name: "Team tasks", exact: true }).click();
+    return view.getByRole("region", { name: "Team tasks", exact: true });
+  }
+  function waitForChange(view: Page, method: string, path: string) {
+    return view.waitForResponse((response) => response.request().method() === method && new URL(response.url()).pathname === path);
+  }
+
+  const initial = await page.request.get(endpoint);
+  assert.equal(initial.status(), 200);
+  assert.equal(initial.headers()["cache-control"], "private, no-store");
+  const scope = await initial.json() as { sourceRevision: string; viewerId: string; canManage: boolean };
+  assert.equal(scope.viewerId, "local-coordinator");
+  assert.equal(scope.canManage, true);
+  const indexedBefore = await (await page.request.get(snapshotUrl)).json();
+  assert.equal(scope.sourceRevision, indexedBefore.revision);
+  await page.goto(origin + "/app/repos/1001/workspace");
+  const tasks = await openTasks(page);
+  const title = "Review field observations " + Date.now().toString(36);
+  const deadline = "2032-02-29";
+  await tasks.getByRole("button", { name: "New task", exact: true }).click();
+  await tasks.getByLabel("Title", { exact: true }).fill(title);
+  await tasks.getByLabel("Assignee", { exact: true }).selectOption("local-reader");
+  await tasks.getByLabel("Deadline", { exact: true }).fill(deadline);
+  await tasks.getByRole("checkbox", { name: "Observation capture", exact: true }).check();
+  const save = tasks.getByRole("button", { name: "Save task", exact: true });
+  const [created] = await Promise.all([waitForChange(page, "POST", taskPath), save.click()]);
+  assert.equal(created.status(), 201);
+  const { task } = await created.json() as { task: Task };
+  assert.equal(task.title, title);
+  assert.equal(task.assigneeId, "local-reader");
+  assert.equal(task.deadline, deadline);
+  assert.deepEqual(task.entityIds, ["feat_observation_capture"]);
+  assert.equal(task.version, 1);
+  const list = tasks.getByRole("list", { name: "Repository tasks" });
+  await list.getByRole("button", { name: title, exact: true }).click();
+  await tasks.getByRole("button", { name: "Edit task", exact: true }).click();
+  const changedTitle = title + " again";
+  await tasks.getByLabel("Title", { exact: true }).fill(changedTitle);
+
+  const itemPath = `${taskPath}/${task.id}`;
+  const itemEndpoint = origin + itemPath;
+  const readerPatch = (changes: object) => reader.request.patch(itemEndpoint, { headers: { origin }, data: { version: task.version, changes } });
+  assert.equal((await readerPatch({ title: "Unauthorized change" })).status(), 403);
+  assert.equal((await readerPatch({ status: "blocked" })).status(), 400);
+  const readerTasks = await openTasks(reader);
+  const assigned = readerTasks.getByRole("list", { name: "Repository tasks" }).getByRole("button", { name: title, exact: true });
+  await assigned.click();
+  await readerTasks.getByRole("button", { name: "Edit task", exact: true }).click();
+  await readerTasks.getByLabel("Status", { exact: true }).selectOption("blocked");
+  const blocker = "Waiting for the updated field record.";
+  await readerTasks.getByLabel("Blocker reason", { exact: true }).fill(blocker);
+  const [assignedUpdate] = await Promise.all([waitForChange(reader, "PATCH", itemPath),
+    readerTasks.getByRole("button", { name: "Save task", exact: true }).click()]);
+  assert.equal(assignedUpdate.status(), 200);
+  const { task: changedByReader } = await assignedUpdate.json() as { task: Task };
+  assert.equal(changedByReader.blocker, blocker);
+  const [stale] = await Promise.all([waitForChange(page, "PATCH", itemPath), save.click()]);
+  assert.equal(stale.status(), 409);
+  const collision = await stale.json() as { task: Task; attempted: { version: number } };
+  assert.equal(collision.task.version, changedByReader.version);
+  assert.equal(collision.attempted.version, task.version);
+  assert.equal(await tasks.getByLabel("Title", { exact: true }).inputValue(), changedTitle);
+  await tasks.getByRole("button", { name: `Keep edits with version ${changedByReader.version}`, exact: true }).click();
+  assert.equal(await tasks.getByLabel("Title", { exact: true }).inputValue(), changedTitle);
+  assert.equal(await tasks.getByLabel("Status", { exact: true }).inputValue(), "blocked");
+  const [reconciled] = await Promise.all([waitForChange(page, "PATCH", itemPath), save.click()]);
+  assert.equal(reconciled.status(), 200);
+  const { task: finalTask } = await reconciled.json() as { task: Task };
+  assert.deepEqual([finalTask.title, finalTask.blocker, finalTask.deadline, finalTask.status, finalTask.assigneeId],
+    [changedTitle, blocker, deadline, "blocked", "local-reader"]);
+
+  await page.reload();
+  await tasks.getByRole("combobox", { name: "Task status", exact: true }).selectOption("blocked");
+  await tasks.getByRole("combobox", { name: "Task assignee", exact: true }).selectOption("local-reader");
+  await list.getByRole("button", { name: changedTitle, exact: true }).click();
+  await tasks.getByText(deadline, { exact: true }).first().waitFor();
+  await tasks.getByText(blocker, { exact: true }).first().waitFor();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+      writeText: async (brief: string) => { document.documentElement.dataset.verificationTaskBrief = brief; },
+    } });
+  });
+  await tasks.getByRole("button", { name: "Copy task brief", exact: true }).click();
+  await tasks.getByRole("textbox", { name: "Task brief", exact: true }).waitFor();
+  await page.waitForFunction(() => Boolean(document.documentElement.dataset.verificationTaskBrief));
+  const brief = await page.locator("html").getAttribute("data-verification-task-brief");
+  assert.ok(brief?.includes(scope.sourceRevision) && brief.includes("/app/repos/1001/workspace") && brief.includes(changedTitle));
+  await page.screenshot({ path: output + "/workspace-team-tasks.png" });
+  const indexedAfter = await (await page.request.get(snapshotUrl)).json();
+  assert.equal(indexedAfter.revision, indexedBefore.revision);
+  assert.deepEqual(indexedAfter.snapshot, indexedBefore.snapshot);
+  const deleted = await page.request.delete(itemEndpoint, { headers: { origin }, data: { version: finalTask.version } });
+  assert.equal(deleted.status(), 200);
+  await page.close();
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -590,6 +693,7 @@ export async function verifyEntryFlow(origin: string) {
     assert.equal((await other.request.get(draftEndpoint)).status(), 404);
     const proposalEndpoint = origin + proposalRoute + "?" + new URLSearchParams({ path: draftPath });
     assert.equal((await other.request.get(proposalEndpoint)).status(), 404);
+    assert.equal((await other.request.get(origin + "/api/repos/1001/tasks")).status(), 404);
     await other.close();
 
     const reader = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -620,6 +724,8 @@ export async function verifyEntryFlow(origin: string) {
     await readerEditor.waitFor();
     assert.equal(await readerEditor.getAttribute("contenteditable"), "false");
     assert.equal(await readerPane.getByRole("button", { name: "Edit draft", exact: true }).count(), 0);
+    const teamTaskPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
+    await verifyTeamTasks(teamTaskPage, reader, origin, output);
     await reader.close();
     const proposalPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
     await verifyMarkdownProposal(proposalPage, origin, output);
@@ -640,5 +746,5 @@ export async function verifyEntryFlow(origin: string) {
       `${describe(journeyFailure.error)}\n${describe(shutdownError)}`, { cause: shutdownError });
   }
   if (journeyFailure) throw journeyFailure.error;
-  console.log(`${browserType.name()} entry, signed fixture setup, workspace, private drafts, simulated proposal publication, both graph modes, and browser shutdown passed.`);
+  console.log(`${browserType.name()} entry, signed fixture setup, workspace, repository tasks, private drafts, simulated proposal publication, both graph modes, and browser shutdown passed.`);
 }
