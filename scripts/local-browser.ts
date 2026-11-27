@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import type { Browser, BrowserServer, Page } from "playwright";
+import type { Browser, BrowserServer, Locator, Page } from "playwright";
 
 const personaPath = "/api/auth/nutshell/persona";
 
@@ -631,6 +631,128 @@ async function verifyTeamTasks(page: Page, reader: Page, origin: string, output:
   await page.close();
 }
 
+async function verifyTeamNotes(coordinator: Page, reader: Page, origin: string, output: string) {
+  const path = "/api/repos/1001/notes";
+  const endpoint = origin + path;
+  const snapshot = origin + "/api/repos/1001/snapshot";
+  type Note = { id: string; title: string; version: number; creatorId: string; content: { schemaVersion: number; doc: { content: unknown[] } } };
+  async function openNotes(view: Page) {
+    await view.goto(origin + "/app/repos/1001/workspace");
+    await view.getByRole("navigation", { name: "Workspace controls" })
+      .getByRole("button", { name: "Team notes", exact: true }).click();
+    return view.getByRole("region", { name: "Team notes", exact: true });
+  }
+  async function saveNote(view: Page, region: Locator, method: string, target: string) {
+    const [response] = await Promise.all([
+      view.waitForResponse((response) => response.request().method() === method && new URL(response.url()).pathname === target),
+      region.getByRole("button", { name: "Save note", exact: true }).click(),
+    ]);
+    return response;
+  }
+
+  const snapshotBefore = await (await coordinator.request.get(snapshot)).json();
+  const readerNotes = await openNotes(reader);
+  const title = "Field review " + Date.now().toString(36);
+  await readerNotes.getByRole("button", { name: "New note", exact: true }).click();
+  await readerNotes.getByRole("textbox", { name: "Title", exact: true }).fill(title);
+  const body = readerNotes.getByRole("textbox", { name: "Note body", exact: true });
+  await body.fill("Field notes for the next review");
+  const options = readerNotes.getByRole("button", { name: "Block options", exact: true });
+  await options.press("Enter");
+  await readerNotes.getByRole("menuitem", { name: "Paragraph", exact: true }).press("ArrowDown");
+  await reader.keyboard.press("ArrowDown");
+  const headingOption = readerNotes.getByRole("menuitem", { name: "Heading 2", exact: true });
+  assert.equal(await headingOption.evaluate((option) => option === document.activeElement), true);
+  await reader.keyboard.press("Enter");
+  await body.getByRole("heading", { name: "Field notes for the next review", exact: true }).waitFor();
+  await body.press("End");
+  await body.press("Enter");
+  await reader.keyboard.insertText("Check the observation date.");
+  const created = await saveNote(reader, readerNotes, "POST", path);
+  assert.equal(created.status(), 201);
+  assert.equal(created.headers()["cache-control"], "private, no-store");
+  const { note } = await created.json() as { note: Note };
+  assert.deepEqual([note.creatorId, note.title, note.version, note.content.schemaVersion], ["local-reader", title, 1, 1]);
+  assert.deepEqual(note.content.doc.content.map((node) => (node as { type: string }).type), ["heading", "paragraph"]);
+  const listed = await reader.request.get(endpoint);
+  assert.equal(listed.status(), 200);
+  assert.equal(listed.headers()["cache-control"], "private, no-store");
+  const visible = await listed.json() as { viewerId: string; canManage: boolean; notes: Note[] };
+  assert.equal(visible.viewerId, "local-reader");
+  assert.equal(visible.canManage, false);
+  assert.deepEqual(visible.notes.find(({ id }) => id === note.id), note);
+  const itemPath = path + "/" + note.id;
+  const item = origin + itemPath;
+  const sendInvalid = (block: object) => coordinator.request.patch(item, {
+    headers: { origin }, data: { version: note.version, changes: { content: { schemaVersion: 1, doc: { type: "doc", content: [block] } } } },
+  });
+  assert.equal((await sendInvalid({ type: "image", attrs: { src: "https://example.com/hidden.png" } })).status(), 400);
+  assert.equal((await sendInvalid({ type: "paragraph", content: [{
+    type: "text", text: "Unsafe link", marks: [{ type: "link", attrs: { href: "javascript:alert(1)" } }],
+  }] })).status(), 400);
+
+  const coordinatorNotes = await openNotes(coordinator);
+  await coordinatorNotes.getByRole("list", { name: "Repository notes" }).getByRole("button", { name: title, exact: true }).click();
+  await coordinatorNotes.getByRole("heading", { name: "Field notes for the next review", exact: true }).waitFor();
+  await coordinatorNotes.getByRole("button", { name: "Edit note", exact: true }).click();
+  const coordinatorTitle = coordinatorNotes.getByRole("textbox", { name: "Title", exact: true });
+  const coordinatorBody = coordinatorNotes.getByRole("textbox", { name: "Note body", exact: true });
+  const revisedTitle = title + " confirmed";
+  await coordinatorTitle.fill(revisedTitle);
+  await readerNotes.getByRole("list", { name: "Repository notes" }).getByRole("button", { name: title, exact: true }).click();
+  await readerNotes.getByRole("button", { name: "Edit note", exact: true }).click();
+  await body.locator("p").last().click();
+  await body.press("End");
+  await reader.keyboard.insertText(" Signed off by the reader.");
+  const updated = await saveNote(reader, readerNotes, "PATCH", itemPath);
+  assert.equal(updated.status(), 200);
+  const { note: readerUpdate } = await updated.json() as { note: Note };
+  assert.match(JSON.stringify(readerUpdate.content), /Signed off by the reader/);
+
+  const stale = await saveNote(coordinator, coordinatorNotes, "PATCH", itemPath);
+  assert.equal(stale.status(), 409);
+  const conflict = await stale.json() as { note: Note; attempted: { version: number; changes: { title: string } } };
+  assert.deepEqual(conflict.note, readerUpdate);
+  assert.equal(conflict.attempted.version, note.version);
+  assert.equal(conflict.attempted.changes.title, revisedTitle);
+  assert.equal(await coordinatorTitle.inputValue(), revisedTitle);
+  assert.doesNotMatch((await coordinatorBody.textContent()) ?? "", /Signed off by the reader/);
+  await coordinatorNotes.getByRole("button", { name: "Keep edits with version " + readerUpdate.version, exact: true }).click();
+  assert.equal(await coordinatorTitle.inputValue(), revisedTitle);
+  await coordinatorBody.getByText(/Signed off by the reader/).waitFor();
+  await readerNotes.getByRole("button", { name: "Edit note", exact: true }).click();
+  await body.locator("p").last().click();
+  await body.press("End");
+  const attemptedText = " Unsaved revision from a separate session.";
+  await reader.keyboard.insertText(attemptedText);
+  const reconciled = await saveNote(coordinator, coordinatorNotes, "PATCH", itemPath);
+  assert.equal(reconciled.status(), 200);
+  const { note: finalNote } = await reconciled.json() as { note: Note };
+  assert.deepEqual(finalNote.content, readerUpdate.content);
+  assert.equal(finalNote.title, revisedTitle);
+  assert.equal(finalNote.version, 3);
+  const staleBody = await saveNote(reader, readerNotes, "PATCH", itemPath);
+  assert.equal(staleBody.status(), 409);
+  const bodyConflict = await staleBody.json() as { note: Note; attempted: { version: number; changes: { content: Note["content"] } } };
+  assert.equal(bodyConflict.attempted.version, readerUpdate.version);
+  assert.ok(JSON.stringify(bodyConflict.attempted.changes.content).includes(attemptedText));
+  assert.ok((await body.textContent())?.includes(attemptedText));
+  assert.deepEqual(bodyConflict.note, finalNote);
+  await readerNotes.getByRole("button", { name: "Discard edits and load saved version", exact: true }).click();
+  const saved = readerNotes.getByRole("region", { name: "Selected note", exact: true });
+  await saved.getByRole("heading", { name: revisedTitle, exact: true }).waitFor();
+  const savedBody = saved.getByRole("document", { name: "Saved note body", exact: true });
+  await savedBody.getByText(/Signed off by the reader/).waitFor();
+  assert.ok(!(await savedBody.textContent())?.includes(attemptedText));
+  await coordinator.reload();
+  await coordinatorNotes.getByRole("list", { name: "Repository notes" }).getByRole("button", { name: revisedTitle, exact: true }).click();
+  await coordinatorNotes.getByText(/Signed off by the reader/).waitFor();
+  await coordinator.screenshot({ path: output + "/workspace-team-notes.png" });
+  assert.deepEqual(await (await coordinator.request.get(snapshot)).json(), snapshotBefore);
+  assert.equal((await coordinator.request.delete(item, { headers: { origin }, data: { version: finalNote.version } })).status(), 200);
+  await coordinator.close();
+}
+
 export async function verifyEntryFlow(origin: string) {
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
@@ -694,6 +816,7 @@ export async function verifyEntryFlow(origin: string) {
     const proposalEndpoint = origin + proposalRoute + "?" + new URLSearchParams({ path: draftPath });
     assert.equal((await other.request.get(proposalEndpoint)).status(), 404);
     assert.equal((await other.request.get(origin + "/api/repos/1001/tasks")).status(), 404);
+    assert.equal((await other.request.get(origin + "/api/repos/1001/notes")).status(), 404);
     await other.close();
 
     const reader = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -726,6 +849,8 @@ export async function verifyEntryFlow(origin: string) {
     assert.equal(await readerPane.getByRole("button", { name: "Edit draft", exact: true }).count(), 0);
     const teamTaskPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
     await verifyTeamTasks(teamTaskPage, reader, origin, output);
+    const teamNotePage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
+    await verifyTeamNotes(teamNotePage, reader, origin, output);
     await reader.close();
     const proposalPage = await browser.newPage({ viewport: { width: 1440, height: 900 }, storageState: { cookies, origins: [] } });
     await verifyMarkdownProposal(proposalPage, origin, output);

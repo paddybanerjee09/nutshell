@@ -1,4 +1,5 @@
 import type { RepositoryProjection } from "@nutshell/core/snapshot";
+import type { TeamNoteContent } from "@nutshell/core/team-note-content";
 import { sql } from "drizzle-orm";
 import { bigint, boolean, date, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
@@ -211,3 +212,14 @@ export const teamTask = pgTable("team_task", {
   createdAt: time("created_at").notNull().defaultNow(),
   updatedAt: time("updated_at").notNull().defaultNow(),
 }, (table) => [index("team_task_scope_idx").on(table.repositoryId, table.updatedAt, table.id)]);
+
+export const teamNote = pgTable("team_note", {
+  id: uuid("id").primaryKey(),
+  repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),
+  creatorId: text("creator_id").notNull().references(() => user.id),
+  title: text("title").notNull(),
+  content: jsonb("content").$type<TeamNoteContent>().notNull(),
+  version: integer("version").notNull().default(1),
+  createdAt: time("created_at").notNull().defaultNow(),
+  updatedAt: time("updated_at").notNull().defaultNow(),
+}, (table) => [index("team_note_scope_idx").on(table.repositoryId, table.updatedAt, table.id)]);

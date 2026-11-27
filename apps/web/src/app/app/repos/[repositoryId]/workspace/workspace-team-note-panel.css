@@ -1,0 +1,152 @@
+.workspace-panel[data-kind="notes"] { padding: 0; }
+
+.workspace-notes-panel {
+  container-type: inline-size;
+  min-inline-size: 0;
+  min-block-size: 100%;
+  font-size: var(--ns-font-size-ui);
+  overflow-wrap: anywhere;
+}
+
+.workspace-notes-header, .workspace-note-detail-heading, .workspace-note-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.workspace-notes-header, .workspace-note-detail-heading { justify-content: space-between; }
+.workspace-notes-header { padding: 12px 16px; border-block-end: 1px solid var(--ns-border); }
+.workspace-notes-header h1, .workspace-note-detail-heading h2 { margin: 0; font-size: 18px; }
+.workspace-notes-header p { margin: 3px 0 0; }
+.workspace-notes-header p, .workspace-note-detail-heading span, .workspace-note-list :is(small, p) { color: var(--ns-muted); }
+.workspace-note-message { margin: 0; padding: 6px 12px; background: var(--ns-chrome-alt); }
+
+.workspace-notes-main {
+  display: grid;
+  grid-template-columns: minmax(135px, 31%) minmax(0, 1fr);
+  min-block-size: 280px;
+}
+
+.workspace-note-list {
+  min-inline-size: 0;
+  padding: 4px;
+  border-inline-end: 1px solid var(--ns-border);
+  background: var(--ns-chrome-alt);
+}
+
+.workspace-note-list ul { margin: 0; padding: 0; list-style: none; }
+.workspace-note-list p { margin: 8px; }
+.workspace-note-list button {
+  display: grid;
+  inline-size: 100%;
+  min-block-size: 40px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--ns-radius-button);
+  background: transparent;
+  text-align: start;
+}
+
+.workspace-note-list button:hover { background: var(--ns-hover); }
+.workspace-note-list button[aria-pressed="true"] { background: var(--ns-accent-tint); }
+.workspace-note-editor, .workspace-note-detail { min-inline-size: 0; padding: 12px 16px; }
+.workspace-note-detail-heading { margin-block-end: 12px; }
+.workspace-note-editor label { display: grid; gap: 4px; }
+
+.workspace-notes-panel :is(.workspace-note-actions, .workspace-note-message, .workspace-note-options) button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-block-size: var(--ns-control-hit-size);
+  padding: 4px 8px;
+  border: 1px solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-button);
+  background: var(--ns-hover);
+  color: var(--ns-text);
+}
+
+.workspace-notes-panel :is(.workspace-note-actions, .workspace-note-message, .workspace-note-options) button:hover:not(:disabled) { background: var(--ns-selection); }
+.workspace-note-options svg { color: var(--ns-icon); }
+.workspace-note-options button:hover svg, .workspace-note-options button[aria-expanded="true"] svg { color: var(--ns-text); }
+
+.workspace-note-editor input:not([type="checkbox"]) {
+  min-inline-size: 0;
+  min-block-size: var(--ns-control-hit-size);
+  padding: 4px 8px;
+  border: 1px solid var(--ns-border-alt);
+  border-radius: var(--ns-radius-input);
+  background: var(--ns-modal-input);
+  color: var(--ns-text);
+  font: inherit;
+}
+
+.workspace-note-body { margin-block: 10px; }
+.workspace-note-body .tiptap {
+  max-inline-size: 700px;
+  min-inline-size: 0;
+  color: var(--ns-text);
+  font-size: 16px;
+  line-height: 1.6;
+  caret-color: var(--ns-accent);
+}
+
+.workspace-note-body .tiptap[contenteditable="true"] {
+  min-block-size: 176px;
+  padding: 8px 12px;
+  border: 1px solid var(--ns-border-alt);
+  border-radius: 4px;
+}
+
+.workspace-note-body .tiptap:focus-visible { outline: 1px solid var(--ns-accent); outline-offset: 1px; }
+.workspace-note-body .tiptap :is(p, h1, h2, h3, pre, ul, ol) { margin: 0 0 .8em; }
+.workspace-note-body .tiptap h1 { font-size: 1.5em; }
+.workspace-note-body .tiptap h2 { font-size: 1.25em; }
+.workspace-note-body .tiptap h3 { font-size: 1.125em; }
+.workspace-note-body .tiptap :is(ul, ol) { padding-inline-start: 1.45em; }
+.workspace-note-body .tiptap li p { margin-block-end: .2em; }
+.workspace-note-body .tiptap pre {
+  padding: 6px 8px;
+  overflow: auto;
+  border: 1px solid var(--ns-border);
+  border-radius: 4px;
+  background: var(--ns-chrome-alt);
+  font-family: var(--ns-font-mono);
+}
+
+.workspace-note-body .tiptap a { color: var(--ns-text); text-decoration: underline; }
+.workspace-note-body .tiptap ul[data-type="taskList"] { padding-inline-start: 0; list-style: none; }
+.workspace-note-body .tiptap li[data-type="taskItem"] { display: flex; align-items: start; gap: 6px; }
+.workspace-note-body .tiptap li[data-type="taskItem"] > div { min-inline-size: 0; flex: 1; }
+.workspace-note-body .tiptap li[data-type="taskItem"] > label { display: inline-flex; align-items: center; min-block-size: 25px; }
+.workspace-note-body .tiptap li[data-type="taskItem"] ul { padding-inline-start: 10px; }
+
+.workspace-note-options { position: relative; margin-block-end: 6px; }
+.workspace-note-block-menu {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  min-inline-size: 132px;
+  max-inline-size: 100%;
+  padding: 3px;
+  border: 1px solid var(--ns-border-alt);
+  border-radius: 6px;
+  background: var(--ns-chrome-alt);
+}
+
+.workspace-notes-panel .workspace-note-block-menu button { justify-content: start; border: 0; background: transparent; }
+.workspace-notes-panel .workspace-note-block-menu button:hover:not(:disabled),
+.workspace-notes-panel .workspace-note-block-menu button:focus-visible { background: #2a2a2a; }
+.workspace-note-link, .workspace-note-conflict { margin-block: 8px; padding: 8px; border: 1px solid var(--ns-border-alt); background: var(--ns-chrome-alt); }
+.workspace-note-link .workspace-note-actions { margin-block-start: 6px; }
+.workspace-note-conflict :is(h3, p) { margin: 0 0 6px; }
+.workspace-note-conflict summary { margin-block-end: 6px; cursor: pointer; }
+
+@container (max-width: 540px) {
+  .workspace-notes-main { display: block; }
+  .workspace-note-list { max-block-size: 180px; overflow: auto; border-inline-end: 0; border-block-end: 1px solid var(--ns-border); }
+}
+
+@media (pointer: coarse) {
+  .workspace-notes-panel :is(button, input:not([type="checkbox"]), .tiptap li[data-type="taskItem"] > label) { min-block-size: 44px; }
+}

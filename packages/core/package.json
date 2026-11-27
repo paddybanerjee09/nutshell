@@ -8,6 +8,7 @@
     "./frontmatter": "./src/frontmatter.ts",
     "./snapshot": "./src/repo-snapshot.ts",
     "./source-task": "./src/source-task.ts",
+    "./team-note-content": "./src/team-note-content.ts",
     "./vault": "./src/vault.ts"
   },
   "dependencies": {
