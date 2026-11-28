@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: live-pull-request-checks-2026-11-27
-task_state: in_progress
-task_revision: 149
+task_state: pr_open
+task_revision: 150
 repository_id: 1467144605
 branch: feature/live-pull-request-checks
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 29
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/29
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Accept the exact PR comparison in a durable receipt. Share scoped installation r
 
 ## Consequences
 
-Guarded idle revision 148 is confirmed. Verify controlled provider behavior and real local PostgreSQL. Observe the draft PR before binding its identity.
+GitHub confirmed draft PR #29. The lead owns durable check work and the exact-base publication adapter. The delegate owns signed pull request ingress.
 
 ## Affected files
 

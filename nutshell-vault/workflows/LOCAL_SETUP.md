@@ -114,6 +114,8 @@ Inspect `github_push_delivery` for terminal `failed` jobs and their source, and 
 
 Subscribe to `repository` with `push`. GitHub sends installation, repository selection, and app authorization lifecycle deliveries to GitHub Apps automatically. Inspect `github_revocation_delivery` by delivery ID after a negative lifecycle event. If a write fails or times out, redeliver the exact event from GitHub after the database recovers. For changes without removed repository IDs, current GitHub access checks still govern reads and indexing. Re-enabling a disabled association and migrating private workspace data after transfer require a separate verified operation. [GitHub webhook event reference](https://docs.github.com/en/webhooks/webhook-events-and-payloads).
 
+Subscribe to `pull_request` for the worker to publish the **Nutshell validation** Check. Open, reopen, synchronize, or mark ready an open same-repository pull request targeting the canonical default branch. Inspect `github_pull_check_delivery` by delivery ID for its exact comparison, Check identity, result, or retry exhaustion. A later base or head change requires a fresh comparison. GitHub rules independently determine merge requirements and bypass authority. [GitHub pull request events](https://docs.github.com/en/webhooks/webhook-events-and-payloads#pull_request).
+
 ## Consequences
 
 Feature work begins only after real source PR preflight is ready. Optional live product credentials do not block that local product target, and simulated customer-repository events cannot establish real development PR completion.
