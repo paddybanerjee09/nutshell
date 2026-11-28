@@ -10,6 +10,7 @@
     "./fixture-onboarding": "./src/fixture-onboarding.ts",
     "./fixture-sync": "./src/fixture-sync.ts",
     "./github-app": "./src/github-app.ts",
+    "./github-live-checks": "./src/github-live-checks.ts",
     "./github-live-revocation": "./src/github-live-revocation.ts",
     "./github-live-sync": "./src/github-live-sync.ts",
     "./raster": "./src/raster.ts",

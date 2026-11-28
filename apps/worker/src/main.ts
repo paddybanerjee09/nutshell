@@ -1,6 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "@nutshell/server/config";
 import { processNextFixtureDelivery } from "@nutshell/server/fixture-sync";
+import { processNextLivePullCheck } from "@nutshell/server/github-live-checks";
 import { checkLiveSyncDatabase, processNextLivePush } from "@nutshell/server/github-live-sync";
 import { closeRuntime } from "@nutshell/server/runtime";
 import { PgBoss } from "pg-boss";
@@ -74,7 +75,11 @@ export async function runWorker(): Promise<void> {
         if (error) requestShutdown();
       });
     }
-    await pollReceipts(signal, config.mode === "live" ? processNextLivePush : processNextFixtureDelivery);
+    await pollReceipts(signal, config.mode === "live" ? async (signal) => {
+      const indexed = await processNextLivePush(signal);
+      const checked = await processNextLivePullCheck(signal);
+      return indexed || checked;
+    } : processNextFixtureDelivery);
   } finally {
     try {
       try {
