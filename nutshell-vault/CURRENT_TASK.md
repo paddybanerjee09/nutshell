@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: verified-github-connections-2026-11-27
-task_state: in_progress
-task_revision: 123
+task_state: pr_open
+task_revision: 124
 repository_id: 1467144605
 branch: feature/verified-github-connections
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 23
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/23
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Verify the linked GitHub identity, repository and installation using provider re
 
 ## Consequences
 
-Canonical idle revision 122 is confirmed. The runtime delegate owns transactional local association and tests. The lead owns bounded GitHub discovery, the explicit connection surface, controlled HTTP checks, and source workflow.
+GitHub created draft PR #23 from confirmed idle revision 122. Discovery matches the configured App and user before listing eligible private repositories. Verify bounded discovery, transactional association and the live-only connection UI before finishing the source gate.
 
 ## Affected files
 

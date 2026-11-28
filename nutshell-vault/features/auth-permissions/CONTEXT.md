@@ -23,6 +23,8 @@ The configured runtime selects the GitHub Better Auth handler in live mode and e
 
 The browser starts GitHub authorization with a same-origin POST and accepts only the configured GitHub OAuth destination and callback. Unavailable live authorization exposes a generic reconnect state. Local persona controls are rendered only in local-alpha mode.
 
+GitHub repository discovery matches the App's JWT-authenticated identity and uses the linked user's token to list installations and readable private repositories. It bounds pagination and excludes suspended installations and mismatched owners. The install link uses the verified App slug and the fixed GitHub.com destination. [GitHub App installation API](https://docs.github.com/en/rest/apps/installations?apiVersion=2026-03-10) and [installation URL format](https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party).
+
 ## Consequences
 
 Dedicated PostgreSQL tests covered cookie flags, session persistence, cross-repository denial, access revocation, and setup preservation of revoked grants. The live adapter and authorization on later product surfaces are tracked in [the acceptance ledger](../../runs/ACCEPTANCE.md).
