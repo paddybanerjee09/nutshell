@@ -1,16 +1,17 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { loadLocalConfig } from "@nutshell/server/config";
+import { loadConfig } from "@nutshell/server/config";
 import { processNextFixtureDelivery } from "@nutshell/server/fixture-sync";
+import { checkLiveSyncDatabase, processNextLivePush } from "@nutshell/server/github-live-sync";
 import { closeRuntime } from "@nutshell/server/runtime";
 import { PgBoss } from "pg-boss";
 import { workerProbeQueue, type WorkerProbe } from "./probe.ts";
 
-async function pollFixtureReceipts(signal: AbortSignal): Promise<void> {
+async function pollReceipts(signal: AbortSignal, processNext: (signal: AbortSignal) => Promise<boolean>): Promise<void> {
   while (!signal.aborted) {
     try {
-      if (await processNextFixtureDelivery()) continue;
+      if (await processNext(signal)) continue;
     } catch {
-      console.error("Nutshell fixture sync database operation failed.");
+      console.error("Nutshell sync database operation failed.");
     }
     try {
       await delay(1_000, undefined, { signal });
@@ -21,14 +22,14 @@ async function pollFixtureReceipts(signal: AbortSignal): Promise<void> {
 }
 
 export async function runWorker(): Promise<void> {
-  const { databaseUrl } = loadLocalConfig();
-  const boss = new PgBoss({
-    connectionString: databaseUrl,
+  const config = loadConfig();
+  const boss = config.mode === "local-alpha" ? new PgBoss({
+    connectionString: config.databaseUrl,
     application_name: "nutshell-worker",
     connectionTimeoutMillis: 2_000,
     schedule: false,
-  });
-  boss.on("error", () => console.error("Nutshell worker database operation failed."));
+  }) : undefined;
+  boss?.on("error", () => console.error("Nutshell worker database operation failed."));
 
   const shutdown = new AbortController();
   const { signal } = shutdown;
@@ -47,33 +48,37 @@ export async function runWorker(): Promise<void> {
 
   try {
     if (process.send && !process.connected) return;
-    await boss.start({ attempts: 3 });
-    if (signal.aborted) return;
-    await boss.createQueue(workerProbeQueue, {
-      expireInSeconds: 10,
-      retentionSeconds: 120,
-      deleteAfterSeconds: 120,
-      retryLimit: 2,
-      retryDelay: 1,
-      retryBackoff: true,
-      retryDelayMax: 4,
-    });
-    if (signal.aborted) return;
-    await boss.work<WorkerProbe, WorkerProbe | undefined>(
-      workerProbeQueue,
-      { pollingIntervalSeconds: 1 },
-      async ([job]) => job?.data,
-    );
+    if (boss) {
+      await boss.start({ attempts: 3 });
+      if (signal.aborted) return;
+      await boss.createQueue(workerProbeQueue, {
+        expireInSeconds: 10,
+        retentionSeconds: 120,
+        deleteAfterSeconds: 120,
+        retryLimit: 2,
+        retryDelay: 1,
+        retryBackoff: true,
+        retryDelayMax: 4,
+      });
+      if (signal.aborted) return;
+      await boss.work<WorkerProbe, WorkerProbe | undefined>(
+        workerProbeQueue,
+        { pollingIntervalSeconds: 1 },
+        async ([job]) => job?.data,
+      );
+    } else {
+      await checkLiveSyncDatabase();
+    }
     if (!signal.aborted && process.connected) {
       process.send?.({ type: "ready" }, (error) => {
         if (error) requestShutdown();
       });
     }
-    await pollFixtureReceipts(signal);
+    await pollReceipts(signal, config.mode === "live" ? processNextLivePush : processNextFixtureDelivery);
   } finally {
     try {
       try {
-        await boss.stop({ graceful: true, timeout: 5_000 });
+        await boss?.stop({ graceful: true, timeout: 5_000 });
       } finally {
         await closeRuntime();
       }

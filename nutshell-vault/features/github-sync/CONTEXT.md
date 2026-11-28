@@ -31,6 +31,8 @@ The GitHub setup adapter prepares the same managed files, creates a GitHub branc
 
 The live repository overview reads current setup through the linked user's authority. It compares an existing marked PR with the expected file bytes and single-parent commit before reporting it. Creating a proposal requires an explicit same-origin request for the displayed revision. The repository page distinguishes config files observed on GitHub from a published Nutshell index.
 
+In live mode the webhook verifies the GitHub App HMAC over the raw body and accepts only signed default-branch push candidates for the exact local association. The scoped worker confirms the repository identity, owner, current ref, and epoch, projects one immutable tree with the same validators used for fixtures, and commits receipt progress, new semantic records, and the snapshot pointer together. An invalid head preserves the last validated revision. Older jobs and interrupted attempts cannot regress the pointer.
+
 Simulated setup and Markdown proposals use the same changed-path validation with repository-scoped retained events. The simulated merge checks the proposed tree again. Pending setup proposals from the earlier policy can be refreshed on the same proposal after revalidation. Signed default-branch ingestion continues to validate the actual published tree.
 
 ## Consequences
@@ -51,4 +53,5 @@ Controlled transport, repository, and setup tests cover authority separation, im
 - [GitHub App transport](../../../packages/server/src/github-app-transport.ts) and [controlled transport tests](../../../packages/server/src/github-app-transport.test.ts).
 - [GitHub App adapter](../../../packages/server/src/github-app.ts), [repository and Check authority](../../../packages/server/src/github-app-repository.ts), and [GitHub setup proposals](../../../packages/server/src/github-app-setup.ts).
 - [Live setup route](../../../apps/web/src/app/api/repos/%5BrepositoryId%5D/github-setup/route.ts) and [repository setup panel](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/github-setup.tsx).
+- [Live push outbox and index](../../../packages/server/src/github-live-sync.ts), [persistence migration](../../../packages/server/migrations/0011_github_live_index.sql), and [configured worker](../../../apps/worker/src/main.ts).
 - [Trusted change validator](../../../packages/core/src/repository-change-validation.ts), [GitHub Check orchestration](../../../packages/server/src/github-app-validation.ts), and [simulated proposal validation](../../../packages/server/src/fixture-change-validation.ts).

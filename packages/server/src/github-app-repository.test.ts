@@ -110,6 +110,29 @@ function gitResponses(request: RequestRecord, tree: readonly object[], blobs = n
 const ownCheck = { id: 79, name: githubValidationCheckName, head_sha: revision, app: { id: appId }, status: "completed", conclusion: "success" };
 
 describe("GitHub App repository access", () => {
+  it("resolves a canonical installation repository from stable IDs with scoped metadata only", async () => {
+    const installedScope = { repositoryId, installationId, ownerId: identity.ownerId, repositoryNodeId: identity.nodeId };
+    const { repo, requests } = fakeGitHub(({ url, permissions, method }) => {
+      expect(url.pathname).toBe(`/repositories/${repositoryId}`);
+      expect(method).toBe("GET");
+      expect(permissions).toEqual({ metadata: "read" });
+      return Response.json(metadata);
+    });
+    await expect(repo.verifyInstalledRepository(installedScope)).resolves.toEqual(identity);
+    await expect(repo.verifyInstalledRepository({ ...installedScope, ownerId: account.id + 1 })).resolves.toBeNull();
+    await expect(repo.verifyInstalledRepository({ ...installedScope, repositoryNodeId: "R_unrelated" })).resolves.toBeNull();
+    expect(requests.every(({ authorization }) => authorization !== `Bearer ${userToken}`)).toBe(true);
+  });
+
+  it("excludes inaccessible, archived, and public installed repositories without masking provider outages", async () => {
+    const installedScope = { repositoryId, installationId, ownerId: identity.ownerId, repositoryNodeId: identity.nodeId };
+    const responders = [Response.json({ ...metadata, archived: true }), Response.json({ ...metadata, private: false }),
+      Response.json({}, { status: 404 }), Response.json({}, { status: 503 })];
+    const { repo } = fakeGitHub(() => responders.shift()!);
+    for (let response = 0; response < 3; response++) await expect(repo.verifyInstalledRepository(installedScope)).resolves.toBeNull();
+    await expect(repo.verifyInstalledRepository(installedScope)).rejects.toMatchObject({ code: "provider_unavailable" });
+  });
+
   it("discovers only private readable repositories of the signed-in actor and configured App", async () => {
     const fixture = fakeGitHub((request) => {
       const path = request.url.pathname;
