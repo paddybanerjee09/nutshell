@@ -1,0 +1,90 @@
+"use client";
+
+import type { GitHubSetupReadResult } from "@nutshell/server/github-app";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+
+const unavailable = { status: "unavailable" } as const;
+
+export function GitHubSetup({ repositoryId }: { repositoryId: string }) {
+  const heading = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const focusResult = useRef(false);
+  const endpoint = "/api/repos/" + encodeURIComponent(repositoryId) + "/github-setup";
+  const [result, setResult] = useState<GitHubSetupReadResult | null>(null);
+  const [opening, setOpening] = useState(false);
+
+  const observe = useCallback(async (callerSignal?: AbortSignal) => {
+    const timeout = AbortSignal.timeout(90_000);
+    const signal = callerSignal ? AbortSignal.any([callerSignal, timeout]) : timeout;
+    try {
+      const response = await fetch(endpoint, { cache: "no-store", signal });
+      const observed = await response.json() as GitHubSetupReadResult;
+      if (!callerSignal?.aborted) setResult(observed);
+    } catch {
+      if (!callerSignal?.aborted) setResult(unavailable);
+    }
+  }, [endpoint]);
+
+  useEffect(() => {
+    const request = new AbortController();
+    void observe(request.signal);
+    return () => request.abort();
+  }, [observe]);
+
+  useEffect(() => {
+    if (!focusResult.current || opening || !result) return;
+    focusResult.current = false;
+    headingRef.current?.focus({ preventScroll: true });
+  }, [opening, result]);
+
+  async function open() {
+    if (opening || result?.status !== "ready" || !result.canConfigure) return;
+    focusResult.current = true;
+    setOpening(true);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(90_000),
+        body: JSON.stringify({ sourceRevision: result.sourceRevision }),
+      });
+      setResult(await response.json() as GitHubSetupReadResult);
+    } catch {
+      setResult(unavailable);
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  function refresh() {
+    focusResult.current = true;
+    setResult(null);
+    void observe();
+  }
+
+  return <section className="repository-setup" aria-labelledby={heading} aria-busy={!result || opening}>
+    <h2 id={heading} ref={headingRef} tabIndex={-1}>Repository setup</h2>
+    {!result && <p role="status">Checking GitHub setup…</p>}
+    {result?.status === "ready" && <>
+      <dl className="setup-revision"><dt>Setup source revision</dt><dd><code>{result.sourceRevision}</code></dd></dl>
+      {result.canConfigure ? <button type="button" className="setup-button" onClick={() => void open()} aria-disabled={opening}>
+        {opening ? "Opening GitHub pull request…" : "Create setup pull request"}
+      </button> : <p>A current repository administrator can create the setup pull request.</p>}
+    </>}
+    {result?.status === "awaiting_merge" && <>
+      <p role="status">Setup pull request awaiting merge.</p>
+      <p><a className="back-link" href={result.url}>Open GitHub pull request #{result.number}</a></p>
+      <dl className="setup-revision"><dt>Proposed revision</dt><dd><code>{result.head}</code></dd></dl>
+    </>}
+    {result?.status === "configured" && <>
+      <p role="status">Nutshell files found on GitHub.</p>
+      <dl className="setup-revision"><dt>Observed revision</dt><dd><code>{result.sourceRevision}</code></dd></dl>
+    </>}
+    {result?.status === "stale" && <>
+      <p role="alert">GitHub moved to a new revision. Refresh before creating the proposal.</p>
+      <dl className="setup-revision"><dt>Current GitHub revision</dt><dd><code>{result.sourceRevision}</code></dd></dl>
+    </>}
+    {result?.status === "conflict" && <p role="alert">Existing setup files or the proposal changed. Review the repository and refresh setup.</p>}
+    {result?.status === "forbidden" && <p role="alert">Creating setup requires current repository administration access.</p>}
+    {result?.status === "unavailable" && <p role="alert">GitHub setup is unavailable. Check your access and refresh setup.</p>}
+    {result && result.status !== "ready" && !opening && <button type="button" className="quiet-button" onClick={refresh}>Refresh setup</button>}
+  </section>;
+}

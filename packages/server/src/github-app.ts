@@ -6,6 +6,7 @@ import { createGitHubAppValidation } from "./github-app-validation.ts";
 
 export { createGitHubAppAuthOptions, readGitHubAppSettings, type GitHubAppSettings } from "./github-app-auth.ts";
 export { createGitHubAppDrizzleTokenStore, createGitHubAppUserTokens } from "./github-app-auth-tokens.ts";
+export type { GitHubSetupReadResult, GitHubSetupResult } from "./github-app-setup.ts";
 
 export function createGitHubAppAdapter(app: GitHubAppSettings, options: { fetch?: typeof fetch; now?: () => number } = {}) {
   const transport = createGitHubAppTransport({

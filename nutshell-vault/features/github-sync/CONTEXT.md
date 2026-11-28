@@ -29,13 +29,15 @@ The setup tree builder reads the immutable base, preserves tracked owner content
 
 The GitHub setup adapter prepares the same managed files, creates a GitHub branch with the user's grant, and commits with the expected branch head. It targets the verified default branch from a separate setup PR and reuses observed matching proposals after a retry.
 
+The live repository overview reads current setup through the linked user's authority. It compares an existing marked PR with the expected file bytes and single-parent commit before reporting it. Creating a proposal requires an explicit same-origin request for the displayed revision. The repository page distinguishes config files observed on GitHub from a published Nutshell index.
+
 Simulated setup and Markdown proposals use the same changed-path validation with repository-scoped retained events. The simulated merge checks the proposed tree again. Pending setup proposals from the earlier policy can be refreshed on the same proposal after revalidation. Signed default-branch ingestion continues to validate the actual published tree.
 
 ## Consequences
 
 The local repository page shows awaiting merge, indexing, or confirmation of the exact indexed revision. Reader sessions can view the setup state. Source-development PRs, revision-linked history, and live GitHub App behavior have separate evidence.
 
-Controlled transport, repository, and setup tests covered authority separation, immutable managed files, permission denial, archived access, exact-head Checks, branch rules, and idempotent proposal recovery. Live application routing, OAuth consent, and disposable-repository operations remain separate gates.
+Controlled transport, repository, and setup tests cover authority separation, immutable managed files, permission denial, archived access, exact-head Checks, branch rules, and idempotent proposal recovery. Real OAuth consent and disposable-repository operations remain separate gates.
 
 ## Affected files
 
@@ -48,4 +50,5 @@ Controlled transport, repository, and setup tests covered authority separation, 
 - [Worker-offline fixture](../../../scripts/fixture-worker-offline.ts) and [local verification supervisor](../../../scripts/alpha.ts).
 - [GitHub App transport](../../../packages/server/src/github-app-transport.ts) and [controlled transport tests](../../../packages/server/src/github-app-transport.test.ts).
 - [GitHub App adapter](../../../packages/server/src/github-app.ts), [repository and Check authority](../../../packages/server/src/github-app-repository.ts), and [GitHub setup proposals](../../../packages/server/src/github-app-setup.ts).
+- [Live setup route](../../../apps/web/src/app/api/repos/%5BrepositoryId%5D/github-setup/route.ts) and [repository setup panel](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/github-setup.tsx).
 - [Trusted change validator](../../../packages/core/src/repository-change-validation.ts), [GitHub Check orchestration](../../../packages/server/src/github-app-validation.ts), and [simulated proposal validation](../../../packages/server/src/fixture-change-validation.ts).

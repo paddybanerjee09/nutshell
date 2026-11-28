@@ -8,6 +8,7 @@ import { readRepository } from "@nutshell/server/runtime";
 import { SiteHeader } from "../../../brand";
 import { entryMode } from "../../../entry-mode";
 import { SignOut } from "../../sign-out";
+import { GitHubSetup } from "./github-setup";
 
 export const metadata: Metadata = { title: "Repository" };
 export const dynamic = "force-dynamic";
@@ -22,11 +23,14 @@ export default async function RepositoryPage({ params }: { params: Promise<{ rep
 
   let panel: ReactNode;
   if (mode === "live") {
-    panel = <section aria-labelledby="github-access">
-      <h2 id="github-access">GitHub access</h2>
-      {"role" in repository && typeof repository.role === "string" && <p>GitHub role · {repository.role}</p>}
-      <p className="lede" role="status">Workspace indexing is unavailable for this GitHub repository.</p>
-    </section>;
+    panel = <>
+      <section aria-labelledby="github-access">
+        <h2 id="github-access">GitHub access</h2>
+        {"role" in repository && typeof repository.role === "string" && <p>GitHub role · {repository.role}</p>}
+        <p className="lede" role="status">Workspace indexing is unavailable for this GitHub repository.</p>
+      </section>
+      <GitHubSetup repositoryId={repository.id} />
+    </>;
   } else {
     const { RepositorySetup } = await import("./setup-panel");
     const setup = await readFixtureOnboarding(requestHeaders, repositoryId).catch(() => null);

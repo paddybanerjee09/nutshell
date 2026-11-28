@@ -3,34 +3,35 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: null
-task_state: idle
-task_revision: 128
-repository_id: null
-branch: null
-base_branch: null
-pr_number: null
-pr_url: null
-last_verified_head: null
-lead_agent: null
-integration_checkout: null
+task_id: live-setup-proposals-2026-11-27
+task_state: ready_for_review
+task_revision: 131
+repository_id: 1467144605
+branch: feature/live-setup-proposals
+base_branch: main
+pr_number: 24
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/24
+last_verified_head: 0680d1957b7eca581517aef6f3563b4e6a6322ed
+lead_agent: root
+integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
 ---
-# Current task
+# Live setup proposals
 
 ## Context
 
-No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
+Allow a currently verified repository administrator to open the setup pull request and show its provider-observed status after reload.
 
 ## Decision
 
-The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
+Reuse the checked user-token setup adapter and active local association. Recheck exact user, installation, owner and repository identity before setup. Display the provider's open PR separately from indexed source.
 
 ## Consequences
 
-See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
+The 46 scoped tests and full Windows verifier passed. The full run exercised 299 tests, the optimized web app, PostgreSQL worker recovery, signed fixture deliveries, Firefox, and shutdown. Product GitHub requests used controlled contract tests. Confirm the exact trusted source check, merge PR #24, and run canonical guarded cleanup.
 
 ## Affected files
 
-- [Task template](templates/TASK.md)
-- [Vault index](_INDEX.md)
+- [GitHub synchronization](features/github-sync/CONTEXT.md).
+- [GitHub contract](architecture/GITHUB_CONTRACT.md).
+- [Authorization context](features/auth-permissions/CONTEXT.md).

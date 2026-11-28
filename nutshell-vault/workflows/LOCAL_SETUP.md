@@ -98,7 +98,7 @@ Configured GitHub sign-in requires `NUTSHELL_MODE=live`, explicit `NUTSHELL_DEPL
 
 With the live environment loaded, run `node scripts/live-migrate.ts` to migrate the separately provisioned database without seeding local identities. Build with `pnpm --filter @nutshell/web build`. For a loopback origin behind configured HTTPS termination, run `pnpm --filter @nutshell/web exec next start --hostname 127.0.0.1 --port 3000` and forward the configured Host. `alpha:setup`, `alpha:dev`, and the fixture worker require local-alpha mode.
 
-After GitHub sign-in, choose **Find GitHub repositories**. The **Install Nutshell on GitHub** action opens the verified App's installation page. The App's optional setup URL can return to the configured origin plus `/app`. Refresh discovery after installation, select the private repository, and choose **Connect repository**. A current repository administrator can establish the association. Setup proposals and live indexing have separate integration work.
+After GitHub sign-in, choose **Find GitHub repositories**. The **Install Nutshell on GitHub** action opens the verified App's installation page. The App's optional setup URL can return to the configured origin plus `/app`. Refresh discovery after installation, select the private repository, and choose **Connect repository**. A current repository administrator can establish the association. On the repository overview, **Create setup pull request** opens a proposal against the displayed source revision. Review and merge it in GitHub under the repository's rules. The overview shows the checked proposal or the source revision containing Nutshell files. Live workspace indexing is tracked separately.
 
 ## Consequences
 
