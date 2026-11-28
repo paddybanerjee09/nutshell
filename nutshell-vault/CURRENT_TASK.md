@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: source-check-lifecycle-2026-11-27
-task_state: pr_open
-task_revision: 159
+task_state: ready_for_review
+task_revision: 160
 repository_id: 1467144605
 branch: codex/source-check-lifecycle
 base_branch: main
 pr_number: 31
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/31
-last_verified_head: null
+last_verified_head: 3dfbdb8fb19f2252317aedf33b219a1d30eb070e
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ Skip the initial draft opening. Revalidate current GitHub identity before publis
 
 ## Consequences
 
-GitHub confirmed draft PR #31. The lead owns the workflow, validator, and integration. The delegate owns the source-check regression tests.
+Fifty focused tests, strict TypeScript, lint, vault validation, and workflow syntax passed. Confirm the source check on the exact final head, then merge and clear the task through the guarded workflow.
 
 ## Affected files
 
