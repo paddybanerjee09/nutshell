@@ -11,12 +11,16 @@ import {
 const verificationDatabase = "nutshell_alpha_test";
 const verificationLock = 1_746_207_812;
 
-export async function withVerificationLock<T>(databaseUrl: string, operation: (client: pg.Client) => Promise<T>): Promise<T> {
+export async function withVerificationLock<T>(databaseUrl: string, operation: (client: pg.Client, signal: AbortSignal) => Promise<T>): Promise<T> {
   const connectionString = requireLocalDatabaseUrl(databaseUrl, "Verification target", verificationDatabase);
   const client = new pg.Client({
     connectionString, connectionTimeoutMillis: localSetupConnectionTimeout,
     statement_timeout: 30_000, query_timeout: 35_000, options: "-c search_path=pg_catalog,public -c idle_session_timeout=0",
   });
+  const lost = new AbortController();
+  const disconnected = () => lost.abort(new Error("The dedicated PostgreSQL verification connection was lost."));
+  client.on("error", disconnected);
+  client.on("end", disconnected);
   try {
     await client.connect();
     const { rows: [target] } = await client.query<{ database: string; loopback: boolean | null }>(`
@@ -30,10 +34,21 @@ export async function withVerificationLock<T>(databaseUrl: string, operation: (c
       "SELECT pg_catalog.pg_try_advisory_lock($1::bigint) AS locked", [verificationLock],
     );
     if (lease?.locked !== true) throw new Error("Another Nutshell verification operation is using the test database.");
-    return await operation(client);
+    lost.signal.throwIfAborted();
+    const result = await operation(client, lost.signal);
+    lost.signal.throwIfAborted();
+    return result;
+  } catch (error) {
+    lost.signal.throwIfAborted();
+    throw error;
   } finally {
     // Ending this connection releases its advisory lock even when an operation fails.
-    await client.end();
+    client.removeListener("end", disconnected);
+    try {
+      await client.end();
+    } finally {
+      client.removeListener("error", disconnected);
+    }
   }
 }
 

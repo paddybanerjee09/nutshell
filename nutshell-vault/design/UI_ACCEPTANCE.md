@@ -82,6 +82,10 @@ Record pass/fail and concrete evidence after implementation. These are future ch
 
 Keep screenshots and implementation evidence in the destination prescribed by `SPEC.md`. Do not fabricate screenshots or mark behavior complete before the running application demonstrates it.
 
+### Observed Windows browser evidence
+
+Firefox checked the running app at six viewport sizes and checked a 720×450 reflow viewport. Chrome's native 200% control halved the CSS viewport from 1422 to 711 pixels and doubled device pixel ratio on an isolated test document. A DevTools composition probe preserved Japanese characters, a combining mark, and emoji. Windows paging exhaustion stopped the concurrent browser and app journey before it could confirm native zoom or CodeMirror composition in Nutshell. A follow-up with only the optimized web process reached the real landing page at a 711px CSS viewport with native 200% zoom, a device pixel ratio of 2, and CSS zoom and pinch scale of 1. The auxiliary width assertion compared scrollbar-inclusive and content widths and ended the probe before the workspace. Native workspace reflow and keyboard IME remain open. [Acceptance ledger](../runs/ACCEPTANCE.md) and [DevTools input protocol](https://chromedevtools.github.io/devtools-protocol/tot/Input/).
+
 ## Consequences
 
 The default palette remains exactly as requested; documented contrast tensions are not silently “fixed” by a redesign and are not a new approval gate. Report failed, blocked, and unrun checks honestly. A screenshot baseline or an automated score alone does not prove visual fidelity, correct editing behavior, or accessibility.
