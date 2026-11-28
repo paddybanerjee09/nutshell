@@ -145,6 +145,8 @@ export function getFixtureDatabase() {
 export type RepositoryTransaction = Parameters<Parameters<RuntimeDatabase["transaction"]>[0]>[0];
 export type FixtureTransaction = RepositoryTransaction;
 
+export type GitHubIndexScope = GitHubLiveAssociation & { tx: RepositoryTransaction; ref: string; revision: string };
+
 export function getLiveSyncRuntime() {
   const { db, github } = getRuntime();
   if (!github) throw new Error("GitHub synchronization requires live configuration.");
@@ -275,6 +277,15 @@ function currentGitHubRepository(
       notExists(db.select({ id: account.id }).from(account).where(and(link, ne(account.id, linked.id))))));
 }
 
+async function lockCurrentGitHubRepository(tx: RepositoryTransaction, actor: RepositoryActor, association: GitHubLiveAssociation, linked: LinkedGitHubAccount) {
+  // Pin linked-account uniqueness and the active scope until the authorized action finishes.
+  await tx.select({ id: user.id }).from(user).where(eq(user.id, actor.userId)).for("update");
+  const [current] = await currentGitHubRepository(tx, actor, association, linked).for("share", {
+    of: [repository, githubRepositoryAssociation, installation, membership, session, account],
+  });
+  return current;
+}
+
 async function authorizeGitHubRepository(headers: Headers, repositoryId: string) {
   const { db, github } = getRuntime();
   if (!github || !/^[1-9]\d{0,15}$/u.test(repositoryId) || !Number.isSafeInteger(Number(repositoryId))) return null;
@@ -295,6 +306,34 @@ async function authorizeGitHubRepository(headers: Headers, repositoryId: string)
   const { role, canConfigure, canWrite, userId, identity } = verified.access;
   return { db, github, actor, linked, association, token: token.accessToken, role, identity, canConfigure: role === "admin" && canConfigure && canWrite,
     expectation: { userId, ownerId: association.ownerId, nodeId: association.repositoryNodeId } };
+}
+
+async function observeGitHubDefaultRevision({ github, identity }: NonNullable<Awaited<ReturnType<typeof authorizeGitHubRepository>>>) {
+  const revision = await github.repository.readDefaultRevision(identity, AbortSignal.timeout(20_000));
+  return /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(revision) && !/^0+$/u.test(revision) ? revision : null;
+}
+
+export async function withGitHubIndexAdmin<Result>(
+  headers: Headers, repositoryId: string, enqueue: (scope: GitHubIndexScope) => Promise<Result>,
+): Promise<Result | { status: "forbidden" | "unavailable" }> {
+  try {
+    const access = await authorizeGitHubRepository(headers, repositoryId);
+    if (!access) return { status: "unavailable" };
+    const { db, actor, linked, association, identity } = access;
+    const [before] = await currentGitHubRepository(db, actor, association, linked);
+    if (!before) return { status: "unavailable" };
+    if (!access.canConfigure) return { status: "forbidden" };
+    const revision = await observeGitHubDefaultRevision(access);
+    if (!revision) return { status: "unavailable" };
+
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('lock_timeout', '5s', true), set_config('statement_timeout', '5s', true)`);
+      if (!await lockCurrentGitHubRepository(tx, actor, association, linked)) return { status: "unavailable" };
+      return enqueue({ ...association, tx, ref: `refs/heads/${identity.defaultBranch}`, revision });
+    });
+  } catch {
+    return { status: "unavailable" };
+  }
 }
 
 export async function readGitHubSetup(headers: Headers, repositoryId: string): Promise<GitHubSetupReadResult> {
@@ -321,11 +360,7 @@ export async function openGitHubSetup(headers: Headers, repositoryId: string, ex
     const { db, github, actor, linked, association, token, expectation, canConfigure } = access;
     return await db.transaction(async (tx) => {
       await tx.execute(sql`select set_config('lock_timeout', '5s', true), set_config('idle_in_transaction_session_timeout', '60s', true)`);
-      // Pin linked-account uniqueness and the active user/association throughout the bounded provider mutation.
-      await tx.select({ id: user.id }).from(user).where(eq(user.id, actor.userId)).for("update");
-      const [current] = await currentGitHubRepository(tx, actor, association, linked).for("share", {
-        of: [repository, githubRepositoryAssociation, installation, membership, session, account],
-      });
+      const current = await lockCurrentGitHubRepository(tx, actor, association, linked);
       if (!current) return { status: "unavailable" };
       if (!canConfigure) return { status: "forbidden" };
       return github.setup.openSetup(token, association.installationId, association.repositoryId,
@@ -340,11 +375,11 @@ export async function readGitHubWorkspace(headers: Headers, repositoryId: string
   try {
     const scope = await authorizeGitHubRepository(headers, repositoryId);
     if (!scope) return null;
-    const { db, github, actor, linked, association, role, identity } = scope;
+    const { db, actor, linked, association, role } = scope;
     const [before] = await currentGitHubRepository(db, actor, association, linked);
     if (!before) return null;
-    const headRevision = await github.repository.readDefaultRevision(identity, AbortSignal.timeout(20_000));
-    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(headRevision) || /^0+$/u.test(headRevision)) return null;
+    const headRevision = await observeGitHubDefaultRevision(scope);
+    if (!headRevision) return null;
 
     // Fetch content in the same statement that rechecks authorization and the exact association after the provider read.
     const authorized = currentGitHubRepository(db, actor, association, linked).as("authorized_github_repository");
