@@ -73,6 +73,7 @@ export const marketingPreviewData: WorkspaceData = {
   repositoryId: demoRevision,
   repositoryName: "Orbit Garden",
   repositoryHref: "#product",
+  provider: "demo",
   canEdit: false,
   layoutKey: "nutshell.preview.orbit-garden",
   revision: demoRevision,

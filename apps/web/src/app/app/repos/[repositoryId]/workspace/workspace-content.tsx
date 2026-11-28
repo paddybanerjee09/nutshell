@@ -209,6 +209,7 @@ export function WorkspaceDetails({ item, items, data, onOpen }: Selection & { da
     <dl>
       <dt>Status</dt><dd>{syncLabel[data.status]}</dd>
       <dt>Indexed revision</dt><dd><code>{data.revision}</code></dd>
+      {data.indexedAt && <><dt>Indexed at</dt><dd><time dateTime={data.indexedAt}>{data.indexedAt.slice(0, 19).replace("T", " ")} UTC</time></dd></>}
       {data.headRevision && data.headRevision !== data.revision && <>
         <dt>Current head</dt><dd><code>{data.headRevision}</code></dd>
       </>}
@@ -222,7 +223,8 @@ export function WorkspaceDetails({ item, items, data, onOpen }: Selection & { da
     </>}
     {changes.length > 0 && <><h2>Declared changes</h2><ul>{changes.map((change) => <li key={change.id}>
       {change.summary}
-      <WorkspaceDeclaredScreenshots key={data.revision} repositoryId={data.repositoryId} change={change} />
+      {data.provider === "fixture" ? <WorkspaceDeclaredScreenshots key={data.revision} repositoryId={data.repositoryId} change={change} />
+        : change.evidence.length > 0 && <p>Screenshot evidence is unavailable in this workspace.</p>}
     </li>)}</ul></>}
     {data.canEdit && <WorkspaceScreenshotUpload repositoryId={data.repositoryId} />}
   </div>;

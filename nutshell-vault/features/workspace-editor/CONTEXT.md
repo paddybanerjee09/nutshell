@@ -7,7 +7,7 @@ tags: [feature, ui, editor, codemirror, graph]
 
 ## Context
 
-The authorized workspace opens the latest available validated fixture snapshot. Its explorer lists actual nested vault paths and product entities. Read views show Markdown properties, links, backlinks, revision status, and declared changes from that snapshot.
+The authorized workspace opens the latest available validated snapshot from its configured provider. Its explorer lists actual nested vault paths and product entities. Read views show Markdown properties, links, backlinks, revision status, and declared changes from that snapshot.
 
 ## Decision
 
@@ -34,6 +34,8 @@ The workspace shows saved draft, simulated proposal, and indexed revision separa
 The Memory Graph projects the same resolved links used by the note view and backlinks. The Product Map projects directed, typed relationships exactly as recorded by validated entities. Search and focus select a bounded visible graph from the indexed repository. Vault archive paths remain excluded from the default graph.
 
 Both graph views open as ordinary workspace tabs and share a React Flow canvas. A bounded d3-force simulation arranges display positions. Pan, zoom, drag, and centering stay in the view. Search, filters, and a keyboard list provide the same node details. Reduced motion settles the graph without animated travel. The active canvas refits from its measured dimensions on geometry changes while retaining dragged node positions.
+
+Live GitHub browsing uses the same reading pane, explorer, graphs, and layouts. The repository overview links to an authorized indexed revision, including the retained snapshot when the current head fails. Workspace details show its indexed time and current provider head. Fixture tabs, collaboration requests, draft operations, and private screenshot routes stay scoped to local alpha.
 
 ## Consequences
 

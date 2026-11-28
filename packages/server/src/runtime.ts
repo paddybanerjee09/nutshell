@@ -1,4 +1,5 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import type { RepositoryProjection } from "@nutshell/core/snapshot";
 import { betterAuth } from "better-auth";
 import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
@@ -18,7 +19,8 @@ import {
 } from "./github-live-onboarding.ts";
 import { personas } from "./local-fixtures.ts";
 import {
-  account, githubRepositoryAssociation, installation, membership, providerGrant, repository, session, user, verification,
+  account, githubIndexState, githubRepositoryAssociation, githubSnapshot, installation, membership, providerGrant, repository, session, user,
+  verification,
 } from "./schema.ts";
 
 function localPersonaPlugin(origin: string) {
@@ -121,6 +123,18 @@ export async function closeRuntime(): Promise<void> {
 }
 
 export type Repository = { id: string; name: string; description: string; role?: string };
+
+export type GitHubWorkspaceRead = {
+  repository: Repository;
+  userId: string;
+  snapshot: {
+    status: "pending" | "current" | "stale" | "invalid";
+    headRevision: string;
+    revision: string | null;
+    snapshot: RepositoryProjection | null;
+    indexedAt: string | null;
+  };
+};
 
 export function getFixtureDatabase() {
   const { config, db } = getRuntime();
@@ -261,7 +275,7 @@ function currentGitHubRepository(
       notExists(db.select({ id: account.id }).from(account).where(and(link, ne(account.id, linked.id))))));
 }
 
-async function authorizeGitHubSetup(headers: Headers, repositoryId: string) {
+async function authorizeGitHubRepository(headers: Headers, repositoryId: string) {
   const { db, github } = getRuntime();
   if (!github || !/^[1-9]\d{0,15}$/u.test(repositoryId) || !Number.isSafeInteger(Number(repositoryId))) return null;
   const actor = await resolveRepositoryActor(headers);
@@ -278,14 +292,14 @@ async function authorizeGitHubSetup(headers: Headers, repositoryId: string) {
   });
   const verified = await resolver.resolve({ userId: actor.userId, accountId: linked.accountId, association });
   if (verified.status !== "ready") return null;
-  const { role, canConfigure, canWrite, userId } = verified.access;
-  return { db, github, actor, linked, association, token: token.accessToken, canConfigure: role === "admin" && canConfigure && canWrite,
+  const { role, canConfigure, canWrite, userId, identity } = verified.access;
+  return { db, github, actor, linked, association, token: token.accessToken, role, identity, canConfigure: role === "admin" && canConfigure && canWrite,
     expectation: { userId, ownerId: association.ownerId, nodeId: association.repositoryNodeId } };
 }
 
 export async function readGitHubSetup(headers: Headers, repositoryId: string): Promise<GitHubSetupReadResult> {
   try {
-    const access = await authorizeGitHubSetup(headers, repositoryId);
+    const access = await authorizeGitHubRepository(headers, repositoryId);
     if (!access) return { status: "unavailable" };
     const { db, github, actor, linked, association, token, expectation } = access;
     const [before] = await currentGitHubRepository(db, actor, association, linked);
@@ -302,7 +316,7 @@ export async function readGitHubSetup(headers: Headers, repositoryId: string): P
 export async function openGitHubSetup(headers: Headers, repositoryId: string, expectedSourceRevision: string): Promise<GitHubSetupResult> {
   if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(expectedSourceRevision)) return { status: "unavailable" };
   try {
-    const access = await authorizeGitHubSetup(headers, repositoryId);
+    const access = await authorizeGitHubRepository(headers, repositoryId);
     if (!access) return { status: "unavailable" };
     const { db, github, actor, linked, association, token, expectation, canConfigure } = access;
     return await db.transaction(async (tx) => {
@@ -319,6 +333,41 @@ export async function openGitHubSetup(headers: Headers, repositoryId: string, ex
     });
   } catch {
     return { status: "unavailable" };
+  }
+}
+
+export async function readGitHubWorkspace(headers: Headers, repositoryId: string): Promise<GitHubWorkspaceRead | null> {
+  try {
+    const scope = await authorizeGitHubRepository(headers, repositoryId);
+    if (!scope) return null;
+    const { db, github, actor, linked, association, role, identity } = scope;
+    const [before] = await currentGitHubRepository(db, actor, association, linked);
+    if (!before) return null;
+    const headRevision = await github.repository.readDefaultRevision(identity, AbortSignal.timeout(20_000));
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(headRevision) || /^0+$/u.test(headRevision)) return null;
+
+    // Fetch content in the same statement that rechecks authorization and the exact association after the provider read.
+    const authorized = currentGitHubRepository(db, actor, association, linked).as("authorized_github_repository");
+    const [current] = await db.select({
+      name: authorized.name, description: authorized.description, head: githubIndexState.headRevision, indexStatus: githubIndexState.status,
+      revision: githubSnapshot.revision, snapshot: githubSnapshot.projection, indexedAt: githubSnapshot.indexedAt,
+    }).from(authorized).leftJoin(githubIndexState, and(eq(githubIndexState.repositoryId, association.repositoryId),
+      eq(githubIndexState.connectionEpoch, association.connectionEpoch)))
+      .leftJoin(githubSnapshot, and(eq(githubSnapshot.repositoryId, githubIndexState.repositoryId),
+        eq(githubSnapshot.connectionEpoch, githubIndexState.connectionEpoch), eq(githubSnapshot.revision, githubIndexState.indexedRevision),
+        eq(githubSnapshot.schemaVersion, githubIndexState.indexedSchemaVersion), eq(githubSnapshot.policyVersion, githubIndexState.indexedPolicyVersion)));
+    if (!current) return null;
+
+    const { name, description, head, indexStatus, revision, snapshot, indexedAt } = current;
+    let status: GitHubWorkspaceRead["snapshot"]["status"] = revision === null ? "pending" : "stale";
+    if (indexStatus === "invalid" && head === headRevision) status = "invalid";
+    else if (revision === headRevision) status = "current";
+    return {
+      repository: { id: repositoryId, name, description, role }, userId: actor.userId,
+      snapshot: { status, headRevision, revision, snapshot, indexedAt: indexedAt?.toISOString() ?? null },
+    };
+  } catch {
+    return null;
   }
 }
 

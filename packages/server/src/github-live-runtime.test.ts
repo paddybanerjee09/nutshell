@@ -10,7 +10,10 @@ import type { GitHubRepositoryAccess } from "./github-app-repository.ts";
 import { GitHubTransportError } from "./github-app-transport.ts";
 import { createGitHubLiveOnboarding } from "./github-live-onboarding.ts";
 import { acceptLivePush, checkLiveSyncDatabase, processNextLivePush } from "./github-live-sync.ts";
-import { closeRuntime, connectGitHubRepository, getAuth, getSession, listGitHubConnections, listRepositories, openGitHubSetup, readGitHubSetup } from "./runtime.ts";
+import {
+  closeRuntime, connectGitHubRepository, getAuth, getSession, listGitHubConnections, listRepositories, openGitHubSetup, readGitHubSetup,
+  readGitHubWorkspace,
+} from "./runtime.ts";
 import { account, session, user } from "./schema.ts";
 import { migrateLiveDatabase } from "./setup.ts";
 
@@ -144,12 +147,16 @@ async function proveControlledAssociation(connectionString: string, databaseName
       return proposal;
     });
     expect(await readGitHubSetup(readerHeaders, repositoryId)).toEqual({ status: "unavailable" });
+    return { readerHeaders, readerUserId: reader.userId };
   } finally {
     await client.end();
   }
 }
 
-async function proveControlledIndexing(connectionString: string, adapter: ReturnType<typeof controlledRuntimeAdapter>) {
+async function proveControlledIndexing(
+  connectionString: string, adapter: ReturnType<typeof controlledRuntimeAdapter>,
+  { readerHeaders, readerUserId }: Awaited<ReturnType<typeof proveControlledAssociation>>,
+) {
   const client = new pg.Client({ connectionString, connectionTimeoutMillis: 10_000 });
   try {
     await client.connect();
@@ -174,14 +181,49 @@ async function proveControlledIndexing(connectionString: string, adapter: Return
     adapter.verifyInstalledRepository.mockResolvedValue(identity);
     adapter.readDefaultRevision.mockImplementation(async () => head);
     adapter.readImmutableTree.mockResolvedValue(tree);
+
+    // The prior revoked read was tested separately. Reactivate the isolated test membership for workspace verification.
+    const activateReader = (active: boolean) => client.query("UPDATE repository_membership SET active = $1 WHERE repository_id = $2 AND user_id = $3",
+      [active, connection.repositoryId, readerUserId]);
+    await activateReader(true);
+    const readWorkspace = () => readGitHubWorkspace(readerHeaders, String(connection.repositoryId));
+    expect(await readGitHubWorkspace(readerHeaders, String(connection.repositoryId + 1))).toBeNull();
+    const invalidCookie = new Headers({ cookie: readerHeaders.get("cookie") + "broken" });
+    expect(await readGitHubWorkspace(invalidCookie, String(connection.repositoryId))).toBeNull();
+    adapter.verifyCurrentUserAccess.mockResolvedValueOnce(null);
+    expect(await readWorkspace()).toBeNull();
+    expect(adapter.readDefaultRevision).not.toHaveBeenCalled();
+    expect(await readWorkspace()).toEqual({
+      repository: { id: String(connection.repositoryId), name: `${identity.owner}/${identity.name}`, description: "", role: "read" },
+      userId: readerUserId,
+      snapshot: { status: "pending", headRevision: original.revision, revision: null, snapshot: null, indexedAt: null },
+    });
+    expect(adapter.readDefaultRevision).toHaveBeenCalledExactlyOnceWith(identity, expect.any(AbortSignal));
+
     await closeRuntime();
     expect(await processNextLivePush()).toBe(true);
     expect(await processNextLivePush()).toBe(false);
     expect(await receipt(original.deliveryId)).toEqual({ status: "published", attempts: 1, failure_code: null });
     expect(await index()).toEqual([{ connection_epoch: 1, head_revision: original.revision, indexed_revision: original.revision, status: "current" }]);
+    const published = await readWorkspace();
+    expect(published?.snapshot).toMatchObject({
+      status: "current", headRevision: original.revision, revision: original.revision, indexedAt: expect.any(String),
+      snapshot: { entities: [expect.objectContaining({ title: identity.name })], documents: expect.arrayContaining([
+        expect.objectContaining({ path: "nutshell-vault/_INDEX.md" }),
+      ]) },
+    });
+    adapter.readDefaultRevision.mockRejectedValueOnce(new GitHubTransportError("provider_unavailable", 503));
+    expect(await readWorkspace()).toBeNull();
+    adapter.readDefaultRevision.mockImplementationOnce(async () => {
+      await activateReader(false);
+      return original.revision;
+    });
+    expect(await readWorkspace()).toBeNull();
+    await activateReader(true);
 
     const superseded = push("b".repeat(40));
     head = superseded.revision;
+    expect((await readWorkspace())?.snapshot).toEqual({ ...published?.snapshot, status: "stale", headRevision: head });
     expect(await acceptLivePush(superseded)).toBe("accepted");
     const invalid = push("c".repeat(40));
     adapter.readImmutableTree.mockImplementationOnce(async () => { head = invalid.revision; return tree; });
@@ -195,11 +237,13 @@ async function proveControlledIndexing(connectionString: string, adapter: Return
     expect(await receipt(invalid.deliveryId)).toEqual({ status: "invalid", attempts: 1, failure_code: "invalid_history" });
     const invalidState = [{ connection_epoch: 1, head_revision: invalid.revision, indexed_revision: original.revision, status: "invalid" }];
     expect(await index()).toEqual(invalidState);
+    expect((await readWorkspace())?.snapshot).toEqual({ ...published?.snapshot, status: "invalid", headRevision: invalid.revision });
     expect((await client.query("SELECT source_revision FROM github_accepted_change")).rows).toEqual([{ source_revision: original.revision }]);
     expect((await client.query("SELECT revision FROM github_snapshot")).rows).toEqual([{ revision: original.revision }]);
 
     const interrupted = push("d".repeat(40));
     head = interrupted.revision;
+    expect((await readWorkspace())?.snapshot).toEqual({ ...published?.snapshot, status: "stale", headRevision: head });
     expect(await acceptLivePush(interrupted)).toBe("accepted");
     const stop = new AbortController();
     adapter.readImmutableTree.mockImplementationOnce(async () => { stop.abort(); return tree; });
@@ -222,6 +266,10 @@ async function proveControlledIndexing(connectionString: string, adapter: Return
     expect(await processNextLivePush()).toBe(true);
     expect(await receipt(interrupted.deliveryId)).toMatchObject({ status: "obsolete", attempts: 2 });
     expect(await index()).toEqual(invalidState);
+    head = invalid.revision;
+    expect((await readWorkspace())?.snapshot).toEqual({
+      status: "pending", headRevision: invalid.revision, revision: null, indexedAt: null, snapshot: null,
+    });
 
     const unavailable = push("e".repeat(40));
     expect(await acceptLivePush(unavailable)).toBe("accepted");
@@ -239,7 +287,7 @@ async function proveControlledIndexing(connectionString: string, adapter: Return
   }
 }
 
-test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL live runtime for verified access, setup, and push indexing", async (context) => {
+test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL live runtime for verified access, setup, indexing and workspace reads", async (context) => {
   const controlUrl = requireLocalDatabaseUrl(process.env.TEST_DATABASE_URL, "Verification database", "nutshell_alpha_test");
   const name = "nutshell_live_smoke_" + randomBytes(6).toString("hex");
   const target = new URL(controlUrl);
@@ -297,6 +345,7 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL li
     expect(await connectGitHubRepository(new Headers(), connection)).toEqual({ status: "unavailable" });
     expect(await readGitHubSetup(new Headers(), String(connection.repositoryId))).toEqual({ status: "unavailable" });
     expect(await openGitHubSetup(new Headers(), String(connection.repositoryId), sourceRevision)).toEqual({ status: "unavailable" });
+    expect(await readGitHubWorkspace(new Headers(), String(connection.repositoryId))).toBeNull();
 
     const send = (path: string, body: object) => getAuth().handler(new Request(config.origin + path, {
       method: "POST",
@@ -311,8 +360,8 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL li
     const authorization = new URL((await begin.json()).url);
     expect(authorization.origin).toBe("https://github.com");
     expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
-    await proveControlledAssociation(config.databaseUrl, name, setupAdapter);
-    await proveControlledIndexing(config.databaseUrl, setupAdapter);
+    const readerScope = await proveControlledAssociation(config.databaseUrl, name, setupAdapter);
+    await proveControlledIndexing(config.databaseUrl, setupAdapter, readerScope);
     expect(outbound).not.toHaveBeenCalled();
   } finally {
     vi.unstubAllGlobals();
