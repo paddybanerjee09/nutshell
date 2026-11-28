@@ -428,6 +428,38 @@ describe("GitHub App exact-head Checks", () => {
     expect(await repo.publishPullRequestCheck(identity, input)).toEqual({ id: ownCheck.id, head: revision, status: "completed", conclusion: "success" });
   });
 
+  it("recovers a lost Check response by its exact App, head, and external retry identity", async () => {
+    const externalId = "nutshell-" + "9".repeat(64);
+    const target = { ...input, expectedBase: otherRevision, externalId };
+    const existing = { ...ownCheck, external_id: externalId };
+    let created = false;
+    let movedBase = false;
+    const { repo, requests } = fakeGitHub((request) => {
+      const path = request.url.pathname;
+      if (path === repoPath) return Response.json(metadata);
+      if (path === `${repoPath}/pulls/37`) return Response.json({ ...pull, base: { ...pull.base, sha: otherRevision },
+        head: { ...pull.head, ref: "feature/controlled" } });
+      if (path.endsWith("/git/ref/heads/release/main")) return Response.json({ ref: "refs/heads/release/main",
+        object: { type: "commit", sha: movedBase ? treeSha : otherRevision } });
+      if (path.endsWith(`/commits/${revision}/check-runs`)) {
+        expect(request.permissions).toEqual({ checks: "read" });
+        expect(request.url.searchParams.get("filter")).toBe("all");
+        return Response.json({ check_runs: created ? [{ ...existing, id: ownCheck.id + 1, app: { id: appId + 1 } }, existing] : [] });
+      }
+      expect(path).toBe(`${repoPath}/check-runs`);
+      expect(request.permissions).toEqual({ checks: "write" });
+      expect(request.body).toMatchObject({ external_id: externalId, head_sha: revision });
+      created = true;
+      throw new Error("Controlled transport lost its response after GitHub created the Check.");
+    });
+
+    await expect(repo.publishPullRequestCheck(identity, target)).rejects.toMatchObject({ code: "provider_unavailable" });
+    await expect(repo.publishPullRequestCheck(identity, target)).resolves.toMatchObject({ id: ownCheck.id, conclusion: "success" });
+    movedBase = true;
+    await expect(repo.publishPullRequestCheck(identity, target)).rejects.toMatchObject({ code: "conflict" });
+    expect(requests.filter(({ method, url }) => method === "POST" && url.pathname === `${repoPath}/check-runs`)).toHaveLength(1);
+  });
+
   it("rejects moved heads, forks, closed or other-base pulls before minting Check-write authority", async () => {
     for (const candidate of [{ ...pull, head: { ...pull.head, sha: otherRevision } },
       { ...pull, head: { ...pull.head, repo: { id: repositoryId + 1 } } },
