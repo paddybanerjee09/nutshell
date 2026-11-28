@@ -74,6 +74,14 @@ Run `pnpm alpha:reset` to restore the generated verification scenario after veri
 
 On this Windows host, Chromium's native child stayed alive after the browser connection closed, including with a synthetic page and a direct DevTools connection. Playwright Firefox exited successfully in the independent Windows probe. The verifier uses Firefox on Windows. It closes its own test pages, disconnects the Playwright client, and checks graceful native browser shutdown separately from the browser journey. See the [acceptance ledger](../runs/ACCEPTANCE.md#decision) for the application checks.
 
+If Windows runs out of native memory during the Turbopack build, use a temporary PowerShell session for the supported Webpack production build and scoped worker verification. Typechecking remains enabled in the build. Record both results in the acceptance ledger. [Next.js bundler options](https://nextjs.org/docs/app/api-reference/turbopack#using-webpack-instead).
+
+```powershell
+$env:NODE_OPTIONS = '--max-old-space-size=768 --max-semi-space-size=8'
+pnpm.cmd --filter '@nutshell/web' exec next build --webpack
+pnpm.cmd exec node scripts/alpha.ts verify-worker
+```
+
 The Windows optimized build uses two Next.js page-data workers after a worker exited with code `3221226505` during an eleven-worker build. Next.js selects the configured worker limit at build time. [Next.js build source](https://github.com/vercel/next.js/blob/canary/packages/next/src/build/index.ts)
 
 Verification runs the test files in sequence because PostgreSQL integration tests change shared fixture grants and connection epochs. On Windows, Vitest uses worker threads to avoid the observed fork shutdown timeouts.
@@ -100,7 +108,9 @@ With the live environment loaded, run `node scripts/live-migrate.ts` to migrate 
 
 After GitHub sign-in, choose **Find GitHub repositories**. The **Install Nutshell on GitHub** action opens the verified App's installation page. The App's optional setup URL can return to the configured origin plus `/app`. Refresh discovery after installation, select the private repository, and choose **Connect repository**. A current repository administrator can establish the association. On the repository overview, **Create setup pull request** opens a proposal against the displayed source revision. Review and merge it in GitHub under the repository's rules. The overview shows the checked proposal or the source revision containing Nutshell files.
 
-Set the GitHub App webhook URL to the configured origin plus `/api/github/webhook`, match `GITHUB_APP_WEBHOOK_SECRET`, and subscribe to `push`. This ingress accepts bodies up to 1 MiB. After a signed default-branch push and successful publication, the repository overview shows **Open workspace** for indexed notes and graphs. An invalid head retains the previously validated revision for current authorized users. Inspect `github_push_delivery` for terminal `failed` work or `github_index_state` for a validation failure with a retained revision. Restarting the worker resumes queued receipts. Redelivery of the same accepted ID is idempotent. A new signed push of a subsequently repaired default branch schedules that revision. Manual reconciliation and live editing are separate work.
+Set the GitHub App webhook URL to the configured origin plus `/api/github/webhook`, match `GITHUB_APP_WEBHOOK_SECRET`, and subscribe to `push`. This ingress accepts bodies up to 1 MiB. For an existing revision, missed delivery, or a job that exhausted its retries, an administrator can select **Index current revision** and then **Check indexing status**. A queued request names the exact provider revision. After successful publication the overview shows **Open workspace** for indexed notes and graphs. An invalid head retains the previous valid revision for current authorized users.
+
+Inspect `github_push_delivery` for terminal `failed` jobs and their source, and `github_index_state` for validation errors and retained revisions. Restarting the worker resumes queued work. Redelivery of the same accepted GitHub ID is idempotent. A subsequent signed push or a fresh administrator request can schedule work again. Live editing has separate acceptance.
 
 ## Consequences
 

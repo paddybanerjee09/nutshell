@@ -94,6 +94,7 @@ describe("mode-specific entry surfaces", () => {
     expect(overview).toContain("Checking GitHub setup…");
     expect(overview).toContain("Waiting for the first indexed snapshot.");
     expect(overview).not.toContain("Open workspace");
+    expect(overview).not.toContain("Index current revision");
     expect(overview).not.toContain("Setup pull request");
     readGitHubWorkspace.mockResolvedValueOnce(pending);
     const workspace = renderToStaticMarkup(await WorkspacePage({ params, searchParams }));
@@ -104,6 +105,19 @@ describe("mode-specific entry surfaces", () => {
     expect(fixtureOnboarding).not.toHaveBeenCalled();
     expect(fixtureSnapshot).not.toHaveBeenCalled();
     expect(session).not.toHaveBeenCalled();
+  });
+
+  it("shows explicit current-revision indexing only for a current live administrator when needed", async () => {
+    const repository = { ...repo, role: "admin" };
+    const revision = "a".repeat(40);
+    const pending = { status: "pending", headRevision: revision, revision: null, snapshot: null, indexedAt: null };
+    readGitHubWorkspace.mockResolvedValueOnce({ repository, userId: "admin", snapshot: pending });
+    expect(renderToStaticMarkup(await RepositoryPage({ params }))).toContain("Index current revision");
+    const current = { status: "current", headRevision: revision, revision, snapshot: {}, indexedAt: "2026-11-27T16:40:00Z" };
+    readGitHubWorkspace.mockResolvedValueOnce({ repository, userId: "admin", snapshot: current });
+    const indexed = renderToStaticMarkup(await RepositoryPage({ params }));
+    expect(indexed).toContain("Open workspace");
+    expect(indexed).not.toContain("Index current revision");
   });
 
   it("preserves authorized setup access when live index status is unavailable", async () => {
