@@ -3,34 +3,35 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: null
-task_state: idle
-task_revision: 140
-repository_id: null
-branch: null
-base_branch: null
+task_id: live-index-reconciliation-2026-11-27
+task_state: in_progress
+task_revision: 141
+repository_id: 1467144605
+branch: feature/live-index-reconciliation
+base_branch: main
 pr_number: null
 pr_url: null
 last_verified_head: null
-lead_agent: null
-integration_checkout: null
+lead_agent: root
+integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
 ---
-# Current task
+# Live index reconciliation
 
 ## Context
 
-No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
+Let a verified administrator schedule indexing for the current GitHub revision when a push was missed or a prior job failed.
 
 ## Decision
 
-The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
+Recheck the exact current user, repository and provider ref, then queue manual work with its own source and exact epoch. Reuse the durable worker, immutable validators, and last-good publication rules.
 
 ## Consequences
 
-See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
+Guarded idle revision 140 is confirmed. Verify controlled provider behavior and real local PostgreSQL. Observe the draft PR before binding its identity.
 
 ## Affected files
 
-- [Task template](templates/TASK.md)
-- [Vault index](_INDEX.md)
+- [GitHub synchronization](features/github-sync/CONTEXT.md).
+- [Authorization context](features/auth-permissions/CONTEXT.md).
+- [System architecture](architecture/SYSTEM.md).
