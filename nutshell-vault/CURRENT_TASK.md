@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: live-pull-request-checks-2026-11-27
-task_state: pr_open
-task_revision: 150
+task_state: ready_for_review
+task_revision: 151
 repository_id: 1467144605
 branch: feature/live-pull-request-checks
 base_branch: main
 pr_number: 29
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/29
-last_verified_head: null
+last_verified_head: 4889d519758640b7b92f50bae8ef45d0779398b4
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ Accept the exact PR comparison in a durable receipt. Share scoped installation r
 
 ## Consequences
 
-GitHub confirmed draft PR #29. The lead owns durable check work and the exact-base publication adapter. The delegate owns signed pull request ingress.
+The 106 scoped cases, strict checks, optimized Webpack build, and local fixture worker restart passed. A standalone live-mode worker started and shut down with disposable PostgreSQL and product network disabled. Both configured local databases migrated. Confirm the exact trusted source check, merge PR #29, and apply guarded cleanup.
 
 ## Affected files
 
