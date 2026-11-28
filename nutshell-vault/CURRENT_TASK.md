@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: live-index-reconciliation-2026-11-27
-task_state: pr_open
-task_revision: 142
+task_state: ready_for_review
+task_revision: 143
 repository_id: 1467144605
 branch: feature/live-index-reconciliation
 base_branch: main
 pr_number: 27
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/27
-last_verified_head: null
+last_verified_head: 2d23e6196c015303fed1aebb2c7546c347fce10f
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ Recheck the exact current user, repository and provider ref, then queue manual w
 
 ## Consequences
 
-GitHub confirmed draft PR #27. The lead owns the queue, migration, and web request. The runtime delegate owns current administrator authorization and disposable PostgreSQL regressions.
+The 66 scoped cases, strict checks, optimized Webpack build, actual local app and worker restart, and migration passed. Turbopack hit native Windows resource errors. Observe the exact trusted GitHub check, merge PR #27, and apply guarded cleanup.
 
 ## Affected files
 
