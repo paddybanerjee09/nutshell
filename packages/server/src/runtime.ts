@@ -3,7 +3,7 @@ import { betterAuth } from "better-auth";
 import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
-import { and, asc, eq, exists, gt, sql } from "drizzle-orm";
+import { and, asc, eq, exists, gt, ne, notExists, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { z } from "zod";
@@ -11,7 +11,8 @@ import { loadConfig } from "./config.ts";
 import {
   createGitHubAppAdapter, createGitHubAppAuthOptions, createGitHubAppDrizzleTokenStore, createGitHubAppUserTokens,
 } from "./github-app.ts";
-import { createGitHubLiveAccessResolver } from "./github-live-access.ts";
+import type { GitHubSetupReadResult, GitHubSetupResult } from "./github-app-setup.ts";
+import { createGitHubLiveAccessResolver, type GitHubLiveAssociation } from "./github-live-access.ts";
 import {
   createGitHubLiveOnboarding, type ConnectGitHubRepositoryInput, type ConnectGitHubRepositoryResult, type GitHubConnectionsResult,
 } from "./github-live-onboarding.ts";
@@ -76,8 +77,10 @@ function createRuntime() {
       session: { cookieCache: { enabled: false } },
       plugins: [localPersonaPlugin(config.origin)],
     });
-  const github = config.mode === "live" ? {
-    repository: createGitHubAppAdapter(config.githubApp).repository,
+  const githubAdapter = config.mode === "live" ? createGitHubAppAdapter(config.githubApp) : undefined;
+  const github = config.mode === "live" && githubAdapter ? {
+    repository: githubAdapter.repository,
+    setup: githubAdapter.setup,
     async getAccessToken(userId: string) {
       const { secretConfig } = await auth.$context;
       return createGitHubAppUserTokens({
@@ -92,6 +95,7 @@ function createRuntime() {
 }
 
 let runtime: ReturnType<typeof createRuntime> | undefined;
+type RuntimeDatabase = ReturnType<typeof createRuntime>["db"];
 
 function getRuntime() {
   runtime ??= createRuntime();
@@ -199,18 +203,10 @@ export async function resolveRepositoryReadFilter(headers: Headers, id: string) 
 async function authorizedGitHubRepositories(actor: RepositoryActor, id?: number): Promise<Repository[]> {
   const { db, github } = getRuntime();
   if (!github) return [];
-  const [githubAccount, duplicate] = await db.select({ accountId: account.accountId }).from(account)
-    .where(and(eq(account.userId, actor.userId), eq(account.providerId, "github"))).limit(2);
+  const [githubAccount, duplicate] = await linkedGitHubAccounts(db, actor.userId);
   if (!githubAccount || duplicate) return [];
 
-  const associations = await db.select({
-    repositoryId: repository.id,
-    installationId: repository.installationId,
-    ownerId: githubRepositoryAssociation.ownerId,
-    repositoryNodeId: githubRepositoryAssociation.repositoryNodeId,
-    connectionEpoch: repository.connectionEpoch,
-  }).from(repository).innerJoin(githubRepositoryAssociation, eq(repository.id, githubRepositoryAssociation.repositoryId))
-    .where(activeRepositoryFilter(actor.userId, id)).orderBy(asc(repository.name), asc(repository.id));
+  const associations = await liveAssociations(db, actor.userId, id);
   const resolver = createGitHubLiveAccessResolver({
     getAccessToken: github.getAccessToken,
     verifyCurrentUserAccess: github.repository.verifyCurrentUserAccess,
@@ -221,26 +217,103 @@ async function authorizedGitHubRepositories(actor: RepositoryActor, id?: number)
       const result = await resolver.resolve({ userId: actor.userId, accountId: githubAccount.accountId, association });
       if (result.status !== "ready") return null;
       // Provider requests can finish after a local revocation or re-association. Recheck the exact local identity.
-      const [current] = await db.select({ name: repository.name, description: repository.description }).from(repository)
-        .innerJoin(githubRepositoryAssociation, eq(repository.id, githubRepositoryAssociation.repositoryId))
-        .where(and(
-          activeRepositoryFilter(actor.userId, association.repositoryId),
-          eq(repository.installationId, association.installationId),
-          eq(repository.connectionEpoch, association.connectionEpoch),
-          eq(githubRepositoryAssociation.ownerId, association.ownerId),
-          eq(githubRepositoryAssociation.repositoryNodeId, association.repositoryNodeId),
-          exists(db.select({ id: session.id }).from(session).where(and(
-            eq(session.userId, actor.userId), eq(session.id, actor.sessionId), gt(session.expiresAt, sql`now()`),
-          ))),
-          exists(db.select({ id: account.id }).from(account).where(and(
-            eq(account.userId, actor.userId), eq(account.providerId, "github"), eq(account.accountId, githubAccount.accountId),
-          ))),
-        ));
+      const [current] = await currentGitHubRepository(db, actor, association, githubAccount);
       return current ? { id: String(association.repositoryId), ...current, role: result.access.role } : null;
     }));
     for (const row of batch) if (row) authorized.push(row);
   }
   return authorized;
+}
+
+type LinkedGitHubAccount = { id: string; accountId: string };
+
+function linkedGitHubAccounts(db: Pick<RuntimeDatabase, "select">, userId: string) {
+  return db.select({ id: account.id, accountId: account.accountId }).from(account)
+    .where(and(eq(account.userId, userId), eq(account.providerId, "github"))).limit(2);
+}
+
+function liveAssociations(db: RuntimeDatabase, userId: string, id?: number) {
+  return db.select({
+    repositoryId: repository.id, installationId: repository.installationId, ownerId: githubRepositoryAssociation.ownerId,
+    repositoryNodeId: githubRepositoryAssociation.repositoryNodeId, connectionEpoch: repository.connectionEpoch,
+  }).from(repository).innerJoin(githubRepositoryAssociation, eq(repository.id, githubRepositoryAssociation.repositoryId))
+    .where(activeRepositoryFilter(userId, id)).orderBy(asc(repository.name), asc(repository.id));
+}
+
+function currentGitHubRepository(
+  db: Pick<RuntimeDatabase, "select">, actor: RepositoryActor, association: GitHubLiveAssociation, linked: LinkedGitHubAccount,
+) {
+  const link = and(eq(account.userId, actor.userId), eq(account.providerId, "github"));
+  return db.select({ name: repository.name, description: repository.description }).from(repository)
+    .innerJoin(githubRepositoryAssociation, eq(repository.id, githubRepositoryAssociation.repositoryId))
+    .innerJoin(installation, activeInstallation()).innerJoin(membership, activeMembership(actor.userId))
+    .innerJoin(session, and(eq(session.userId, actor.userId), eq(session.id, actor.sessionId), gt(session.expiresAt, sql`clock_timestamp()`)))
+    .innerJoin(account, and(link, eq(account.id, linked.id), eq(account.accountId, linked.accountId)))
+    .where(and(eq(repository.id, association.repositoryId), eq(repository.active, true), eq(repository.installationId, association.installationId),
+      eq(repository.connectionEpoch, association.connectionEpoch), eq(githubRepositoryAssociation.ownerId, association.ownerId),
+      eq(githubRepositoryAssociation.repositoryNodeId, association.repositoryNodeId),
+      notExists(db.select({ id: account.id }).from(account).where(and(link, ne(account.id, linked.id))))));
+}
+
+async function authorizeGitHubSetup(headers: Headers, repositoryId: string) {
+  const { db, github } = getRuntime();
+  if (!github || !/^[1-9]\d{0,15}$/u.test(repositoryId) || !Number.isSafeInteger(Number(repositoryId))) return null;
+  const actor = await resolveRepositoryActor(headers);
+  if (!actor) return null;
+
+  const [linked, duplicate] = await linkedGitHubAccounts(db, actor.userId);
+  if (!linked || duplicate) return null;
+  const [association] = await liveAssociations(db, actor.userId, Number(repositoryId));
+  if (!association) return null;
+  const token = await github.getAccessToken(actor.userId);
+  if (token.status !== "ready") return null;
+  const resolver = createGitHubLiveAccessResolver({
+    getAccessToken: async () => token, verifyCurrentUserAccess: github.repository.verifyCurrentUserAccess,
+  });
+  const verified = await resolver.resolve({ userId: actor.userId, accountId: linked.accountId, association });
+  if (verified.status !== "ready") return null;
+  const { role, canConfigure, canWrite, userId } = verified.access;
+  return { db, github, actor, linked, association, token: token.accessToken, canConfigure: role === "admin" && canConfigure && canWrite,
+    expectation: { userId, ownerId: association.ownerId, nodeId: association.repositoryNodeId } };
+}
+
+export async function readGitHubSetup(headers: Headers, repositoryId: string): Promise<GitHubSetupReadResult> {
+  try {
+    const access = await authorizeGitHubSetup(headers, repositoryId);
+    if (!access) return { status: "unavailable" };
+    const { db, github, actor, linked, association, token, expectation } = access;
+    const [before] = await currentGitHubRepository(db, actor, association, linked);
+    if (!before) return { status: "unavailable" };
+    const result = await github.setup.readSetup(token, association.installationId, association.repositoryId, expectation);
+    const [after] = await currentGitHubRepository(db, actor, association, linked);
+    if (!after) return { status: "unavailable" };
+    return result.status === "ready" ? { ...result, canConfigure: result.canConfigure && access.canConfigure } : result;
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
+export async function openGitHubSetup(headers: Headers, repositoryId: string, expectedSourceRevision: string): Promise<GitHubSetupResult> {
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(expectedSourceRevision)) return { status: "unavailable" };
+  try {
+    const access = await authorizeGitHubSetup(headers, repositoryId);
+    if (!access) return { status: "unavailable" };
+    const { db, github, actor, linked, association, token, expectation, canConfigure } = access;
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('lock_timeout', '5s', true), set_config('idle_in_transaction_session_timeout', '60s', true)`);
+      // Pin linked-account uniqueness and the active user/association throughout the bounded provider mutation.
+      await tx.select({ id: user.id }).from(user).where(eq(user.id, actor.userId)).for("update");
+      const [current] = await currentGitHubRepository(tx, actor, association, linked).for("share", {
+        of: [repository, githubRepositoryAssociation, installation, membership, session, account],
+      });
+      if (!current) return { status: "unavailable" };
+      if (!canConfigure) return { status: "forbidden" };
+      return github.setup.openSetup(token, association.installationId, association.repositoryId,
+        { ...expectation, sourceRevision: expectedSourceRevision });
+    });
+  } catch {
+    return { status: "unavailable" };
+  }
 }
 
 async function authorizedRepositories(userId: string, id?: number): Promise<Repository[]> {

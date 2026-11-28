@@ -1,17 +1,34 @@
-import { generateKeyPairSync, randomBytes } from "node:crypto";
+import { createHmac, generateKeyPairSync, randomBytes } from "node:crypto";
+import { symmetricEncrypt } from "better-auth/crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { expect, test, vi } from "vitest";
 import { loadConfig, requireLocalDatabaseUrl } from "./config.ts";
+import * as githubApp from "./github-app.ts";
 import type { GitHubRepositoryAccess } from "./github-app-repository.ts";
 import { createGitHubLiveOnboarding } from "./github-live-onboarding.ts";
-import { closeRuntime, connectGitHubRepository, getAuth, listGitHubConnections, listRepositories } from "./runtime.ts";
+import { closeRuntime, connectGitHubRepository, getAuth, getSession, listGitHubConnections, listRepositories, openGitHubSetup, readGitHubSetup } from "./runtime.ts";
 import { account, session, user } from "./schema.ts";
 import { migrateLiveDatabase } from "./setup.ts";
 
 const connection = { repositoryId: 523611, installationId: 428191 };
+const sourceRevision = "a".repeat(40);
+type GitHubAdapter = ReturnType<typeof githubApp.createGitHubAppAdapter>;
 
-async function proveControlledAssociation(connectionString: string, databaseName: string) {
+function controlledRuntimeAdapter() {
+  const readSetup = vi.fn<GitHubAdapter["setup"]["readSetup"]>();
+  const openSetup = vi.fn<GitHubAdapter["setup"]["openSetup"]>();
+  const verifyCurrentUserAccess = vi.fn<GitHubAdapter["repository"]["verifyCurrentUserAccess"]>();
+  const original = githubApp.createGitHubAppAdapter;
+  vi.spyOn(githubApp, "createGitHubAppAdapter").mockImplementation((...args) => {
+    const adapter = original(...args);
+    return { ...adapter, setup: { ...adapter.setup, readSetup, openSetup },
+      repository: { ...adapter.repository, verifyCurrentUserAccess } };
+  });
+  return { readSetup, openSetup, verifyCurrentUserAccess };
+}
+
+async function proveControlledAssociation(connectionString: string, databaseName: string, adapter: ReturnType<typeof controlledRuntimeAdapter>) {
   const client = new pg.Client({ connectionString, connectionTimeoutMillis: 10_000 });
   try {
     await client.connect();
@@ -65,6 +82,62 @@ async function proveControlledAssociation(connectionString: string, databaseName
     expect(await service.connect(reader, connection)).toEqual({ status: "denied" });
     expect((await client.query("SELECT user_id, active FROM repository_membership WHERE repository_id = $1 ORDER BY user_id", [connection.repositoryId])).rows)
       .toEqual([{ user_id: owner.userId, active: true }, { user_id: reader.userId, active: false }]);
+
+    const auth = await getAuth().$context;
+    for (const actor of [owner, reader]) {
+      const accessToken = await symmetricEncrypt({ key: auth.secretConfig, data: actor.token });
+      const refreshToken = await symmetricEncrypt({ key: auth.secretConfig, data: "ghr_controlled_refresh" });
+      await client.query(`UPDATE auth_account SET access_token = $1, refresh_token = $2,
+        access_token_expires_at = now() + interval '10 minutes', refresh_token_expires_at = now() + interval '20 minutes'
+        WHERE id = $3`, [accessToken, refreshToken, actor.userId + "-account"]);
+    }
+    // This ephemeral test issues the installed Better Auth cookie format for its own seeded sessions.
+    const headersFor = ({ sessionId }: typeof owner) => {
+      const value = `${sessionId}-token`;
+      const signature = createHmac("sha256", auth.secret).update(value).digest("base64");
+      return new Headers({ cookie: `${auth.authCookies.sessionToken.name}=${encodeURIComponent(value + "." + signature)}` });
+    };
+    const coordinatorHeaders = headersFor(owner);
+    const readerHeaders = headersFor(reader);
+    expect((await getSession(coordinatorHeaders))?.session.id).toBe(owner.sessionId);
+    expect((await getSession(readerHeaders))?.session.id).toBe(reader.sessionId);
+    await client.query("UPDATE repository_membership SET active = true WHERE repository_id = $1 AND user_id = $2", [connection.repositoryId, reader.userId]);
+    const repositoryId = String(connection.repositoryId);
+    adapter.verifyCurrentUserAccess.mockImplementation(lookup);
+    adapter.readSetup.mockResolvedValue({ status: "ready", canConfigure: true, sourceRevision });
+    expect(await readGitHubSetup(readerHeaders, repositoryId)).toEqual({ status: "ready", canConfigure: false, sourceRevision });
+    expect(await openGitHubSetup(readerHeaders, repositoryId, sourceRevision)).toEqual({ status: "forbidden" });
+    expect(adapter.openSetup).not.toHaveBeenCalled();
+
+    const proposal = { status: "awaiting_merge", number: 7, url: `https://github.com/${identity.owner}/${identity.name}/pull/7`,
+      branch: "nutshell/setup-" + sourceRevision, head: "b".repeat(40), sourceRevision } as const;
+    adapter.openSetup.mockImplementationOnce(async () => {
+      await client.query("SET lock_timeout = '150ms'");
+      try {
+        await expect(client.query("UPDATE repository_membership SET active = false WHERE repository_id = $1 AND user_id = $2", [
+          connection.repositoryId, owner.userId,
+        ])).rejects.toMatchObject({ code: "55P03" });
+      } finally {
+        await client.query("RESET lock_timeout");
+      }
+      return proposal;
+    });
+    expect(await openGitHubSetup(coordinatorHeaders, repositoryId, sourceRevision)).toEqual(proposal);
+    expect(adapter.openSetup).toHaveBeenCalledWith(owner.token, connection.installationId, connection.repositoryId,
+      { userId: owner.githubId, ownerId: identity.ownerId, nodeId: identity.nodeId, sourceRevision });
+
+    adapter.verifyCurrentUserAccess.mockImplementationOnce(async () => {
+      await client.query("UPDATE repository_membership SET active = false WHERE repository_id = $1 AND user_id = $2", [connection.repositoryId, owner.userId]);
+      return lookup(owner.token);
+    });
+    expect(await openGitHubSetup(coordinatorHeaders, repositoryId, sourceRevision)).toEqual({ status: "unavailable" });
+    expect(adapter.openSetup).toHaveBeenCalledOnce();
+
+    adapter.readSetup.mockImplementationOnce(async () => {
+      await client.query("UPDATE repository_membership SET active = false WHERE repository_id = $1 AND user_id = $2", [connection.repositoryId, reader.userId]);
+      return proposal;
+    });
+    expect(await readGitHubSetup(readerHeaders, repositoryId)).toEqual({ status: "unavailable" });
   } finally {
     await client.end();
   }
@@ -87,6 +160,7 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts live GitHub auth unseed
     NUTSHELL_ORIGIN: "https://nutshell.test",
     NUTSHELL_VERIFY: "0",
     DATABASE_URL: target.href,
+    BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
     GITHUB_APP_ID: "12345",
     GITHUB_APP_CLIENT_ID: "Iv1.synthetic",
     GITHUB_APP_CLIENT_SECRET: "local-smoke-client-secret",
@@ -106,6 +180,7 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts live GitHub auth unseed
     created = true;
     for (const [key, value] of Object.entries(liveEnv)) vi.stubEnv(key, value);
     vi.stubGlobal("fetch", outbound);
+    const setupAdapter = controlledRuntimeAdapter();
 
     const config = loadConfig();
     await migrateLiveDatabase(config.databaseUrl);
@@ -124,6 +199,8 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts live GitHub auth unseed
     expect(await listRepositories(new Headers())).toBeNull();
     expect(await listGitHubConnections(new Headers())).toEqual({ status: "unavailable" });
     expect(await connectGitHubRepository(new Headers(), connection)).toEqual({ status: "unavailable" });
+    expect(await readGitHubSetup(new Headers(), String(connection.repositoryId))).toEqual({ status: "unavailable" });
+    expect(await openGitHubSetup(new Headers(), String(connection.repositoryId), sourceRevision)).toEqual({ status: "unavailable" });
 
     const send = (path: string, body: object) => getAuth().handler(new Request(config.origin + path, {
       method: "POST",
@@ -138,11 +215,12 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts live GitHub auth unseed
     const authorization = new URL((await begin.json()).url);
     expect(authorization.origin).toBe("https://github.com");
     expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
-    await proveControlledAssociation(config.databaseUrl, name);
+    await proveControlledAssociation(config.databaseUrl, name, setupAdapter);
     expect(outbound).not.toHaveBeenCalled();
   } finally {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
     try {
       await closeRuntime();
     } finally {
