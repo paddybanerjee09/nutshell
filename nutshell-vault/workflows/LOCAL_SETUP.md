@@ -112,6 +112,8 @@ Set the GitHub App webhook URL to the configured origin plus `/api/github/webhoo
 
 Inspect `github_push_delivery` for terminal `failed` jobs and their source, and `github_index_state` for validation errors and retained revisions. Restarting the worker resumes queued work. Redelivery of the same accepted GitHub ID is idempotent. A subsequent signed push or a fresh administrator request can schedule work again. Live editing has separate acceptance.
 
+Subscribe to `repository` with `push`. GitHub sends installation, repository selection, and app authorization lifecycle deliveries to GitHub Apps automatically. Inspect `github_revocation_delivery` by delivery ID after a negative lifecycle event. If a write fails or times out, redeliver the exact event from GitHub after the database recovers. For changes without removed repository IDs, current GitHub access checks still govern reads and indexing. Re-enabling a disabled association and migrating private workspace data after transfer require a separate verified operation. [GitHub webhook event reference](https://docs.github.com/en/webhooks/webhook-events-and-payloads).
+
 ## Consequences
 
 Feature work begins only after real source PR preflight is ready. Optional live product credentials do not block that local product target, and simulated customer-repository events cannot establish real development PR completion.

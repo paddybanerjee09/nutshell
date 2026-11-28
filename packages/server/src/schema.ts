@@ -73,6 +73,13 @@ export const githubRepositoryAssociation = pgTable("github_repository_associatio
   repositoryNodeId: text("repository_node_id").notNull().unique(),
 });
 
+export const githubRevocationDelivery = pgTable("github_revocation_delivery", {
+  id: text("id").primaryKey(),
+  kind: text("kind", { enum: ["installation", "repository_selection", "repository", "account"] }).notNull(),
+  scopeDigest: text("scope_digest").notNull(),
+  receivedAt: time("received_at").notNull().defaultNow(),
+});
+
 export const githubPushDelivery = pgTable("github_push_delivery", {
   id: text("id").primaryKey(),
   source: text("source", { enum: ["webhook", "reconcile"] }).notNull().default("webhook"),

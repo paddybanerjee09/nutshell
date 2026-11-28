@@ -2,11 +2,13 @@ import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "@nutshell/server/config";
 import { acceptFixtureDelivery } from "@nutshell/server/fixture-sync";
+import { acceptLiveRevocation } from "@nutshell/server/github-live-revocation";
 import { acceptLivePush } from "@nutshell/server/github-live-sync";
 import { POST } from "./route.ts";
 
 vi.mock("@nutshell/server/config", () => ({ loadConfig: vi.fn() }));
 vi.mock("@nutshell/server/fixture-sync", () => ({ acceptFixtureDelivery: vi.fn() }));
+vi.mock("@nutshell/server/github-live-revocation", () => ({ acceptLiveRevocation: vi.fn() }));
 vi.mock("@nutshell/server/github-live-sync", () => ({ acceptLivePush: vi.fn() }));
 
 const config = {
@@ -111,6 +113,15 @@ describe("fixture webhook ingress", () => {
     expect(response.status).toBe(400);
     expect(acceptFixtureDelivery).not.toHaveBeenCalled();
   });
+
+  it("ignores live revocation events in fixture mode without parsing their payload", async () => {
+    const response = await POST(request("{", sign("{"), config.origin, "installation"));
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ status: "ignored" });
+    expect(acceptLiveRevocation).not.toHaveBeenCalled();
+    expect(acceptFixtureDelivery).not.toHaveBeenCalled();
+  });
 });
 
 const liveConfig = {
@@ -152,6 +163,7 @@ describe("live webhook ingress", () => {
       repositoryNodeId: livePush.repository.node_id, installationId: livePush.installation.id, ref: livePush.ref, revision: livePush.after,
     });
     expect(acceptFixtureDelivery).not.toHaveBeenCalled();
+    expect(acceptLiveRevocation).not.toHaveBeenCalled();
   });
 
   it("uses only the live secret and verifies the raw bytes before parsing JSON", async () => {
@@ -222,6 +234,134 @@ describe("live webhook ingress", () => {
       .mockRejectedValueOnce(new Error("controlled internal details"));
     for (const [statusCode, status] of [[202, "duplicate"], [404, "unavailable"], [503, "unavailable"]]) {
       const response = await POST(liveRequest(rawLivePush));
+      expect(response.status).toBe(statusCode);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      await expect(response.json()).resolves.toEqual({ status });
+    }
+  });
+});
+
+describe("live webhook revocation ingress", () => {
+  const installation = { id: 89423, account: { id: 1973 } };
+  const sender = { id: 42, login: "different-sender" };
+  const rawRevocation = JSON.stringify({ action: "revoked", sender }, null, 2);
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(loadConfig).mockReturnValue(liveConfig);
+    vi.mocked(acceptLiveRevocation).mockResolvedValue("accepted");
+  });
+
+  it.each(["suspend", "deleted"])("scopes installation %s to the account on the installation", async (action) => {
+    const response = await POST(liveRequest(JSON.stringify({ action, installation, sender, organization: { id: 400 } }), "installation"));
+
+    expect(response.status).toBe(202);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({ status: "accepted" });
+    expect(acceptLiveRevocation).toHaveBeenCalledExactlyOnceWith(deliveryId, {
+      kind: "installation", installationId: installation.id, ownerId: installation.account.id,
+    });
+    expect(acceptLivePush).not.toHaveBeenCalled();
+    expect(acceptFixtureDelivery).not.toHaveBeenCalled();
+  });
+
+  it("passes only the explicitly removed repository IDs, once each", async () => {
+    const body = JSON.stringify({
+      action: "removed", installation, sender, repository_selection: "selected", repository: { id: 600 },
+      repositories_removed: [{ id: 500 }, { id: 600 }, { id: 500 }],
+    });
+    const response = await POST(liveRequest(body, "installation_repositories"));
+
+    expect(response.status).toBe(202);
+    expect(acceptLiveRevocation).toHaveBeenCalledExactlyOnceWith(deliveryId, {
+      kind: "repository_selection", installationId: installation.id, ownerId: installation.account.id, repositoryIds: [500, 600],
+    });
+  });
+
+  it("records an ambiguous change to selected repositories with an empty scope", async () => {
+    const body = JSON.stringify({
+      action: "removed", installation, sender, repository_selection: "selected",
+      repositories_removed: [], repositories_added: [],
+    });
+    const response = await POST(liveRequest(body, "installation_repositories"));
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ status: "accepted" });
+    expect(acceptLiveRevocation).toHaveBeenCalledExactlyOnceWith(deliveryId, {
+      kind: "repository_selection", installationId: installation.id, ownerId: installation.account.id, repositoryIds: [],
+    });
+  });
+
+  it.each(["deleted", "transferred", "publicized"])("scopes repository %s to its signed repository and installation", async (action) => {
+    const body = JSON.stringify({
+      action, installation: { id: installation.id }, sender,
+      repository: { id: 59123, node_id: "R_verified", owner: { id: 900 } },
+      changes: { owner: { from: { user: { id: 950 } } } },
+    });
+    const response = await POST(liveRequest(body, "repository"));
+
+    expect(response.status).toBe(202);
+    expect(acceptLiveRevocation).toHaveBeenCalledExactlyOnceWith(deliveryId, {
+      kind: "repository", installationId: installation.id, repositoryId: 59123, repositoryNodeId: "R_verified",
+    });
+  });
+
+  it("scopes an app authorization revocation to the revoking GitHub user", async () => {
+    const response = await POST(liveRequest(rawRevocation, "github_app_authorization"));
+
+    expect(response.status).toBe(202);
+    expect(acceptLiveRevocation).toHaveBeenCalledExactlyOnceWith(deliveryId, { kind: "account", githubUserId: sender.id });
+  });
+
+  it("checks the live secret, exact bytes, and delivery ID before attempting to revoke", async () => {
+    const event = "github_app_authorization";
+    const changed = JSON.stringify(JSON.parse(rawRevocation));
+    const badDelivery = liveRequest(rawRevocation, event);
+    badDelivery.headers.set("x-github-delivery", "invalid");
+
+    expect((await POST(request(rawRevocation, sign(rawRevocation), liveConfig.origin, event))).status).toBe(401);
+    expect((await POST(request(changed, sign(rawRevocation, liveConfig.githubApp.webhookSecret), liveConfig.origin, event))).status).toBe(401);
+    expect((await POST(badDelivery)).status).toBe(400);
+    expect(acceptLiveRevocation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { event: "installation", body: { action: "suspend", installation: { id: 89423 }, sender } },
+    { event: "installation", body: { action: "deleted", installation: { ...installation, account: { id: "1973" } } } },
+    { event: "installation_repositories", body: { action: "removed", installation, repositories_removed: [{ id: 500 }, { id: Number.MAX_SAFE_INTEGER + 1 }] } },
+    { event: "installation_repositories", body: { action: "removed", installation, repository: { id: 500 } } },
+    { event: "repository", body: { action: "deleted", installation: { id: 0 }, repository: { id: 59123, node_id: "R_verified" } } },
+    { event: "repository", body: { action: "transferred", installation, repository: { id: 59123, node_id: "\u0000R_invalid" } } },
+    { event: "github_app_authorization", body: { action: "revoked", installation, sender: { id: "42" } } },
+  ])("rejects malformed $event scope before persistence", async ({ event, body }) => {
+    const response = await POST(liveRequest(JSON.stringify(body), event));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ status: "invalid" });
+    expect(acceptLiveRevocation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { event: "installation", body: { action: "created", installation } },
+    { event: "installation", body: { action: "unsuspend", installation } },
+    { event: "installation_repositories", body: { action: "added", installation, repositories_added: [{ id: 500 }] } },
+    { event: "installation_repositories", body: { action: "removed", installation, repository_selection: "all", repositories_removed: [] } },
+    { event: "repository", body: { action: "transferred", repository: { id: 59123, node_id: "R_verified" } } },
+    { event: "repository", body: { action: "privatized", installation, repository: { id: 59123, node_id: "R_verified" } } },
+  ])("ignores $event $body.action when there is no explicit revocation target", async ({ event, body }) => {
+    const response = await POST(liveRequest(JSON.stringify(body), event));
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ status: "ignored" });
+    expect(acceptLiveRevocation).not.toHaveBeenCalled();
+  });
+
+  it("preserves duplicate and private failure responses", async () => {
+    vi.mocked(acceptLiveRevocation).mockResolvedValueOnce("duplicate").mockResolvedValueOnce("unavailable")
+      .mockRejectedValueOnce(new Error("controlled internal details"));
+
+    for (const [statusCode, status] of [[202, "duplicate"], [404, "unavailable"], [503, "unavailable"]]) {
+      const response = await POST(liveRequest(rawRevocation, "github_app_authorization"));
       expect(response.status).toBe(statusCode);
       expect(response.headers.get("cache-control")).toBe("no-store");
       await expect(response.json()).resolves.toEqual({ status });

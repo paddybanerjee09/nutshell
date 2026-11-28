@@ -9,6 +9,7 @@ import * as githubApp from "./github-app.ts";
 import type { GitHubRepositoryAccess } from "./github-app-repository.ts";
 import { GitHubTransportError } from "./github-app-transport.ts";
 import { createGitHubLiveOnboarding } from "./github-live-onboarding.ts";
+import { acceptLiveRevocation } from "./github-live-revocation.ts";
 import { acceptLivePush, checkLiveSyncDatabase, processNextLivePush, requestGitHubReconciliation } from "./github-live-sync.ts";
 import {
   closeRuntime, connectGitHubRepository, getAuth, getSession, listGitHubConnections, listRepositories, openGitHubSetup, readGitHubSetup,
@@ -325,7 +326,94 @@ async function proveControlledIndexing(
   }
 }
 
-test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL live runtime for verified access, setup, indexing, workspace reads and reconciliation", async (context) => {
+async function proveControlledRevocation(connectionString: string, adapter: ReturnType<typeof controlledRuntimeAdapter>,
+  scope: Awaited<ReturnType<typeof proveControlledAssociation>>) {
+  const client = new pg.Client({ connectionString, connectionTimeoutMillis: 10_000 });
+  try {
+    await client.connect();
+    const { repositoryId, installationId } = connection;
+    const { ownerId, nodeId: repositoryNodeId } = identity;
+    const { coordinatorHeaders, coordinatorUserId, readerHeaders, readerUserId } = scope;
+    await client.query("UPDATE repository_membership SET active = true WHERE repository_id = $1", [repositoryId]);
+    const current = await readGitHubWorkspace(coordinatorHeaders, String(repositoryId));
+    expect(current?.snapshot).toMatchObject({ status: "current", revision: "e".repeat(40) });
+    expect(await getSession(readerHeaders)).not.toBeNull();
+
+    const authorization = randomUUID();
+    expect(await acceptLiveRevocation(authorization, { kind: "account", githubUserId: 87652 })).toBe("accepted");
+    expect(await acceptLiveRevocation(authorization, { kind: "account", githubUserId: 87652 })).toBe("duplicate");
+    expect(await acceptLiveRevocation(authorization, { kind: "account", githubUserId: 76541 })).toBe("unavailable");
+    expect(await getSession(readerHeaders)).toBeNull();
+    expect(await readGitHubWorkspace(readerHeaders, String(repositoryId))).toBeNull();
+    expect(await getSession(coordinatorHeaders)).not.toBeNull();
+    expect((await client.query(`SELECT user_id, access_token IS NOT NULL AS access, refresh_token IS NOT NULL AS refresh
+      FROM auth_account ORDER BY user_id`)).rows).toEqual([
+      { user_id: coordinatorUserId, access: true, refresh: true }, { user_id: readerUserId, access: false, refresh: false },
+    ]);
+    expect((await client.query("SELECT count(*)::int AS count FROM repository_membership WHERE repository_id = $1", [repositoryId])).rows)
+      .toEqual([{ count: 2 }]);
+
+    const selected = repositoryId + 1;
+    const remaining = repositoryId + 2;
+    const unrelated = repositoryId + 3;
+    const unrelatedInstallation = installationId + 1;
+    await client.query("INSERT INTO provider_installation (id) VALUES ($1)", [unrelatedInstallation]);
+    for (const [id, install] of [[selected, installationId], [remaining, installationId], [unrelated, unrelatedInstallation]]) {
+      await client.query("INSERT INTO repository (id, installation_id, name, description) VALUES ($1, $2, 'Synthetic', '')", [id, install]);
+      await client.query("INSERT INTO github_repository_association (repository_id, owner_id, repository_node_id) VALUES ($1, $2, $3)",
+        [id, ownerId, `R_controlled_${id}`]);
+    }
+    const repoStates = async () => (await client.query("SELECT id::int, active, connection_epoch AS epoch FROM repository ORDER BY id")).rows;
+    const allActive = [{ id: repositoryId, active: true, epoch: 2 }, { id: selected, active: true, epoch: 1 },
+      { id: remaining, active: true, epoch: 1 }, { id: unrelated, active: true, epoch: 1 }];
+    expect(await repoStates()).toEqual(allActive);
+    expect(await acceptLiveRevocation(randomUUID(), { kind: "installation", installationId, ownerId: ownerId + 1 })).toBe("accepted");
+    expect(await acceptLiveRevocation(randomUUID(), { kind: "repository", installationId, repositoryId, repositoryNodeId: "R_wrong" })).toBe("accepted");
+    const unspecified = randomUUID();
+    const unspecifiedScope = { kind: "repository_selection", installationId, ownerId, repositoryIds: [] } as const;
+    expect(await acceptLiveRevocation(unspecified, { ...unspecifiedScope, repositoryIds: [] })).toBe("accepted");
+    expect(await acceptLiveRevocation(unspecified, { ...unspecifiedScope, repositoryIds: [] })).toBe("duplicate");
+    expect(await repoStates()).toEqual(allActive);
+
+    const selectionEvent = randomUUID();
+    const selection = { kind: "repository_selection", installationId, ownerId } as const;
+    const otherIds = Array.from({ length: 501 }, (_, index) => 9_000 + index);
+    expect((await Promise.all([
+      acceptLiveRevocation(selectionEvent, { ...selection, repositoryIds: [selected, unrelated, ...otherIds] }),
+      acceptLiveRevocation(selectionEvent, { ...selection, repositoryIds: [...otherIds].reverse().concat(unrelated, selected, selected) }),
+    ])).sort()).toEqual(["accepted", "duplicate"]);
+    expect(await repoStates()).toEqual([allActive[0], { id: selected, active: false, epoch: 2 }, allActive[2], allActive[3]]);
+    expect(await readGitHubWorkspace(coordinatorHeaders, String(repositoryId))).not.toBeNull();
+
+    const pending = randomUUID();
+    expect(await acceptLivePush({ deliveryId: pending, repositoryId, installationId, ownerId, repositoryNodeId,
+      ref: "refs/heads/trunk", revision: "f".repeat(40) })).toBe("accepted");
+    expect(await acceptLiveRevocation(randomUUID(), { kind: "repository", installationId, repositoryId, repositoryNodeId })).toBe("accepted");
+    expect(await readGitHubWorkspace(coordinatorHeaders, String(repositoryId))).toBeNull();
+    expect(await getSession(coordinatorHeaders)).not.toBeNull();
+    const treeReads = adapter.readImmutableTree.mock.calls.length;
+    expect(await processNextLivePush()).toBe(true);
+    expect(adapter.readImmutableTree).toHaveBeenCalledTimes(treeReads);
+    expect((await client.query("SELECT status FROM github_push_delivery WHERE id = $1", [pending])).rows).toEqual([{ status: "obsolete" }]);
+    expect((await client.query("SELECT count(*)::int AS count FROM github_snapshot WHERE repository_id = $1", [repositoryId])).rows)
+      .toEqual([{ count: 2 }]);
+
+    const suspended = randomUUID();
+    const revoke = { kind: "installation", installationId, ownerId } as const;
+    expect(await acceptLiveRevocation(suspended, revoke)).toBe("accepted");
+    expect(await acceptLiveRevocation(suspended, revoke)).toBe("duplicate");
+    expect(await repoStates()).toEqual([{ id: repositoryId, active: false, epoch: 4 }, { id: selected, active: false, epoch: 3 },
+      { id: remaining, active: true, epoch: 2 }, allActive[3]]);
+    expect((await client.query("SELECT id::int, active FROM provider_installation ORDER BY id")).rows)
+      .toEqual([{ id: installationId, active: false }, { id: unrelatedInstallation, active: true }]);
+    expect(await acceptLivePush({ deliveryId: randomUUID(), repositoryId: remaining, installationId, ownerId,
+      repositoryNodeId: `R_controlled_${remaining}`, ref: "refs/heads/trunk", revision: "f".repeat(40) })).toBe("unavailable");
+  } finally {
+    await client.end();
+  }
+}
+
+test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL live runtime for authorization, indexing and signed revocation", async (context) => {
   const controlUrl = requireLocalDatabaseUrl(process.env.TEST_DATABASE_URL, "Verification database", "nutshell_alpha_test");
   const name = "nutshell_live_smoke_" + randomBytes(6).toString("hex");
   const target = new URL(controlUrl);
@@ -400,6 +488,7 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL li
     expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
     const readerScope = await proveControlledAssociation(config.databaseUrl, name, setupAdapter);
     await proveControlledIndexing(config.databaseUrl, setupAdapter, readerScope);
+    await proveControlledRevocation(config.databaseUrl, setupAdapter, readerScope);
     expect(outbound).not.toHaveBeenCalled();
   } finally {
     vi.unstubAllGlobals();
