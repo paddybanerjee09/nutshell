@@ -4,17 +4,24 @@
 
 A web app for individuals or teams to visualize, understand, and collaborate on AI-assisted GitHub projects.
 
-Nutshell's local alpha includes fixture sign-in and repository setup, signed synchronization and a persistent worker, an indexed repository workspace, and the vault validation CLI.
+Nutshell's local alpha includes fixture sign-in and repository setup, signed synchronization and a persistent worker, an indexed repository workspace, and the vault validation CLI. It uses real PostgreSQL for sessions, drafts, collaboration, and jobs.
 
 ## Start locally
 
-Start local PostgreSQL using [the setup guide](nutshell-vault/workflows/LOCAL_SETUP.md#start-the-local-runtime), then run:
+Use Node 24.18.0 and pnpm 11.25.0 from the workspace root. For this Windows checkout, the provisioned PostgreSQL instance listens on port `55432`.
 
 ```powershell
-pnpm install --frozen-lockfile
-pnpm alpha:setup
-pnpm alpha:dev
+$NutshellPostgres = (Resolve-Path ./.local/postgres-18.7).Path
+& "$NutshellPostgres/pgsql/bin/pg_isready.exe" -h 127.0.0.1 -p 55432 -t 3
+if ($LASTEXITCODE -ne 0) {
+  & "$NutshellPostgres/pgsql/bin/pg_ctl.exe" -D "$NutshellPostgres/data" -l "$NutshellPostgres/postgres.log" -w start
+}
+pnpm.cmd install --frozen-lockfile
+pnpm.cmd alpha:setup
+pnpm.cmd alpha:dev
 ```
+
+For a fresh machine or a different PostgreSQL installation, use the database and environment steps in the [local setup guide](nutshell-vault/workflows/LOCAL_SETUP.md#start-the-local-runtime).
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Sign in as Coordinator and open Field Notes to create a setup proposal and simulate its merge. Once the repository is indexed, select **Open workspace** to browse the snapshot. A Markdown note’s pane actions offer **Read**, **Live preview**, and **Source**. Use **Edit draft** and **Save draft** to save private Markdown for your account. **Propose change** prepares a checked simulated proposal. **Simulate change merge** publishes it through the worker, and the workspace confirms the indexed revision. Open **Memory Graph**, **Product Map**, **Team tasks**, or **Team notes** from the workspace ribbon or command palette. Team tasks include a copyable brief with the indexed source revision. Team notes use a separate structured editor and save to the repository's collaboration database.
 
@@ -26,7 +33,9 @@ Open **History** to browse accepted product changes by entity or kind. Follow co
 
 The entry page includes a synthetic editor and graph demo. **Open full demo** gives you an uncropped view before sign-in.
 
-Run `pnpm alpha:verify` on the dedicated test database. Run `pnpm alpha:reset` to restore its generated fixture scenario once verification has stopped. `pnpm alpha:stop` stops the interactive web and worker. The setup guide gives the Playwright installation command for your platform.
+Run `pnpm alpha:verify` on the dedicated test database. `pnpm alpha:verify --webpack` runs the complete verifier with Next.js's Webpack build. Use this option if Windows runs out of native memory in Turbopack. Run `pnpm alpha:reset` to restore its generated fixture scenario once verification has stopped. `pnpm alpha:stop` stops the interactive web and worker. The [setup guide](nutshell-vault/workflows/LOCAL_SETUP.md) includes Playwright installation and local operations.
+
+The [acceptance ledger](nutshell-vault/runs/ACCEPTANCE.md) records local, simulated-provider, live-provider, and source PR evidence. The configured live GitHub mode supports verified setup, read-only indexed workspaces, reconciliation, signed revocation, and exact-head Checks. Editing, Markdown proposals, and collaboration are available in local-alpha mode. Actual OAuth consent, installation, and disposable GitHub repository operations require the resources and authorization described in the [GitHub setup guide](nutshell-vault/workflows/LOCAL_SETUP.md#configure-the-product-runtime-separately).
 
 ## Start the first megarun
 

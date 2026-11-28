@@ -74,12 +74,11 @@ Run `pnpm alpha:reset` to restore the generated verification scenario after veri
 
 On this Windows host, Chromium's native child stayed alive after the browser connection closed, including with a synthetic page and a direct DevTools connection. Playwright Firefox exited successfully in the independent Windows probe. The verifier uses Firefox on Windows. It closes its own test pages, disconnects the Playwright client, and checks graceful native browser shutdown separately from the browser journey. See the [acceptance ledger](../runs/ACCEPTANCE.md#decision) for the application checks.
 
-If Windows runs out of native memory during the Turbopack build, use a temporary PowerShell session for the supported Webpack production build and scoped worker verification. Typechecking remains enabled in the build. Record both results in the acceptance ledger. [Next.js bundler options](https://nextjs.org/docs/app/api-reference/turbopack#using-webpack-instead).
+If Windows runs out of native memory during the Turbopack build, use a temporary PowerShell session and select the supported Webpack production build. The same test, TypeScript, worker, browser, and teardown steps run. [Next.js bundler options](https://nextjs.org/docs/app/api-reference/turbopack#using-webpack-instead).
 
 ```powershell
 $env:NODE_OPTIONS = '--max-old-space-size=768 --max-semi-space-size=8'
-pnpm.cmd --filter '@nutshell/web' exec next build --webpack
-pnpm.cmd exec node scripts/alpha.ts verify-worker
+pnpm.cmd alpha:verify --webpack
 ```
 
 The Windows optimized build uses two Next.js page-data workers after a worker exited with code `3221226505` during an eleven-worker build. Next.js selects the configured worker limit at build time. [Next.js build source](https://github.com/vercel/next.js/blob/canary/packages/next/src/build/index.ts)
@@ -93,6 +92,14 @@ Web startup reports the failed phase and waits for HTTP 200 from its own loopbac
 The pinned runtime uses Node 24.18.0, pnpm 11.25.0, PostgreSQL 18.7, Next.js 16.4.6, Better Auth 1.7.28, Drizzle 0.45.4, and pg-boss 12.40.0.
 
 The workspace graphs use React Flow 13.0.3 with d3-force 3.0.1. The lockfile pins the graph and editor dependencies used by the app. [React Flow layout guide](https://reactflow.dev/learn/layouting/layouting) and [d3-force reference](https://d3js.org/d3-force).
+
+### Operate and recover local state
+
+For a fixture sync failure, inspect the current revision and `fixture_delivery` for the affected repository, connection epoch, receipt status, attempts, and failure code. Restart the worker to resume queued work. A previously accepted receipt keeps its identity on redelivery. Correct invalid source in a new simulated proposal and merge that proposal to produce a new signed revision. Use `alpha:reset` only for the generated verification scenario.
+
+Retain private media in `.local/media/alpha` together with the corresponding `screenshot_asset` metadata. Keep referenced assets and the accepted history that supplies their source context. Retain the normal application database, private media directory, and `.env` in private backups. Database sessions, drafts, collaboration, published provenance, and original media have local state that Git alone cannot supply. Treat the test database and `.local/media/verify` as disposable verification data.
+
+Stop the interactive web and worker before taking a matched database and media backup. Use PostgreSQL `pg_dump -Fc` and restore into a newly created empty database with `pg_restore --exit-on-error --single-transaction --no-owner --no-privileges`. Check tables, repository scope, and expected retained records in the restored copy before using it. Match the restore with the saved private media and environment secret. The acceptance run tested the database portion against the synthetic verification database and removed the disposable restore afterward.
 
 ### Configure the product runtime separately
 

@@ -30,7 +30,7 @@ async function runPnpm(args: string[], env: NodeJS.ProcessEnv = process.env) {
   });
 }
 
-async function verify(scope: "all" | "worker" = "all") {
+async function verify(scope: "all" | "worker" = "all", bundler: "default" | "webpack" = "default") {
   const env = {
     ...process.env,
     NEXT_TELEMETRY_DISABLED: "1",
@@ -48,7 +48,8 @@ async function verify(scope: "all" | "worker" = "all") {
       const testArgs = ["test", "--no-file-parallelism"];
       if (process.platform === "win32") testArgs.push("--pool=threads");
       await runPnpm(testArgs, env);
-      await runPnpm(["--filter", "@nutshell/web", "build"], env);
+      const buildArgs = bundler === "webpack" ? ["exec", "next", "build", "--webpack"] : ["build"];
+      await runPnpm(["--filter", "@nutshell/web", ...buildArgs], env);
     }
 
     const web = await startServices(env, true, undefined, "web");
@@ -116,10 +117,15 @@ try {
       loadLocalEnv(false);
       await runDevelopment({ ...process.env, NEXT_TELEMETRY_DISABLED: "1", NUTSHELL_VERIFY: "0" });
       break;
-    case "verify":
+    case "verify": {
+      const args = process.argv.slice(3);
+      if (args.length > 1 || (args.length === 1 && args[0] !== "--webpack")) {
+        throw new Error("Run alpha:verify with no arguments or with --webpack.");
+      }
       loadLocalEnv(false);
-      await verify();
+      await verify("all", args[0] === "--webpack" ? "webpack" : "default");
       break;
+    }
     case "verify-worker":
       loadLocalEnv(false);
       await verify("worker");

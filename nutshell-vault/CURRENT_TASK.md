@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: local-alpha-handoff-2026-11-27
-task_state: in_progress
-task_revision: 153
+task_state: pr_open
+task_revision: 154
 repository_id: 1467144605
 branch: feature/local-alpha-handoff
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 30
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/30
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Keep the default verification and add an explicit Webpack build option that runs
 
 ## Consequences
 
-Guarded idle revision 152 is confirmed. Verify controlled provider behavior and real local PostgreSQL. Observe the draft PR before binding its identity.
+GitHub confirmed draft PR #30. The lead owns the verification option, local lifecycle and handoff. The delegate is checking native browser zoom and text composition.
 
 ## Affected files
 
