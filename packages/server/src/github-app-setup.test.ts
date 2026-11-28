@@ -22,6 +22,7 @@ const paths = [".github/workflows/owner.yml", "src/index.ts", ...baseFiles.map((
 const link = "https://github.com/team/project/pull/12";
 const marker = "Nutshell setup: 46";
 const author = { identity, userId: 892, role: "admin", canRead: true, canWrite: true, canConfigure: true } as const;
+const expected = { userId: author.userId, ownerId: identity.ownerId, nodeId: identity.nodeId };
 type Repositories = ReturnType<typeof createGitHubAppRepository>;
 
 function scenario() {
@@ -63,6 +64,17 @@ function createdPull() {
   } } };
 }
 
+function preparedSetup() {
+  const originals = new Map(paths.map((path) => [path, baseFiles.find((file) => file.path === path)?.body ?? ""]));
+  const generated = buildRepositorySetupTree([...originals].map(([path, body]) => ({ path, body })), {
+    name: identity.name, description: "Source-linked knowledge for project.", entityId: "repo_46",
+  }, "github");
+  const changed = generated.filter(({ path, body }) => originals.get(path) !== body);
+  const commit = { sha: written, parents: [{ sha: base }], commit: { message: "Nutshell setup\n\n" + marker },
+    files: changed.map(({ path }) => ({ filename: path, status: originals.has(path) ? "modified" : "added" })) };
+  return { generated, commit };
+}
+
 describe("GitHub App repository setup", () => {
   it("uses a stable repository and branch ID, atomically appends owner guidance, and reuses the exact open proposal", async () => {
     const { adapter, transport, repositories } = scenario();
@@ -75,8 +87,8 @@ describe("GitHub App repository setup", () => {
 
     const first = await adapter.openSetup(userToken, identity.installationId, identity.id);
     expect(first).toEqual({ status: "awaiting_merge", number: 12, url: link, branch: branchName, head: written, sourceRevision: base });
-    expect(repositories.verifyCurrentUserAccess).toHaveBeenCalledWith(userToken, identity.installationId, identity.id);
-    expect(repositories.readImmutableTree).toHaveBeenCalledExactlyOnceWith(identity, base);
+    expect(repositories.verifyCurrentUserAccess).toHaveBeenCalledWith(userToken, identity.installationId, identity.id, expect.any(AbortSignal));
+    expect(repositories.readImmutableTree).toHaveBeenCalledExactlyOnceWith(identity, base, expect.any(AbortSignal));
     expect(transport.userGraphql.mock.calls.every(([token]) => token === userToken)).toBe(true);
     const [readRef, createRef, commit, confirmRef, pull] = transport.userGraphql.mock.calls;
     expect(readRef?.[2]).toEqual({ repositoryId: identity.nodeId, qualifiedName: "refs/heads/" + branchName });
@@ -96,8 +108,13 @@ describe("GitHub App repository setup", () => {
     expect([...additions.values()].join("\n")).not.toMatch(/synthetic fixture|simulated setup/u);
     expect(pull?.[2]).toMatchObject({ input: { repositoryId: identity.nodeId, baseRefName: "main", headRefName: branchName } });
 
+    const { generated, commit: prepared } = preparedSetup();
     transport.userPages.mockResolvedValue([openPull()]);
-    await expect(adapter.openSetup(userToken, identity.installationId, identity.id)).resolves.toEqual(first);
+    transport.userRequest.mockResolvedValue(prepared);
+    repositories.readImmutableTree.mockImplementation(async (_identity, revision) => revision === base
+      ? { treeSha: base, paths, files: baseFiles } : { treeSha: written, paths: generated.map(({ path }) => path), files: generated });
+    await expect(adapter.openSetup(userToken, identity.installationId, identity.id, expected)).resolves.toEqual(first);
+    await expect(adapter.readSetup(userToken, identity.installationId, identity.id, expected)).resolves.toEqual(first);
     expect(transport.userGraphql).toHaveBeenCalledTimes(5);
     expect(transport.installationRequest).not.toHaveBeenCalled();
   });
@@ -118,13 +135,7 @@ describe("GitHub App repository setup", () => {
   });
 
   it("recovers an exact prepared commit and refuses to open a changed branch", async () => {
-    const generated = buildRepositorySetupTree(paths.map((path) => ({
-      path, body: baseFiles.find((file) => file.path === path)?.body ?? "",
-    })), { name: identity.name, description: "Source-linked knowledge for project.", entityId: "repo_46" }, "github");
-    const originals = new Map(paths.map((path) => [path, baseFiles.find((file) => file.path === path)?.body ?? ""]));
-    const changed = generated.filter(({ path, body }) => originals.get(path) !== body);
-    const commit = { sha: written, parents: [{ sha: base }], commit: { message: "Nutshell setup\n\n" + marker },
-      files: changed.map(({ path }) => ({ filename: path, status: originals.has(path) ? "modified" : "added" })) };
+    const { generated, commit } = preparedSetup();
 
     const retry = scenario();
     retry.repositories.readImmutableTree.mockResolvedValueOnce({ treeSha: base, paths, files: baseFiles })
@@ -143,6 +154,37 @@ describe("GitHub App repository setup", () => {
     changedBranch.transport.userGraphql.mockResolvedValueOnce({ node: { id: identity.nodeId, ref: reference(written) } });
     await expect(changedBranch.adapter.openSetup(userToken, identity.installationId, identity.id)).resolves.toEqual({ status: "conflict" });
     expect(changedBranch.transport.userGraphql).toHaveBeenCalledTimes(1);
+  });
+
+  it("observes setup as a reader and rejects changed local identity or expected source before writing", async () => {
+    const reader = scenario();
+    reader.repositories.verifyCurrentUserAccess.mockResolvedValue({ ...author, role: "read", canConfigure: false, canWrite: false });
+    await expect(reader.adapter.readSetup(userToken, identity.installationId, identity.id, expected)).resolves.toEqual({
+      status: "ready", sourceRevision: base, canConfigure: false,
+    });
+    expect(reader.transport.userGraphql).not.toHaveBeenCalled();
+
+    const mismatched = scenario();
+    await expect(mismatched.adapter.openSetup(userToken, identity.installationId, identity.id, { ...expected, ownerId: expected.ownerId + 1 }))
+      .resolves.toEqual({ status: "unavailable" });
+    expect(mismatched.transport.userPages).not.toHaveBeenCalled();
+    expect(mismatched.transport.userGraphql).not.toHaveBeenCalled();
+
+    const stale = scenario();
+    await expect(stale.adapter.openSetup(userToken, identity.installationId, identity.id, { ...expected, sourceRevision: moved }))
+      .resolves.toEqual({ status: "stale", sourceRevision: base });
+    expect(stale.repositories.readImmutableTree).not.toHaveBeenCalled();
+    expect(stale.transport.userGraphql).not.toHaveBeenCalled();
+  });
+
+  it("refuses a setup-marked open PR whose exact files no longer match", async () => {
+    const { adapter, transport } = scenario();
+    const { commit } = preparedSetup();
+    transport.userPages.mockResolvedValue([openPull()]);
+    transport.userRequest.mockResolvedValue({ ...commit, files: [...commit.files, { filename: "src/index.ts", status: "modified" }] });
+    await expect(adapter.readSetup(userToken, identity.installationId, identity.id, expected)).resolves.toEqual({ status: "conflict" });
+    await expect(adapter.openSetup(userToken, identity.installationId, identity.id, expected)).resolves.toEqual({ status: "conflict" });
+    expect(transport.userGraphql).not.toHaveBeenCalled();
   });
 
   it("propagates a denied user write without calling installation authority", async () => {

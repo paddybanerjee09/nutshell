@@ -238,16 +238,17 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
       candidates: [...candidates.values()].sort((a, b) => `${a.owner}/${a.name}`.localeCompare(`${b.owner}/${b.name}`)) };
   }
 
-  async function verifyCurrentUserAccess(userToken: string, installationIdInput: number, repositoryIdInput: number): Promise<GitHubRepositoryAccess | null> {
+  async function verifyCurrentUserAccess(userToken: string, installationIdInput: number, repositoryIdInput: number,
+    signal?: AbortSignal): Promise<GitHubRepositoryAccess | null> {
     const installationId = parseInput(numericId, installationIdInput);
     const repositoryId = parseInput(numericId, repositoryIdInput);
     try {
-      const installations = await transport.userPages(userToken, "/user/installations?per_page=100", { key: "installations" });
+      const installations = await transport.userPages(userToken, "/user/installations?per_page=100", { key: "installations", signal });
       const listed = uniqueId(installations, installationId);
       if (!listed) return null;
       const installed = parseResponse(installation, listed);
       if (installed.suspended_at !== null || installed.app_id !== transport.appId) return null;
-      const repositories = await transport.userPages(userToken, `/user/installations/${installationId}/repositories?per_page=100`, { key: "repositories" });
+      const repositories = await transport.userPages(userToken, `/user/installations/${installationId}/repositories?per_page=100`, { key: "repositories", signal });
       const listedRepository = uniqueId(repositories, repositoryId);
       if (!listedRepository) return null;
       const candidate = parseResponse(repository, listedRepository);
@@ -259,10 +260,10 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
         owner: candidate.owner.login, name: candidate.name, defaultBranch: candidate.default_branch,
       };
       const base = repositoryPath(identity.owner, identity.name);
-      const actor = parseResponse(account, await transport.userRequest(userToken, "/user"));
-      const current = parseResponse(userRepository, await transport.userRequest(userToken, base));
+      const actor = parseResponse(account, await transport.userRequest(userToken, "/user", { signal }));
+      const current = parseResponse(userRepository, await transport.userRequest(userToken, base, { signal }));
       if (!hasIdentity(current, identity) || !current.permissions.pull) return null;
-      const grant = parseResponse(permission, await transport.userRequest(userToken, `${base}/collaborators/${actor.login}/permission`));
+      const grant = parseResponse(permission, await transport.userRequest(userToken, `${base}/collaborators/${actor.login}/permission`, { signal }));
       const role = standardRole.safeParse(grant.role_name);
       if (!role.success || grant.user.id !== actor.id || grant.user.login.toLowerCase() !== actor.login.toLowerCase()) return null;
       const adminRole = role.data === "admin";
@@ -292,10 +293,10 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
     return result.object.sha;
   }
 
-  async function readDefaultRevision(identity: GitHubRepositoryIdentity): Promise<string> {
+  async function readDefaultRevision(identity: GitHubRepositoryIdentity, signal?: AbortSignal): Promise<string> {
     const branch = parseInput(gitBranch, identity.defaultBranch);
-    const { base } = await verifyInstallationRepository(identity);
-    return readDefaultRef(identity, base, branch);
+    const { base } = await verifyInstallationRepository(identity, signal);
+    return readDefaultRef(identity, base, branch, signal);
   }
 
   async function readVerifiedTree(
@@ -338,9 +339,10 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
     return { treeSha: tree.sha, tracked, files };
   }
 
-  async function readImmutableTree(identity: GitHubRepositoryIdentity, revisionInput: string): Promise<GitHubImmutableTree> {
+  async function readImmutableTree(identity: GitHubRepositoryIdentity, revisionInput: string, callerSignal?: AbortSignal): Promise<GitHubImmutableTree> {
     const revision = parseInput(objectId, revisionInput);
-    const signal = AbortSignal.timeout(120_000);
+    const timeout = AbortSignal.timeout(120_000);
+    const signal = callerSignal ? AbortSignal.any([callerSignal, timeout]) : timeout;
     const { base } = await verifyInstallationRepository(identity, signal);
     const { treeSha, tracked, files } = await readVerifiedTree(identity, base, revision, signal, new Map());
     return { treeSha, paths: tracked.map(({ path }) => path), files };
