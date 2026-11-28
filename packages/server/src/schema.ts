@@ -73,6 +73,58 @@ export const githubRepositoryAssociation = pgTable("github_repository_associatio
   repositoryNodeId: text("repository_node_id").notNull().unique(),
 });
 
+export const githubPushDelivery = pgTable("github_push_delivery", {
+  id: text("id").primaryKey(),
+  repositoryId: numericId("repository_id").notNull().references(() => githubRepositoryAssociation.repositoryId, { onDelete: "cascade" }),
+  installationId: numericId("installation_id").notNull(),
+  ownerId: numericId("owner_id").notNull(),
+  repositoryNodeId: text("repository_node_id").notNull(),
+  connectionEpoch: integer("connection_epoch").notNull(),
+  ref: text("ref").notNull(),
+  revision: text("revision").notNull(),
+  schemaVersion: integer("schema_version").notNull(),
+  policyVersion: integer("policy_version").notNull(),
+  status: text("status", { enum: ["queued", "published", "obsolete", "invalid", "failed"] }).notNull().default("queued"),
+  failureCode: text("failure_code"),
+  attempts: integer("attempts").notNull().default(0),
+  receivedAt: time("received_at").notNull().defaultNow(),
+  availableAt: time("available_at").notNull().defaultNow(),
+  processedAt: time("processed_at"),
+}, (table) => [index("github_push_delivery_queue_idx").on(table.status, table.availableAt, table.receivedAt)]);
+
+export const githubSnapshot = pgTable("github_snapshot", {
+  repositoryId: numericId("repository_id").notNull().references(() => githubRepositoryAssociation.repositoryId, { onDelete: "cascade" }),
+  connectionEpoch: integer("connection_epoch").notNull(),
+  revision: text("revision").notNull(),
+  schemaVersion: integer("schema_version").notNull(),
+  policyVersion: integer("policy_version").notNull(),
+  projection: jsonb("projection").$type<RepositoryProjection>().notNull(),
+  indexedAt: time("indexed_at").notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.repositoryId, table.connectionEpoch, table.revision, table.schemaVersion, table.policyVersion] })]);
+
+export const githubIndexState = pgTable("github_index_state", {
+  repositoryId: numericId("repository_id").notNull().references(() => githubRepositoryAssociation.repositoryId, { onDelete: "cascade" }),
+  connectionEpoch: integer("connection_epoch").notNull(),
+  headRevision: text("head_revision").notNull(),
+  status: text("status", { enum: ["current", "invalid"] }).notNull(),
+  indexedRevision: text("indexed_revision"),
+  indexedSchemaVersion: integer("indexed_schema_version"),
+  indexedPolicyVersion: integer("indexed_policy_version"),
+}, (table) => [
+  primaryKey({ columns: [table.repositoryId, table.connectionEpoch] }),
+  foreignKey({ columns: [table.repositoryId, table.connectionEpoch, table.indexedRevision, table.indexedSchemaVersion, table.indexedPolicyVersion],
+    foreignColumns: [githubSnapshot.repositoryId, githubSnapshot.connectionEpoch, githubSnapshot.revision, githubSnapshot.schemaVersion, githubSnapshot.policyVersion] }),
+]);
+
+export const githubAcceptedChange = pgTable("github_accepted_change", {
+  repositoryId: numericId("repository_id").notNull().references(() => githubRepositoryAssociation.repositoryId, { onDelete: "cascade" }),
+  connectionEpoch: integer("connection_epoch").notNull(),
+  id: text("id").notNull(),
+  sourceRevision: text("source_revision").notNull(),
+  payload: jsonb("payload").$type<RepositoryChange>().notNull(),
+  observedAt: time("observed_at").notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.repositoryId, table.connectionEpoch, table.id] })]);
+
 export const membership = pgTable("repository_membership", {
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
   repositoryId: numericId("repository_id").notNull().references(() => repository.id, { onDelete: "cascade" }),

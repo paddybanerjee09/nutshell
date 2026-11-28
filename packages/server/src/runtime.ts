@@ -128,8 +128,14 @@ export function getFixtureDatabase() {
   return db;
 }
 
-type FixtureDatabase = ReturnType<typeof getFixtureDatabase>;
-export type FixtureTransaction = Parameters<Parameters<FixtureDatabase["transaction"]>[0]>[0];
+export type RepositoryTransaction = Parameters<Parameters<RuntimeDatabase["transaction"]>[0]>[0];
+export type FixtureTransaction = RepositoryTransaction;
+
+export function getLiveSyncRuntime() {
+  const { db, github } = getRuntime();
+  if (!github) throw new Error("GitHub synchronization requires live configuration.");
+  return { db, provider: github.repository };
+}
 
 function activeInstallation() {
   return and(eq(installation.id, repository.installationId), eq(installation.active, true));

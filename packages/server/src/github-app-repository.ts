@@ -19,6 +19,10 @@ const nodeId = z.string().min(1).max(256).refine((value) => value.isWellFormed()
 const gitBranch = z.string().min(1).max(255).refine((value) => value.isWellFormed() && value !== "@"
   && !/[\s\\~^:?*[\p{Cc}]/u.test(value) && !value.includes("..") && !value.includes("@{")
   && !value.endsWith(".") && value.split("/").every((segment) => segment && !segment.startsWith(".") && !segment.endsWith(".lock")));
+
+export function isGitHubBranch(value: unknown): value is string {
+  return gitBranch.safeParse(value).success;
+}
 const treePath = z.string().min(1).max(512).refine((value) => value.isWellFormed()
   && !/[\\:<>"|?*[\]{}\p{Cc}]|%(?:00|2e|2f|5c)/iu.test(value)
   && value.split("/").length <= 32
@@ -65,6 +69,7 @@ type GitHubRepositoryRole = z.infer<typeof standardRole>;
 export type GitHubRepositoryIdentity = {
   id: number; nodeId: string; installationId: number; ownerId: number; owner: string; name: string; defaultBranch: string;
 };
+export type GitHubInstalledRepositoryScope = { repositoryId: number; installationId: number; ownerId: number; repositoryNodeId: string };
 export type GitHubRepositoryAccess = {
   identity: GitHubRepositoryIdentity;
   userId: number;
@@ -285,6 +290,25 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
     return { base, archived: current.archived };
   }
 
+  async function verifyInstalledRepository(input: GitHubInstalledRepositoryScope, signal?: AbortSignal): Promise<GitHubRepositoryIdentity | null> {
+    const repositoryId = parseInput(numericId, input.repositoryId);
+    const installationId = parseInput(numericId, input.installationId);
+    const ownerId = parseInput(numericId, input.ownerId);
+    const expectedNode = parseInput(nodeId, input.repositoryNodeId);
+    try {
+      const current = parseResponse(repository, await transport.installationRequest({
+        installationId, repositoryIds: [repositoryId], permissions: { metadata: "read" },
+      }, `/repositories/${repositoryId}`, { signal }));
+      if (current.id !== repositoryId || current.node_id !== expectedNode || current.owner.id !== ownerId ||
+          !current.private || current.disabled || current.archived) return null;
+      return { id: repositoryId, installationId, ownerId, nodeId: current.node_id, owner: current.owner.login,
+        name: current.name, defaultBranch: current.default_branch };
+    } catch (error) {
+      if (error instanceof GitHubTransportError && ["unauthenticated", "forbidden", "not_found"].includes(error.code)) return null;
+      throw error;
+    }
+  }
+
   async function readDefaultRef(identity: GitHubRepositoryIdentity, base: string, branch: string, signal?: AbortSignal): Promise<string> {
     const path = branch.split("/").map(encodeURIComponent).join("/");
     const result = parseResponse(revisionReference,
@@ -463,7 +487,7 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
     return { rule: required ? "required" : "unknown", bypass: "unknown" };
   }
 
-  return { discoverConnections, verifyCurrentUserAccess, readDefaultRevision, readImmutableTree, observePullRequestHead, readPullRequestComparison, publishPullRequestCheck,
+  return { discoverConnections, verifyCurrentUserAccess, verifyInstalledRepository, readDefaultRevision, readImmutableTree, observePullRequestHead, readPullRequestComparison, publishPullRequestCheck,
     readValidationStatus, readBranchCheckEnforcement };
 }
 
