@@ -25,11 +25,13 @@ The browser starts GitHub authorization with a same-origin POST and accepts only
 
 GitHub repository discovery matches the App's JWT-authenticated identity and uses the linked user's token to list installations and readable private repositories. It bounds pagination and excludes suspended installations and mismatched owners. The install link uses the verified App slug and the fixed GitHub.com destination. [GitHub App installation API](https://docs.github.com/en/rest/apps/installations?apiVersion=2026-03-10) and [installation URL format](https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party).
 
+An explicit connection revalidates current user access before any local write. The transaction checks the session and linked GitHub account again and locks stable local connection state. A current administrator can create a missing association. A reader can add a missing membership to the same active association. Revoked memberships, inactive connections, changed epochs, and different owners or node identities fail closed. Existing associations and their private collaboration records stay scoped to their original owner.
+
 ## Consequences
 
 Dedicated PostgreSQL tests covered cookie flags, session persistence, cross-repository denial, access revocation, and setup preservation of revoked grants. The live adapter and authorization on later product surfaces are tracked in [the acceptance ledger](../../runs/ACCEPTANCE.md).
 
-Controlled Better Auth HTTP and refresh tests cover valid and rejected state binding, encrypted storage, credential expiry, rotation, and disabled browser token endpoints. External OAuth consent, managed onboarding, and indexed workspace use remain separate gates.
+Controlled Better Auth HTTP and refresh tests cover valid and rejected state binding, encrypted storage, credential expiry, rotation, and disabled browser token endpoints. External OAuth consent, setup proposal publication, and indexed live workspace use have separate evidence.
 
 Controlled authorization tests cover mismatched accounts, provider denial, ownership transfer, reconnects, and revocation between requests.
 
