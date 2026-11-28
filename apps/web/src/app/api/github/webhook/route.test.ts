@@ -2,12 +2,14 @@ import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "@nutshell/server/config";
 import { acceptFixtureDelivery } from "@nutshell/server/fixture-sync";
+import { acceptLivePullCheck } from "@nutshell/server/github-live-checks";
 import { acceptLiveRevocation } from "@nutshell/server/github-live-revocation";
 import { acceptLivePush } from "@nutshell/server/github-live-sync";
 import { POST } from "./route.ts";
 
 vi.mock("@nutshell/server/config", () => ({ loadConfig: vi.fn() }));
 vi.mock("@nutshell/server/fixture-sync", () => ({ acceptFixtureDelivery: vi.fn() }));
+vi.mock("@nutshell/server/github-live-checks", () => ({ acceptLivePullCheck: vi.fn() }));
 vi.mock("@nutshell/server/github-live-revocation", () => ({ acceptLiveRevocation: vi.fn() }));
 vi.mock("@nutshell/server/github-live-sync", () => ({ acceptLivePush: vi.fn() }));
 
@@ -114,11 +116,12 @@ describe("fixture webhook ingress", () => {
     expect(acceptFixtureDelivery).not.toHaveBeenCalled();
   });
 
-  it("ignores live revocation events in fixture mode without parsing their payload", async () => {
-    const response = await POST(request("{", sign("{"), config.origin, "installation"));
+  it.each(["installation", "pull_request"])("ignores live %s events in fixture mode without parsing their payload", async (event) => {
+    const response = await POST(request("{", sign("{"), config.origin, event));
 
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({ status: "ignored" });
+    expect(acceptLivePullCheck).not.toHaveBeenCalled();
     expect(acceptLiveRevocation).not.toHaveBeenCalled();
     expect(acceptFixtureDelivery).not.toHaveBeenCalled();
   });
@@ -184,10 +187,11 @@ describe("live webhook ingress", () => {
   });
 
   it("ignores a verified unsupported event without parsing its payload", async () => {
-    const response = await POST(liveRequest("{", "pull_request"));
+    const response = await POST(liveRequest("{", "merge_group"));
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({ status: "ignored" });
     expect(acceptLivePush).not.toHaveBeenCalled();
+    expect(acceptLivePullCheck).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -234,6 +238,98 @@ describe("live webhook ingress", () => {
       .mockRejectedValueOnce(new Error("controlled internal details"));
     for (const [statusCode, status] of [[202, "duplicate"], [404, "unavailable"], [503, "unavailable"]]) {
       const response = await POST(liveRequest(rawLivePush));
+      expect(response.status).toBe(statusCode);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      await expect(response.json()).resolves.toEqual({ status });
+    }
+  });
+});
+
+describe("live pull request check ingress", () => {
+  const base = { ref: livePush.repository.default_branch, sha: "b".repeat(40), repo: { id: livePush.repository.id } };
+  const head = { ref: "feature/note", sha: "d".repeat(40), repo: { id: livePush.repository.id } };
+  const pull = { number: 37, state: "open", base, head };
+  const event = "pull_request";
+  const payload = {
+    action: "opened", number: pull.number, pull_request: pull,
+    repository: livePush.repository, installation: livePush.installation, sender: livePush.sender,
+    after: "c".repeat(40), before: "e".repeat(40),
+  };
+  const raw = JSON.stringify(payload, null, 2);
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(loadConfig).mockReturnValue(liveConfig);
+    vi.mocked(acceptLivePullCheck).mockResolvedValue("accepted");
+  });
+
+  it.each(["opened", "reopened", "synchronize", "ready_for_review"])("enqueues the immutable same-repository comparison on %s", async (action) => {
+    const response = await POST(liveRequest(JSON.stringify({ ...payload, action }), event));
+
+    expect(response.status).toBe(202);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({ status: "accepted" });
+    expect(acceptLivePullCheck).toHaveBeenCalledExactlyOnceWith({
+      deliveryId, repositoryId: livePush.repository.id, installationId: livePush.installation.id,
+      ownerId: livePush.repository.owner.id, repositoryNodeId: livePush.repository.node_id,
+      pullNumber: pull.number, baseBranch: base.ref, baseRevision: base.sha, headRevision: head.sha,
+    });
+    expect(acceptLivePush).not.toHaveBeenCalled();
+    expect(acceptLiveRevocation).not.toHaveBeenCalled();
+    expect(acceptFixtureDelivery).not.toHaveBeenCalled();
+  });
+
+  it("verifies the exact live HMAC before parsing pull data", async () => {
+    expect((await POST(request(raw, sign(raw), liveConfig.origin, event))).status).toBe(401);
+    expect((await POST(request(JSON.stringify(payload), sign(raw, liveConfig.githubApp.webhookSecret), liveConfig.origin, event))).status).toBe(401);
+    expect((await POST(liveRequest("{", event))).status).toBe(400);
+    expect(acceptLivePullCheck).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { action: "closed", pull_request: undefined },
+    { action: "edited" },
+    { action: "enqueued" },
+    { pull_request: { ...pull, state: "closed" } },
+    { pull_request: { ...pull, head: { ...head, repo: null } } },
+    { pull_request: { ...pull, head: { ...head, repo: { id: livePush.repository.id + 1 } } } },
+    { pull_request: { ...pull, base: { ...base, ref: "release/other" } } },
+    { pull_request: { ...pull, head: { ...head, ref: "gh-readonly-queue/release/stable/pr-37" } } },
+    { pull_request: { ...pull, head: { ...head, ref: "refs/heads/gh-readonly-queue/release/stable/pr-37" } } },
+  ])("ignores a pull outside the supported comparison scope %j", async (edit) => {
+    const response = await POST(liveRequest(JSON.stringify({ ...payload, ...edit }), event));
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ status: "ignored" });
+    expect(acceptLivePullCheck).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { number: Number.MAX_SAFE_INTEGER + 1 },
+    { pull_request: { ...pull, number: pull.number + 1 } },
+    { installation: { id: "89423" } },
+    { repository: { ...livePush.repository, owner: { id: 0 } } },
+    { repository: { ...livePush.repository, node_id: "R invalid" } },
+    { pull_request: { ...pull, base: { ...base, repo: { id: livePush.repository.id + 1 } } } },
+    { pull_request: { ...pull, head: { ...head, repo: { id: -1 } } } },
+    { pull_request: { ...pull, head: { ...head, ref: "feature/../note" } } },
+    { pull_request: { ...pull, base: { ...base, sha: "0".repeat(40) } } },
+    { pull_request: { ...pull, head: { ...head, sha: "D".repeat(40) } } },
+    { pull_request: { ...pull, head: { ...head, sha: "abcd" } } },
+  ])("rejects malformed signed comparison fields %j", async (edit) => {
+    const response = await POST(liveRequest(JSON.stringify({ ...payload, ...edit }), event));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ status: "invalid" });
+    expect(acceptLivePullCheck).not.toHaveBeenCalled();
+  });
+
+  it("keeps receipt replays and failures private", async () => {
+    vi.mocked(acceptLivePullCheck).mockResolvedValueOnce("duplicate").mockResolvedValueOnce("unavailable")
+      .mockRejectedValueOnce(new Error("controlled internal details"));
+
+    for (const [statusCode, status] of [[202, "duplicate"], [404, "unavailable"], [503, "unavailable"]]) {
+      const response = await POST(liveRequest(raw, event));
       expect(response.status).toBe(statusCode);
       expect(response.headers.get("cache-control")).toBe("no-store");
       await expect(response.json()).resolves.toEqual({ status });

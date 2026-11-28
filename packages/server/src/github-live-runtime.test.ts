@@ -8,6 +8,7 @@ import { loadConfig, requireLocalDatabaseUrl } from "./config.ts";
 import * as githubApp from "./github-app.ts";
 import type { GitHubRepositoryAccess } from "./github-app-repository.ts";
 import { GitHubTransportError } from "./github-app-transport.ts";
+import { acceptLivePullCheck, processNextLivePullCheck } from "./github-live-checks.ts";
 import { createGitHubLiveOnboarding } from "./github-live-onboarding.ts";
 import { acceptLiveRevocation } from "./github-live-revocation.ts";
 import { acceptLivePush, checkLiveSyncDatabase, processNextLivePush, requestGitHubReconciliation } from "./github-live-sync.ts";
@@ -31,13 +32,17 @@ function controlledRuntimeAdapter() {
   const verifyInstalledRepository = vi.fn<GitHubAdapter["repository"]["verifyInstalledRepository"]>();
   const readDefaultRevision = vi.fn<GitHubAdapter["repository"]["readDefaultRevision"]>();
   const readImmutableTree = vi.fn<GitHubAdapter["repository"]["readImmutableTree"]>();
+  const readPullRequestComparison = vi.fn<GitHubAdapter["repository"]["readPullRequestComparison"]>();
+  const publishPullRequestCheck = vi.fn<GitHubAdapter["repository"]["publishPullRequestCheck"]>();
   const original = githubApp.createGitHubAppAdapter;
   vi.spyOn(githubApp, "createGitHubAppAdapter").mockImplementation((...args) => {
     const adapter = original(...args);
     return { ...adapter, setup: { ...adapter.setup, readSetup, openSetup },
-      repository: { ...adapter.repository, verifyCurrentUserAccess, verifyInstalledRepository, readDefaultRevision, readImmutableTree } };
+      repository: { ...adapter.repository, verifyCurrentUserAccess, verifyInstalledRepository, readDefaultRevision, readImmutableTree,
+        readPullRequestComparison, publishPullRequestCheck } };
   });
-  return { readSetup, openSetup, verifyCurrentUserAccess, verifyInstalledRepository, readDefaultRevision, readImmutableTree };
+  return { readSetup, openSetup, verifyCurrentUserAccess, verifyInstalledRepository, readDefaultRevision, readImmutableTree,
+    readPullRequestComparison, publishPullRequestCheck };
 }
 
 async function proveControlledAssociation(connectionString: string, databaseName: string, adapter: ReturnType<typeof controlledRuntimeAdapter>) {
@@ -326,6 +331,63 @@ async function proveControlledIndexing(
   }
 }
 
+async function proveControlledPullChecks(connectionString: string, adapter: ReturnType<typeof controlledRuntimeAdapter>) {
+  const client = new pg.Client({ connectionString, connectionTimeoutMillis: 10_000 });
+  try {
+    await client.connect();
+    const { ownerId, nodeId: repositoryNodeId, defaultBranch: baseBranch } = identity;
+    const baseRevision = "e".repeat(40);
+    const headRevision = "f".repeat(40);
+    const pull = { ...connection, ownerId, repositoryNodeId, baseBranch, pullNumber: 53,
+      baseRevision, headRevision, deliveryId: randomUUID() };
+    const receipt = async (id: string) => (await client.query(`SELECT status, attempts, check_run_id::int, conclusion
+      FROM github_pull_check_delivery WHERE id = $1`, [id])).rows[0];
+    expect(await acceptLivePullCheck({ ...pull, ownerId: ownerId + 1 })).toBe("unavailable");
+    expect((await Promise.all([acceptLivePullCheck(pull), acceptLivePullCheck(pull)])).sort()).toEqual(["accepted", "duplicate"]);
+    expect(await acceptLivePullCheck({ ...pull, headRevision: sourceRevision })).toBe("unavailable");
+    expect(await receipt(pull.deliveryId)).toEqual({ status: "queued", attempts: 0, check_run_id: null, conclusion: null });
+    expect(adapter.publishPullRequestCheck).not.toHaveBeenCalled();
+
+    const files = buildRepositorySetupTree([], { name: identity.name, description: "Controlled repository", entityId: "app" }, "github");
+    const baseFiles = new Map(files.map(({ path, body }) => [path, body]));
+    const comparison = { baseRevision, headRevision, baseFiles, headFiles: new Map(baseFiles), changedPaths: [] };
+    adapter.readPullRequestComparison.mockResolvedValue(comparison);
+    adapter.publishPullRequestCheck.mockImplementation(async (_repo, input) => ({
+      id: input.conclusion === "success" ? 901 : 902, head: input.expectedHead, status: "completed", conclusion: input.conclusion,
+    }));
+    await closeRuntime();
+    expect(await processNextLivePullCheck()).toBe(true);
+    expect(await receipt(pull.deliveryId)).toEqual({ status: "published", attempts: 1, check_run_id: 901, conclusion: "success" });
+    const first = adapter.publishPullRequestCheck.mock.calls[0]?.[1];
+    expect(first).toMatchObject({ pullNumber: pull.pullNumber, expectedBase: baseRevision, expectedHead: headRevision,
+      conclusion: "success", externalId: expect.stringMatching(/^nutshell-[a-f0-9]{64}$/u) });
+
+    const redelivered = { ...pull, deliveryId: randomUUID() };
+    expect(await acceptLivePullCheck(redelivered)).toBe("accepted");
+    expect(await processNextLivePullCheck()).toBe(true);
+    expect(adapter.publishPullRequestCheck.mock.calls[1]?.[1].externalId).toBe(first?.externalId);
+    expect(await receipt(redelivered.deliveryId)).toEqual({ status: "published", attempts: 1, check_run_id: 901, conclusion: "success" });
+
+    const failure = { ...pull, headRevision: "c".repeat(40), deliveryId: randomUUID() };
+    const sourcePath = "src/worker.ts";
+    adapter.readPullRequestComparison.mockResolvedValueOnce({ ...comparison, headRevision: failure.headRevision,
+      headFiles: new Map(baseFiles).set(sourcePath, "export const version = 2;\n"), changedPaths: [sourcePath] });
+    expect(await acceptLivePullCheck(failure)).toBe("accepted");
+    expect(await processNextLivePullCheck()).toBe(true);
+    expect(await receipt(failure.deliveryId)).toEqual({ status: "published", attempts: 1, check_run_id: 902, conclusion: "failure" });
+    expect(adapter.publishPullRequestCheck.mock.calls[2]?.[1]).toMatchObject({ expectedHead: failure.headRevision, conclusion: "failure" });
+
+    const obsolete = { ...pull, headRevision: "a".repeat(40), deliveryId: randomUUID() };
+    expect(await acceptLivePullCheck(obsolete)).toBe("accepted");
+    expect(await processNextLivePullCheck()).toBe(true);
+    expect(await receipt(obsolete.deliveryId)).toEqual({ status: "obsolete", attempts: 1, check_run_id: null, conclusion: null });
+    expect(adapter.publishPullRequestCheck).toHaveBeenCalledTimes(3);
+    expect(await processNextLivePullCheck()).toBe(false);
+  } finally {
+    await client.end();
+  }
+}
+
 async function proveControlledRevocation(connectionString: string, adapter: ReturnType<typeof controlledRuntimeAdapter>,
   scope: Awaited<ReturnType<typeof proveControlledAssociation>>) {
   const client = new pg.Client({ connectionString, connectionTimeoutMillis: 10_000 });
@@ -386,8 +448,11 @@ async function proveControlledRevocation(connectionString: string, adapter: Retu
     expect(await readGitHubWorkspace(coordinatorHeaders, String(repositoryId))).not.toBeNull();
 
     const pending = randomUUID();
+    const pendingCheck = randomUUID();
     expect(await acceptLivePush({ deliveryId: pending, repositoryId, installationId, ownerId, repositoryNodeId,
       ref: "refs/heads/trunk", revision: "f".repeat(40) })).toBe("accepted");
+    expect(await acceptLivePullCheck({ deliveryId: pendingCheck, repositoryId, installationId, ownerId, repositoryNodeId,
+      pullNumber: 54, baseBranch: "trunk", baseRevision: "e".repeat(40), headRevision: "f".repeat(40) })).toBe("accepted");
     expect(await acceptLiveRevocation(randomUUID(), { kind: "repository", installationId, repositoryId, repositoryNodeId })).toBe("accepted");
     expect(await readGitHubWorkspace(coordinatorHeaders, String(repositoryId))).toBeNull();
     expect(await getSession(coordinatorHeaders)).not.toBeNull();
@@ -395,6 +460,10 @@ async function proveControlledRevocation(connectionString: string, adapter: Retu
     expect(await processNextLivePush()).toBe(true);
     expect(adapter.readImmutableTree).toHaveBeenCalledTimes(treeReads);
     expect((await client.query("SELECT status FROM github_push_delivery WHERE id = $1", [pending])).rows).toEqual([{ status: "obsolete" }]);
+    const comparisonReads = adapter.readPullRequestComparison.mock.calls.length;
+    expect(await processNextLivePullCheck()).toBe(true);
+    expect(adapter.readPullRequestComparison).toHaveBeenCalledTimes(comparisonReads);
+    expect((await client.query("SELECT status FROM github_pull_check_delivery WHERE id = $1", [pendingCheck])).rows).toEqual([{ status: "obsolete" }]);
     expect((await client.query("SELECT count(*)::int AS count FROM github_snapshot WHERE repository_id = $1", [repositoryId])).rows)
       .toEqual([{ count: 2 }]);
 
@@ -413,7 +482,7 @@ async function proveControlledRevocation(connectionString: string, adapter: Retu
   }
 }
 
-test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL live runtime for authorization, indexing and signed revocation", async (context) => {
+test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL live runtime for access, indexing, Checks and signed revocation", async (context) => {
   const controlUrl = requireLocalDatabaseUrl(process.env.TEST_DATABASE_URL, "Verification database", "nutshell_alpha_test");
   const name = "nutshell_live_smoke_" + randomBytes(6).toString("hex");
   const target = new URL(controlUrl);
@@ -488,6 +557,7 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL li
     expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
     const readerScope = await proveControlledAssociation(config.databaseUrl, name, setupAdapter);
     await proveControlledIndexing(config.databaseUrl, setupAdapter, readerScope);
+    await proveControlledPullChecks(config.databaseUrl, setupAdapter);
     await proveControlledRevocation(config.databaseUrl, setupAdapter, readerScope);
     expect(outbound).not.toHaveBeenCalled();
   } finally {

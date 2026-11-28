@@ -19,24 +19,32 @@ function checkSummary(baseRevision: string, validation: ReturnType<typeof valida
 }
 
 export function createGitHubAppValidation(repository: ValidationRepository) {
+  async function preparePullRequestCheck(identity: GitHubRepositoryIdentity, input: ComparisonInput,
+    acceptedChanges?: ReadonlyMap<string, RepositoryChange>, signal?: AbortSignal) {
+    const comparison = await repository.readPullRequestComparison(identity, input, signal);
+    if (comparison.headRevision !== input.expectedHead.toLowerCase() ||
+        (input.expectedBase !== undefined && comparison.baseRevision !== input.expectedBase.toLowerCase())) {
+      throw new GitHubRepositoryError("conflict", "The pull request comparison no longer matches the requested revisions.");
+    }
+    const { baseFiles, headFiles, changedPaths } = comparison;
+    const validation = validateRepositoryChanges({ baseFiles, headFiles, changedPaths, acceptedChanges });
+    const checkInput = {
+      pullNumber: input.pullNumber,
+      expectedBase: comparison.baseRevision,
+      expectedHead: comparison.headRevision,
+      conclusion: validation.ok ? "success" as const : "failure" as const,
+      summary: checkSummary(comparison.baseRevision, validation),
+    };
+    return { baseRevision: comparison.baseRevision, headRevision: comparison.headRevision, validation, checkInput };
+  }
+
   return {
+    preparePullRequestCheck,
     async validatePullRequest(identity: GitHubRepositoryIdentity, input: ComparisonInput,
       acceptedChanges?: ReadonlyMap<string, RepositoryChange>) {
-      const comparison = await repository.readPullRequestComparison(identity, input);
-      if (comparison.headRevision !== input.expectedHead.toLowerCase() ||
-          (input.expectedBase !== undefined && comparison.baseRevision !== input.expectedBase.toLowerCase())) {
-        throw new GitHubRepositoryError("conflict", "The pull request comparison no longer matches the requested revisions.");
-      }
-      const { baseFiles, headFiles, changedPaths } = comparison;
-      const validation = validateRepositoryChanges({ baseFiles, headFiles, changedPaths, acceptedChanges });
-      const check = await repository.publishPullRequestCheck(identity, {
-        pullNumber: input.pullNumber,
-        expectedBase: comparison.baseRevision,
-        expectedHead: comparison.headRevision,
-        conclusion: validation.ok ? "success" : "failure",
-        summary: checkSummary(comparison.baseRevision, validation),
-      });
-      return { baseRevision: comparison.baseRevision, headRevision: comparison.headRevision, validation, check };
+      const { baseRevision, headRevision, validation, checkInput } = await preparePullRequestCheck(identity, input, acceptedChanges);
+      const check = await repository.publishPullRequestCheck(identity, checkInput);
+      return { baseRevision, headRevision, validation, check };
     },
   };
 }

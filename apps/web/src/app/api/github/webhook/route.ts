@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { loadConfig } from "@nutshell/server/config";
 import { acceptFixtureDelivery } from "@nutshell/server/fixture-sync";
 import { isGitHubBranch } from "@nutshell/server/github-app";
+import { acceptLivePullCheck } from "@nutshell/server/github-live-checks";
 import { acceptLiveRevocation, type LiveRevocation } from "@nutshell/server/github-live-revocation";
 import { acceptLivePush } from "@nutshell/server/github-live-sync";
 import { readBoundedBody } from "../../request-body";
@@ -11,15 +12,21 @@ export const runtime = "nodejs";
 const maxFixtureBodyBytes = 64 * 1024;
 const maxLiveBodyBytes = 1024 * 1024;
 const branchPrefix = "refs/heads/";
-const revocationEvents = new Set(["installation", "installation_repositories", "repository", "github_app_authorization"]);
+const liveEvents = new Set(["installation", "installation_repositories", "repository", "github_app_authorization", "pull_request"]);
+const pullActions = new Set(["opened", "reopened", "synchronize", "ready_for_review"]);
+const queueBranchPattern = /^(?:refs\/heads\/)?gh-readonly-queue(?:\/|$)/u;
 
 function outcome(status: string, code: number) {
   return Response.json({ status }, { status: code, headers: { "Cache-Control": "no-store" } });
 }
 
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
 function readId(value: unknown) {
   if (!value || typeof value !== "object" || !("id" in value)) return null;
-  return typeof value.id === "number" && Number.isSafeInteger(value.id) && value.id > 0 ? value.id : null;
+  return isPositiveSafeInteger(value.id) ? value.id : null;
 }
 
 function isRepositoryNodeId(value: unknown): value is string {
@@ -27,12 +34,20 @@ function isRepositoryNodeId(value: unknown): value is string {
     value.isWellFormed() && !/[\s\p{Cc}]/u.test(value);
 }
 
+function isFullRevision(value: unknown): value is string {
+  return typeof value === "string" && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(value);
+}
+
+function isZeroRevision(value: string) {
+  return /^0+$/u.test(value);
+}
+
 function readPush(value: unknown) {
   if (!value || typeof value !== "object" || !("ref" in value) || !("after" in value) ||
     !("repository" in value) || !("installation" in value)) return null;
   const { ref, after, repository, installation } = value;
   if (typeof ref !== "string" || !ref.startsWith("refs/") || ref.length > 1_024 ||
-    typeof after !== "string" || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(after)) return null;
+    !isFullRevision(after)) return null;
   const repositoryId = readId(repository);
   const installationId = readId(installation);
   if (!repositoryId || !installationId) return null;
@@ -51,6 +66,37 @@ function readLiveRepository(value: unknown) {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function readLivePullCheck(value: unknown): Omit<Parameters<typeof acceptLivePullCheck>[0], "deliveryId"> | "ignored" | "invalid" {
+  if (!isObject(value) || typeof value.action !== "string") return "invalid";
+  if (!pullActions.has(value.action)) return "ignored";
+
+  const pull = value.pull_request;
+  if (!isObject(pull)) return "invalid";
+  if (pull.state === "closed") return "ignored";
+  if (pull.state !== "open" || !isObject(pull.base) || !isObject(pull.head)) return "invalid";
+
+  const { head, base } = pull;
+  const pullNumber = value.number;
+  const repositoryId = readId(value.repository);
+  const installationId = readId(value.installation);
+  const repository = readLiveRepository(value.repository);
+  if (!isPositiveSafeInteger(pullNumber) || pull.number !== pullNumber || !repositoryId ||
+    readId(base.repo) !== repositoryId || !installationId || !repository) return "invalid";
+
+  if (head.repo === null) return "ignored";
+  const headRepositoryId = readId(head.repo);
+  const { ref: baseBranch, sha: baseRevision } = base;
+  const { ref: headBranch, sha: headRevision } = head;
+  if (!headRepositoryId || !isGitHubBranch(baseBranch) || !isGitHubBranch(headBranch)) return "invalid";
+  if (headRepositoryId !== repositoryId || baseBranch !== repository.defaultBranch ||
+    queueBranchPattern.test(baseBranch) || queueBranchPattern.test(headBranch)) return "ignored";
+
+  if (!isFullRevision(baseRevision) || !isFullRevision(headRevision) ||
+    isZeroRevision(baseRevision) || isZeroRevision(headRevision)) return "invalid";
+  const { ownerId, repositoryNodeId } = repository;
+  return { repositoryId, installationId, ownerId, repositoryNodeId, pullNumber, baseBranch, baseRevision, headRevision };
 }
 
 function readLiveRevocation(event: string, value: unknown): LiveRevocation | "ignored" | "invalid" {
@@ -120,7 +166,7 @@ export async function POST(request: Request): Promise<Response> {
     !deliveryId || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(deliveryId)) {
     return outcome("invalid", 400);
   }
-  if (event !== "push" && (config.mode !== "live" || !revocationEvents.has(event))) return outcome("ignored", 202);
+  if (event !== "push" && (config.mode !== "live" || !liveEvents.has(event))) return outcome("ignored", 202);
 
   let body: unknown;
   try {
@@ -130,6 +176,14 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    if (event === "pull_request") {
+      const target = readLivePullCheck(body);
+      if (target === "ignored") return outcome("ignored", 202);
+      if (target === "invalid") return outcome("invalid", 400);
+      const status = await acceptLivePullCheck({ deliveryId, ...target });
+      return outcome(status, status === "unavailable" ? 404 : 202);
+    }
+
     if (event !== "push") {
       const target = readLiveRevocation(event, body);
       if (target === "ignored") return outcome("ignored", 202);
@@ -140,7 +194,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const push = readPush(body);
     if (!push) return outcome("invalid", 400);
-    if (push.deleted || /^0+$/u.test(push.revision)) return outcome("ignored", 202);
+    if (push.deleted || isZeroRevision(push.revision)) return outcome("ignored", 202);
 
     const { repositoryId, installationId, revision, ref } = push;
     const delivery = { deliveryId, repositoryId, installationId, revision };

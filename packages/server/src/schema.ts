@@ -104,6 +104,28 @@ export const githubPushDelivery = pgTable("github_push_delivery", {
     table.schemaVersion, table.policyVersion).where(sql`source = 'reconcile' AND status = 'queued'`),
 ]);
 
+export const githubPullCheckDelivery = pgTable("github_pull_check_delivery", {
+  id: text("id").primaryKey(),
+  repositoryId: numericId("repository_id").notNull().references(() => githubRepositoryAssociation.repositoryId, { onDelete: "cascade" }),
+  installationId: numericId("installation_id").notNull(),
+  ownerId: numericId("owner_id").notNull(),
+  repositoryNodeId: text("repository_node_id").notNull(),
+  connectionEpoch: integer("connection_epoch").notNull(),
+  pullNumber: numericId("pull_number").notNull(),
+  baseBranch: text("base_branch").notNull(),
+  baseRevision: text("base_revision").notNull(),
+  headRevision: text("head_revision").notNull(),
+  policyVersion: integer("policy_version").notNull(),
+  status: text("status", { enum: ["queued", "published", "obsolete", "failed"] }).notNull().default("queued"),
+  checkRunId: numericId("check_run_id"),
+  conclusion: text("conclusion", { enum: ["success", "failure"] }),
+  failureCode: text("failure_code"),
+  attempts: integer("attempts").notNull().default(0),
+  receivedAt: time("received_at").notNull().defaultNow(),
+  availableAt: time("available_at").notNull().defaultNow(),
+  processedAt: time("processed_at"),
+}, (table) => [index("github_pull_check_delivery_queue_idx").on(table.status, table.availableAt, table.receivedAt)]);
+
 export const githubSnapshot = pgTable("github_snapshot", {
   repositoryId: numericId("repository_id").notNull().references(() => githubRepositoryAssociation.repositoryId, { onDelete: "cascade" }),
   connectionEpoch: integer("connection_epoch").notNull(),

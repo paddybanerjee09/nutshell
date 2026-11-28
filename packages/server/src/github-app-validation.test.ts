@@ -47,7 +47,7 @@ describe("live GitHub PR validation", () => {
 
     const input = { pullNumber: 7, expectedHead: headRevision.toUpperCase(), expectedBase: baseRevision.toUpperCase() };
     const result = await createGitHubAppValidation(provider).validatePullRequest(identity, input);
-    expect(provider.readPullRequestComparison).toHaveBeenCalledExactlyOnceWith(identity, input);
+    expect(provider.readPullRequestComparison).toHaveBeenCalledExactlyOnceWith(identity, input, undefined);
     expect(provider.publishPullRequestCheck).toHaveBeenCalledExactlyOnceWith(identity, {
       pullNumber: 7, expectedHead: headRevision, expectedBase: baseRevision,
       conclusion: "success", summary: expect.stringContaining(`Trusted base: ${baseRevision}`),

@@ -57,6 +57,7 @@ const pullEndpoint = z.object({
 });
 const checkRun = z.object({
   id: numericId, name: z.string().max(100), head_sha: objectId, app: z.object({ id: numericId }).nullable(),
+  external_id: z.string().max(256).nullish(),
   status: z.enum(["queued", "in_progress", "completed", "waiting", "requested", "pending"]),
   conclusion: z.enum(["action_required", "cancelled", "failure", "neutral", "skipped", "stale", "startup_failure", "success", "timed_out"]).nullable(),
 });
@@ -82,7 +83,7 @@ export type GitHubConnectionCandidate = { repositoryId: number; installationId: 
 type GitHubImmutableTree = { treeSha: string; paths: readonly string[]; files: readonly { path: string; body: string }[] };
 type TrackedTreeEntry = z.infer<typeof treeEntry>;
 type GitHubPullTarget = { pullNumber: number; expectedHead: string; expectedBase?: string };
-type GitHubCheckInput = GitHubPullTarget & { conclusion: "success" | "failure"; summary: string };
+type GitHubCheckInput = GitHubPullTarget & { conclusion: "success" | "failure"; summary: string; externalId?: string };
 export type GitHubPullComparison = {
   baseRevision: string;
   headRevision: string;
@@ -408,12 +409,14 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
     return { baseRevision: observed.base.sha, headRevision: observed.head.sha, headBranch: observed.head.ref };
   }
 
-  async function readPullRequestComparison(identity: GitHubRepositoryIdentity, input: GitHubPullTarget): Promise<GitHubPullComparison> {
+  async function readPullRequestComparison(identity: GitHubRepositoryIdentity, input: GitHubPullTarget, callerSignal?: AbortSignal): Promise<GitHubPullComparison> {
     const pullNumber = parseInput(numericId, input.pullNumber);
     const expectedHead = parseInput(objectId, input.expectedHead);
     const expectedBase = input.expectedBase === undefined ? undefined : parseInput(objectId, input.expectedBase);
     const controller = new AbortController();
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]);
+    const bounds = [controller.signal, AbortSignal.timeout(120_000)];
+    if (callerSignal) bounds.push(callerSignal);
+    const signal = AbortSignal.any(bounds);
     try {
       const { base } = await verifyInstallationRepository(identity, signal);
       const { baseRevision, headRevision, headBranch } = await observeExactPull(identity, base, { pullNumber, expectedHead, expectedBase }, signal);
@@ -442,25 +445,41 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
     return { id: run.id, head: run.head_sha, status: run.status, conclusion: run.conclusion };
   }
 
-  async function publishPullRequestCheck(identity: GitHubRepositoryIdentity, input: GitHubCheckInput): Promise<GitHubValidationStatus> {
+  async function publishPullRequestCheck(identity: GitHubRepositoryIdentity, input: GitHubCheckInput, signal?: AbortSignal): Promise<GitHubValidationStatus> {
     const head = parseInput(objectId, input.expectedHead);
     const expectedBase = input.expectedBase === undefined ? undefined : parseInput(objectId, input.expectedBase);
     const conclusion = parseInput(z.enum(["success", "failure"]), input.conclusion);
     const summary = parseInput(z.string().min(1).max(4_000), input.summary);
     const pullNumber = parseInput(numericId, input.pullNumber);
-    const { base, archived } = await verifyInstallationRepository(identity);
+    const externalId = input.externalId === undefined ? undefined : parseInput(z.string().regex(/^nutshell-[a-f0-9]{64}$/u), input.externalId);
+    if (externalId && !expectedBase) throw new GitHubRepositoryError("invalid_request", "A retry identity requires an exact expected base.");
+    const { base, archived } = await verifyInstallationRepository(identity, signal);
     if (archived) throw new GitHubRepositoryError("unsupported", "Checks cannot be published to an archived repository.");
     if (expectedBase !== undefined) {
       // Check creation binds the head SHA. GitHub has no atomic expected-base condition for this write.
-      await observeExactPull(identity, base, { pullNumber, expectedHead: head, expectedBase });
-    } else if ((await observePull(identity, base, pullNumber)).head.sha !== head) {
+      await observeExactPull(identity, base, { pullNumber, expectedHead: head, expectedBase }, signal);
+    } else if ((await observePull(identity, base, pullNumber, signal)).head.sha !== head) {
       throw new GitHubRepositoryError("conflict", "The pull request head changed before validation could be published.");
     }
+
+    if (externalId) {
+      const query = new URLSearchParams({ check_name: githubValidationCheckName, app_id: String(transport.appId), filter: "all", per_page: "100" });
+      const rows = await transport.installationPages(scope(identity, { checks: "read" }), `${base}/commits/${head}/check-runs?${query}`, {
+        key: "check_runs", repositoryId: identity.id, maxPages: 4, maxItems: 400, signal,
+      });
+      const previous = rows.map((row) => parseResponse(checkRun, row)).filter((run) => isOwnCheck(run, head) && run.external_id === externalId);
+      await observeExactPull(identity, base, { pullNumber, expectedHead: head, expectedBase }, signal);
+      if (previous.length > 1 || previous.some((run) => run.status !== "completed" || run.conclusion !== conclusion)) {
+        throw new GitHubRepositoryError("invalid_response", "GitHub returned an inconsistent retry Check.");
+      }
+      if (previous[0]) return validationStatus(previous[0]);
+    }
     const run = parseResponse(checkRun, await transport.installationRequest(scope(identity, { checks: "write" }), `${base}/check-runs`, {
-      method: "POST", body: { name: githubValidationCheckName, head_sha: head, status: "completed", conclusion,
+      method: "POST", signal, body: { name: githubValidationCheckName, head_sha: head, status: "completed", conclusion,
+        ...(externalId ? { external_id: externalId } : {}),
         output: { title: githubValidationCheckName, summary } },
     }));
-    if (!isOwnCheck(run, head) || run.status !== "completed" || run.conclusion !== conclusion) {
+    if (!isOwnCheck(run, head) || run.status !== "completed" || run.conclusion !== conclusion || (externalId && run.external_id !== externalId)) {
       throw new GitHubRepositoryError("invalid_response", "GitHub returned an unverified Check run.");
     }
     return validationStatus(run);

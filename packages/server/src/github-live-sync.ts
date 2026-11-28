@@ -5,7 +5,7 @@ import { z } from "zod";
 import { GitHubRepositoryError, isGitHubBranch, type GitHubInstalledRepositoryScope, type GitHubRepositoryIdentity } from "./github-app-repository.ts";
 import { GitHubTransportError } from "./github-app-transport.ts";
 import { getLiveSyncRuntime, withGitHubIndexAdmin, type RepositoryTransaction } from "./runtime.ts";
-import { githubAcceptedChange, githubIndexState, githubPushDelivery, githubRepositoryAssociation, githubSnapshot, installation, repository } from "./schema.ts";
+import { githubAcceptedChange, githubIndexState, githubPullCheckDelivery, githubPushDelivery, githubRepositoryAssociation, githubSnapshot, installation, repository } from "./schema.ts";
 
 const schemaVersion = 1;
 const policyVersion = 1;
@@ -26,7 +26,7 @@ type LivePush = z.infer<typeof pushSchema>;
 type PushReceipt = typeof githubPushDelivery.$inferSelect;
 type LiveIndexProvider = Pick<ReturnType<typeof getLiveSyncRuntime>["provider"], "verifyInstalledRepository" | "readDefaultRevision" | "readImmutableTree">;
 
-function activeConnection(tx: RepositoryTransaction, input: GitHubInstalledRepositoryScope) {
+export function activeLiveConnection(tx: RepositoryTransaction, input: GitHubInstalledRepositoryScope) {
   return tx.select({ epoch: repository.connectionEpoch }).from(repository)
     .innerJoin(installation, and(eq(installation.id, repository.installationId), eq(installation.active, true)))
     .innerJoin(githubRepositoryAssociation, eq(githubRepositoryAssociation.repositoryId, repository.id))
@@ -77,7 +77,7 @@ export async function acceptLivePush(input: LivePush): Promise<"accepted" | "dup
     const receipt = () => tx.select().from(githubPushDelivery).where(eq(githubPushDelivery.id, push.deliveryId));
     const [previous] = await receipt();
     if (previous) return matchesPush(previous, push) ? "duplicate" : "unavailable";
-    const [connection] = await activeConnection(tx, push);
+    const [connection] = await activeLiveConnection(tx, push);
     if (!connection) return "unavailable";
     const { deliveryId: id, ...scope } = push;
     const [stored] = await tx.insert(githubPushDelivery).values({
@@ -97,18 +97,24 @@ async function currentDefault(provider: LiveIndexProvider, job: PushReceipt, sig
   return await provider.readDefaultRevision(identity, signal) === job.revision ? identity : null;
 }
 
-async function lockPublication(tx: RepositoryTransaction, job: PushReceipt) {
+export async function lockLivePublication(tx: RepositoryTransaction, scope: GitHubInstalledRepositoryScope & { connectionEpoch: number }) {
   // Match the installation-first lock order used by the connection lifecycle.
   const [active] = await tx.select({ id: installation.id }).from(installation)
-    .where(and(eq(installation.id, job.installationId), eq(installation.active, true))).for("share");
+    .where(and(eq(installation.id, scope.installationId), eq(installation.active, true))).for("share");
   if (!active) return false;
-  const [connection] = await activeConnection(tx, job).for("no key update", { of: [repository, githubRepositoryAssociation] });
-  return connection?.epoch === job.connectionEpoch;
+  const [connection] = await activeLiveConnection(tx, scope).for("no key update", { of: [repository, githubRepositoryAssociation] });
+  return connection?.epoch === scope.connectionEpoch;
+}
+
+export async function readLiveAcceptedChanges(tx: RepositoryTransaction, repositoryId: number, connectionEpoch: number) {
+  const rows = await tx.select({ id: githubAcceptedChange.id, payload: githubAcceptedChange.payload }).from(githubAcceptedChange)
+    .where(and(eq(githubAcceptedChange.repositoryId, repositoryId), eq(githubAcceptedChange.connectionEpoch, connectionEpoch)));
+  return new Map(rows.map(({ id, payload }) => [id, payload]));
 }
 
 async function indexPush(tx: RepositoryTransaction, provider: LiveIndexProvider, job: PushReceipt, signal: AbortSignal) {
   const { repositoryId, connectionEpoch, revision } = job;
-  const [active] = await activeConnection(tx, job);
+  const [active] = await activeLiveConnection(tx, job);
   if (active?.epoch !== connectionEpoch || job.schemaVersion !== schemaVersion || job.policyVersion !== policyVersion) return obsolete;
   const identity = await currentDefault(provider, job, signal);
   if (!identity) return obsolete;
@@ -121,14 +127,12 @@ async function indexPush(tx: RepositoryTransaction, provider: LiveIndexProvider,
   }
 
   signal.throwIfAborted();
-  if (!await lockPublication(tx, job)) return obsolete;
+  if (!await lockLivePublication(tx, job)) return obsolete;
 
   const scope = { repositoryId, connectionEpoch };
   const [state] = await tx.select({ revision: githubIndexState.indexedRevision }).from(githubIndexState)
     .where(and(eq(githubIndexState.repositoryId, repositoryId), eq(githubIndexState.connectionEpoch, connectionEpoch)));
-  const rows = await tx.select({ id: githubAcceptedChange.id, payload: githubAcceptedChange.payload }).from(githubAcceptedChange)
-    .where(and(eq(githubAcceptedChange.repositoryId, repositoryId), eq(githubAcceptedChange.connectionEpoch, connectionEpoch)));
-  const acceptedChanges = new Map(rows.map(({ id, payload }) => [id, payload]));
+  const acceptedChanges = await readLiveAcceptedChanges(tx, repositoryId, connectionEpoch);
   const projection = immutable && projectRepositoryTree(new Map(immutable.files.map(({ path, body }) => [path, body])),
     state?.revision ? { acceptedChanges } : undefined);
   // Hold the repository/association lock while checking the default ref immediately before publication.
@@ -158,6 +162,7 @@ export async function checkLiveSyncDatabase() {
   await getLiveSyncRuntime().db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('lock_timeout', '5s', true)`);
     await tx.select({ id: githubPushDelivery.id }).from(githubPushDelivery).limit(1);
+    await tx.select({ id: githubPullCheckDelivery.id }).from(githubPullCheckDelivery).limit(1);
   });
 }
 
