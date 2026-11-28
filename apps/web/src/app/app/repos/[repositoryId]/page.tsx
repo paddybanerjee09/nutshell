@@ -8,6 +8,7 @@ import { readGitHubWorkspace, readRepository } from "@nutshell/server/runtime";
 import { SiteHeader } from "../../../brand";
 import { entryMode } from "../../../entry-mode";
 import { SignOut } from "../../sign-out";
+import { GitHubIndexRequest } from "./github-index-request";
 import { GitHubSetup } from "./github-setup";
 
 export const metadata: Metadata = { title: "Repository" };
@@ -45,6 +46,7 @@ export default async function RepositoryPage({ params }: { params: Promise<{ rep
           <dl className="setup-revision"><dt>Indexed revision</dt><dd><code>{snapshot.revision}</code></dd></dl>
           <a className="back-link" href={"/app/repos/" + encodeURIComponent(repository.id) + "/workspace"}>Open workspace</a>
         </>}
+        {repository.role === "admin" && snapshot?.status !== "current" && <GitHubIndexRequest repositoryId={repository.id} />}
       </section>
     </>;
   } else {

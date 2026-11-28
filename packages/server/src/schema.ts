@@ -75,6 +75,7 @@ export const githubRepositoryAssociation = pgTable("github_repository_associatio
 
 export const githubPushDelivery = pgTable("github_push_delivery", {
   id: text("id").primaryKey(),
+  source: text("source", { enum: ["webhook", "reconcile"] }).notNull().default("webhook"),
   repositoryId: numericId("repository_id").notNull().references(() => githubRepositoryAssociation.repositoryId, { onDelete: "cascade" }),
   installationId: numericId("installation_id").notNull(),
   ownerId: numericId("owner_id").notNull(),
@@ -90,7 +91,11 @@ export const githubPushDelivery = pgTable("github_push_delivery", {
   receivedAt: time("received_at").notNull().defaultNow(),
   availableAt: time("available_at").notNull().defaultNow(),
   processedAt: time("processed_at"),
-}, (table) => [index("github_push_delivery_queue_idx").on(table.status, table.availableAt, table.receivedAt)]);
+}, (table) => [
+  index("github_push_delivery_queue_idx").on(table.status, table.availableAt, table.receivedAt),
+  uniqueIndex("github_push_delivery_reconcile_idx").on(table.repositoryId, table.connectionEpoch, table.ref, table.revision,
+    table.schemaVersion, table.policyVersion).where(sql`source = 'reconcile' AND status = 'queued'`),
+]);
 
 export const githubSnapshot = pgTable("github_snapshot", {
   repositoryId: numericId("repository_id").notNull().references(() => githubRepositoryAssociation.repositoryId, { onDelete: "cascade" }),

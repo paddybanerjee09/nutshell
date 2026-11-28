@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { projectRepositoryTree } from "@nutshell/core/snapshot";
 import { and, eq, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { GitHubRepositoryError, isGitHubBranch, type GitHubInstalledRepositoryScope, type GitHubRepositoryIdentity } from "./github-app-repository.ts";
 import { GitHubTransportError } from "./github-app-transport.ts";
-import { getLiveSyncRuntime, type RepositoryTransaction } from "./runtime.ts";
+import { getLiveSyncRuntime, withGitHubIndexAdmin, type RepositoryTransaction } from "./runtime.ts";
 import { githubAcceptedChange, githubIndexState, githubPushDelivery, githubRepositoryAssociation, githubSnapshot, installation, repository } from "./schema.ts";
 
 const schemaVersion = 1;
@@ -34,8 +35,36 @@ function activeConnection(tx: RepositoryTransaction, input: GitHubInstalledRepos
 }
 
 function matchesPush(receipt: PushReceipt, push: LivePush): boolean {
-  return receipt.repositoryId === push.repositoryId && receipt.installationId === push.installationId &&
+  return receipt.source === "webhook" && receipt.repositoryId === push.repositoryId && receipt.installationId === push.installationId &&
     receipt.ownerId === push.ownerId && receipt.repositoryNodeId === push.repositoryNodeId && receipt.ref === push.ref && receipt.revision === push.revision;
+}
+
+export type GitHubIndexRequestResult = { status: "queued" | "current"; revision: string } | { status: "forbidden" | "unavailable" };
+
+export async function requestGitHubReconciliation(headers: Headers, repositoryId: string): Promise<GitHubIndexRequestResult> {
+  return withGitHubIndexAdmin(headers, repositoryId, async ({ tx, ...scope }): Promise<GitHubIndexRequestResult> => {
+    const { connectionEpoch, ref, revision } = scope;
+    const [current] = await tx.select({ revision: githubIndexState.indexedRevision }).from(githubIndexState).where(and(
+      eq(githubIndexState.repositoryId, scope.repositoryId), eq(githubIndexState.connectionEpoch, connectionEpoch),
+      eq(githubIndexState.status, "current"), eq(githubIndexState.indexedRevision, revision),
+      eq(githubIndexState.indexedSchemaVersion, schemaVersion), eq(githubIndexState.indexedPolicyVersion, policyVersion),
+    ));
+    if (current) return { status: "current", revision };
+
+    const queued = () => tx.select({ id: githubPushDelivery.id }).from(githubPushDelivery).where(and(
+      eq(githubPushDelivery.repositoryId, scope.repositoryId), eq(githubPushDelivery.connectionEpoch, connectionEpoch),
+      eq(githubPushDelivery.installationId, scope.installationId), eq(githubPushDelivery.ownerId, scope.ownerId),
+      eq(githubPushDelivery.repositoryNodeId, scope.repositoryNodeId),
+      eq(githubPushDelivery.ref, ref), eq(githubPushDelivery.revision, revision), eq(githubPushDelivery.status, "queued"),
+      eq(githubPushDelivery.schemaVersion, schemaVersion), eq(githubPushDelivery.policyVersion, policyVersion),
+    )).limit(1);
+    if (!(await queued()).length) {
+      const [work] = await tx.insert(githubPushDelivery).values({ ...scope, id: randomUUID(), source: "reconcile", schemaVersion, policyVersion })
+        .onConflictDoNothing().returning({ id: githubPushDelivery.id });
+      if (!work && !(await queued()).length) return { status: "unavailable" };
+    }
+    return { status: "queued", revision };
+  });
 }
 
 export async function acceptLivePush(input: LivePush): Promise<"accepted" | "duplicate" | "unavailable"> {

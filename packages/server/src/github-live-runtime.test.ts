@@ -9,7 +9,7 @@ import * as githubApp from "./github-app.ts";
 import type { GitHubRepositoryAccess } from "./github-app-repository.ts";
 import { GitHubTransportError } from "./github-app-transport.ts";
 import { createGitHubLiveOnboarding } from "./github-live-onboarding.ts";
-import { acceptLivePush, checkLiveSyncDatabase, processNextLivePush } from "./github-live-sync.ts";
+import { acceptLivePush, checkLiveSyncDatabase, processNextLivePush, requestGitHubReconciliation } from "./github-live-sync.ts";
 import {
   closeRuntime, connectGitHubRepository, getAuth, getSession, listGitHubConnections, listRepositories, openGitHubSetup, readGitHubSetup,
   readGitHubWorkspace,
@@ -147,7 +147,7 @@ async function proveControlledAssociation(connectionString: string, databaseName
       return proposal;
     });
     expect(await readGitHubSetup(readerHeaders, repositoryId)).toEqual({ status: "unavailable" });
-    return { readerHeaders, readerUserId: reader.userId };
+    return { readerHeaders, readerUserId: reader.userId, coordinatorHeaders, coordinatorUserId: owner.userId };
   } finally {
     await client.end();
   }
@@ -155,7 +155,7 @@ async function proveControlledAssociation(connectionString: string, databaseName
 
 async function proveControlledIndexing(
   connectionString: string, adapter: ReturnType<typeof controlledRuntimeAdapter>,
-  { readerHeaders, readerUserId }: Awaited<ReturnType<typeof proveControlledAssociation>>,
+  { readerHeaders, readerUserId, coordinatorHeaders, coordinatorUserId }: Awaited<ReturnType<typeof proveControlledAssociation>>,
 ) {
   const client = new pg.Client({ connectionString, connectionTimeoutMillis: 10_000 });
   try {
@@ -282,12 +282,50 @@ async function proveControlledIndexing(
     }
     expect(await processNextLivePush()).toBe(false);
     expect(await index()).toEqual(invalidState);
+
+    const setCoordinatorActive = (active: boolean) => client.query("UPDATE repository_membership SET active = $1 WHERE repository_id = $2 AND user_id = $3",
+      [active, connection.repositoryId, coordinatorUserId]);
+    await setCoordinatorActive(true);
+    head = unavailable.revision;
+    adapter.readDefaultRevision.mockImplementation(async () => head);
+    const repositoryId = String(connection.repositoryId);
+    const reconcile = () => requestGitHubReconciliation(coordinatorHeaders, repositoryId);
+    const defaultReads = adapter.readDefaultRevision.mock.calls.length;
+    expect(await requestGitHubReconciliation(new Headers(), repositoryId)).toEqual({ status: "unavailable" });
+    expect(await requestGitHubReconciliation(readerHeaders, repositoryId)).toEqual({ status: "forbidden" });
+    expect(adapter.readDefaultRevision).toHaveBeenCalledTimes(defaultReads);
+
+    const reconcilingReceipts = async () => (await client.query(`SELECT repository_id::int, installation_id::int, owner_id::int,
+      repository_node_id, connection_epoch, ref, revision, source, status, attempts FROM github_push_delivery WHERE source = 'reconcile'`)).rows;
+    adapter.readDefaultRevision.mockResolvedValueOnce("0".repeat(40));
+    expect(await reconcile()).toEqual({ status: "unavailable" });
+    expect(await reconcilingReceipts()).toEqual([]);
+
+    const queued = { status: "queued", revision: head };
+    expect(await Promise.all([reconcile(), reconcile()])).toEqual([queued, queued]);
+    expect(await reconcile()).toEqual(queued);
+    const scopedReceipt = { repository_id: connection.repositoryId, installation_id: connection.installationId, owner_id: identity.ownerId,
+      repository_node_id: identity.nodeId, connection_epoch: 2, ref: "refs/heads/trunk", revision: head, source: "reconcile" };
+    expect(await reconcilingReceipts()).toEqual([{ ...scopedReceipt, status: "queued", attempts: 0 }]);
+    expect(await receipt(unavailable.deliveryId)).toMatchObject({ status: "failed", attempts: 5 });
+
+    expect(await processNextLivePush()).toBe(true);
+    expect(await reconcilingReceipts()).toEqual([{ ...scopedReceipt, status: "published", attempts: 1 }]);
+    expect((await readWorkspace())?.snapshot).toMatchObject({ status: "current", headRevision: head, revision: head });
+    expect(await reconcile()).toEqual({ status: "current", revision: head });
+
+    adapter.readDefaultRevision.mockImplementationOnce(async () => {
+      await setCoordinatorActive(false);
+      return "f".repeat(40);
+    });
+    expect(await reconcile()).toEqual({ status: "unavailable" });
+    expect(await reconcilingReceipts()).toEqual([{ ...scopedReceipt, status: "published", attempts: 1 }]);
   } finally {
     await client.end();
   }
 }
 
-test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL live runtime for verified access, setup, indexing and workspace reads", async (context) => {
+test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("uses an unseeded PostgreSQL live runtime for verified access, setup, indexing, workspace reads and reconciliation", async (context) => {
   const controlUrl = requireLocalDatabaseUrl(process.env.TEST_DATABASE_URL, "Verification database", "nutshell_alpha_test");
   const name = "nutshell_live_smoke_" + randomBytes(6).toString("hex");
   const target = new URL(controlUrl);
