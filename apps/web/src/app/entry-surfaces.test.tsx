@@ -83,6 +83,8 @@ describe("mode-specific entry surfaces", () => {
     readRepository.mockResolvedValueOnce(repo);
     const overview = renderToStaticMarkup(await RepositoryPage({ params }));
     expect(overview).toContain(repo.name);
+    expect(overview).toContain("Repository setup");
+    expect(overview).toContain("Checking GitHub setup…");
     expect(overview).toContain("Workspace indexing is unavailable");
     expect(overview).not.toContain("Setup pull request");
     await expect(WorkspacePage({ params, searchParams })).rejects.toThrow("not-found");

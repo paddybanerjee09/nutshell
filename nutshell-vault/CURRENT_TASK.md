@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: live-setup-proposals-2026-11-27
-task_state: in_progress
-task_revision: 129
+task_state: pr_open
+task_revision: 130
 repository_id: 1467144605
 branch: feature/live-setup-proposals
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 24
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/24
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Reuse the checked user-token setup adapter and active local association. Recheck
 
 ## Consequences
 
-Canonical idle revision 128 is confirmed. The runtime delegate owns current authorization and server integration. The lead owns provider read/status and expected identity guard, HTTP and UI, controlled verification, and source workflow.
+GitHub confirmed draft PR #24. The provider, runtime, and repository setup panel are implemented. Verify immutable retry identity, stale source behavior, and PostgreSQL session and revocation checks before requesting the source check.
 
 ## Affected files
 
