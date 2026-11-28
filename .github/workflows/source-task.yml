@@ -16,6 +16,8 @@ concurrency:
 
 jobs:
   source-task:
+    # GitHub assigns the PR number at open. The next push binds that number in CURRENT_TASK.
+    if: github.event.action != 'opened' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -51,11 +53,10 @@ jobs:
           basic_auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
           echo "::add-mask::$basic_auth"
           export GIT_AUTH_HEADER="AUTHORIZATION: basic $basic_auth"
-          git --config-env=http.https://github.com/.extraheader=GIT_AUTH_HEADER \
-            fetch --no-tags --no-recurse-submodules --depth=1 origin "refs/pull/${PR_NUMBER}/head"
-          if [[ "$(git rev-parse --verify 'FETCH_HEAD^{commit}')" != "$PR_HEAD_SHA" ]]; then
-            echo '::error::The candidate head changed before it could be validated.'
-            exit 1
+          if ! git --config-env=http.https://github.com/.extraheader=GIT_AUTH_HEADER \
+            fetch --no-tags --no-recurse-submodules --depth=1 origin "refs/pull/${PR_NUMBER}/head" ||
+            [[ "$(git rev-parse --verify 'FETCH_HEAD^{commit}')" != "$PR_HEAD_SHA" ]]; then
+            echo 'The candidate head changed or is unavailable. The validator will confirm the current pull request before reading snapshots.'
           fi
 
       - name: Set up Node.js

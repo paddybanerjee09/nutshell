@@ -14,7 +14,9 @@ const sha = /^[0-9a-f]{40}$/;
 const actions = new Set(["opened", "reopened", "synchronize", "edited", "ready_for_review"]);
 
 type PullRef = { branch: string; sha: string };
-type Pull = { id: number; number: number; url: string; base: PullRef; head: PullRef; body: string | null };
+type Pull = {
+  id: number; number: number; state: "open" | "closed"; url: string; base: PullRef; head: PullRef; body: string | null;
+};
 type CheckerOptions = {
   event: unknown;
   token: string;
@@ -48,8 +50,9 @@ function sourceRef(value: unknown): PullRef | undefined {
 
 function pullRequest(value: unknown): Pull {
   const pull = object(value);
-  if (!pull || !positiveInteger(pull.id) || !positiveInteger(pull.number) || pull.state !== "open") {
-    throw new Error("Expected an open GitHub pull request with a stable identity.");
+  if (!pull || !positiveInteger(pull.id) || !positiveInteger(pull.number) ||
+    (pull.state !== "open" && pull.state !== "closed")) {
+    throw new Error("Expected a GitHub pull request with a stable identity.");
   }
 
   const base = sourceRef(pull.base);
@@ -62,7 +65,7 @@ function pullRequest(value: unknown): Pull {
     (typeof pull.body !== "string" || Buffer.byteLength(pull.body) > maxBodyBytes))) {
     throw new Error("Invalid GitHub pull request URL or description size.");
   }
-  return { id: pull.id, number: pull.number, url, base, head, body: pull.body };
+  return { id: pull.id, number: pull.number, state: pull.state, url, base, head, body: pull.body };
 }
 
 function eventPull(value: unknown): Pull {
@@ -73,13 +76,17 @@ function eventPull(value: unknown): Pull {
   }
   const pull = pullRequest(event.pull_request);
   if (event.number !== pull.number) throw new Error("Pull request number does not match the event.");
+  if (pull.state !== "open") throw new Error("Expected an event for an open pull request.");
   return pull;
 }
 
-function samePull(first: Pull, second: Pull): boolean {
-  return first.id === second.id && first.number === second.number && first.body === second.body &&
-    first.base.branch === second.base.branch && first.base.sha === second.base.sha &&
-    first.head.branch === second.head.branch && first.head.sha === second.head.sha;
+function obsoleteReason(event: Pull, current: Pull) {
+  if (event.id !== current.id || event.number !== current.number) {
+    throw new Error("GitHub returned a different pull request identity.");
+  }
+  if (current.state === "closed") return "closed";
+  if (event.body !== current.body || event.base.sha !== current.base.sha ||
+    event.head.branch !== current.head.branch || event.head.sha !== current.head.sha) return "superseded";
 }
 
 function marker(body: string | null): string | undefined {
@@ -168,6 +175,7 @@ export async function checkSourcePullRequest({ event, token, cwd, fetcher = fetc
   if (!token || token.length > 512 || /\s/.test(token)) throw new Error("Missing or invalid GitHub Actions token.");
   const payload = eventPull(event);
   const pullUrl = `${repositoryApi}/pulls/${payload.number}`;
+  const identity = { number: payload.number, head: payload.head.sha };
 
   async function github(path: string, status?: object): Promise<Response> {
     try {
@@ -198,11 +206,11 @@ export async function checkSourcePullRequest({ event, token, cwd, fetcher = fetc
   }
 
   const verified = await currentPull();
-  if (!samePull(payload, verified)) throw new Error("Pull request event is stale. No status was posted.");
+  const before = obsoleteReason(payload, verified);
+  if (before) return { state: "skipped" as const, reason: before, ...identity };
   const issues = await validateSnapshots(verified, cwd, readSnapshot);
-  if (!samePull(verified, await currentPull())) {
-    throw new Error("Pull request changed during validation. No status was posted.");
-  }
+  const after = obsoleteReason(payload, await currentPull());
+  if (after) return { state: "skipped" as const, reason: after, ...identity };
 
   const state = issues.length === 0 ? "success" : "failure";
   const response = await github(`${repositoryApi}/statuses/${verified.head.sha}`, {
@@ -213,7 +221,7 @@ export async function checkSourcePullRequest({ event, token, cwd, fetcher = fetc
   });
   await response.body?.cancel().catch(() => {});
   if (response.status !== 201) throw new Error(`GitHub did not create the commit status (${response.status}).`);
-  return { state, issues, number: verified.number, head: verified.head.sha };
+  return { state, issues, ...identity };
 }
 
 async function main(): Promise<number> {
@@ -228,6 +236,10 @@ async function main(): Promise<number> {
     cwd: process.cwd(),
   });
   console.log(`Source task check ${result.state} for PR #${result.number} at ${result.head}.`);
+  if (result.state === "skipped") {
+    console.log(`Pull request ${result.reason}. No commit status was posted.`);
+    return 0;
+  }
   if (result.issues.length > 0) console.log(`Validation codes: ${result.issues.join(", ")}.`);
   return result.state === "success" ? 0 : 1;
 }
