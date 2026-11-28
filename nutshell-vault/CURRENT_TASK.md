@@ -3,34 +3,35 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: null
-task_state: idle
-task_revision: 128
-repository_id: null
-branch: null
-base_branch: null
+task_id: live-setup-proposals-2026-11-27
+task_state: in_progress
+task_revision: 129
+repository_id: 1467144605
+branch: feature/live-setup-proposals
+base_branch: main
 pr_number: null
 pr_url: null
 last_verified_head: null
-lead_agent: null
-integration_checkout: null
+lead_agent: root
+integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
 ---
-# Current task
+# Live setup proposals
 
 ## Context
 
-No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
+Allow a currently verified repository administrator to open the setup pull request and show its provider-observed status after reload.
 
 ## Decision
 
-The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
+Reuse the checked user-token setup adapter and active local association. Recheck exact user, installation, owner and repository identity before setup. Display the provider's open PR separately from indexed source.
 
 ## Consequences
 
-See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
+Canonical idle revision 128 is confirmed. The runtime delegate owns current authorization and server integration. The lead owns provider read/status and expected identity guard, HTTP and UI, controlled verification, and source workflow.
 
 ## Affected files
 
-- [Task template](templates/TASK.md)
-- [Vault index](_INDEX.md)
+- [GitHub synchronization](features/github-sync/CONTEXT.md).
+- [GitHub contract](architecture/GITHUB_CONTRACT.md).
+- [Authorization context](features/auth-permissions/CONTEXT.md).
