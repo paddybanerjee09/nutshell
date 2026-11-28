@@ -3,34 +3,35 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: null
-task_state: idle
-task_revision: 136
-repository_id: null
-branch: null
-base_branch: null
+task_id: authorized-live-workspace-2026-11-27
+task_state: in_progress
+task_revision: 137
+repository_id: 1467144605
+branch: feature/authorized-live-workspace
+base_branch: main
 pr_number: null
 pr_url: null
 last_verified_head: null
-lead_agent: null
-integration_checkout: null
+lead_agent: root
+integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
 ---
-# Current task
+# Authorized live workspace
 
 ## Context
 
-No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
+Expose live GitHub indexed Markdown, product entities, and graphs through the existing workspace.
 
 ## Decision
 
-The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
+Authorize the exact current session, linked user, and active installation association before returning cached knowledge. Join the published projection on current epoch and report pending, current, stale, or invalid from the verified provider head. Reuse the workspace rendering and expose actions supported by the configured provider.
 
 ## Consequences
 
-See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
+Guarded idle revision 136 is confirmed. The runtime and workspace surfaces will be covered with controlled GitHub responses. Observe the draft PR before binding its identity.
 
 ## Affected files
 
-- [Task template](templates/TASK.md)
-- [Vault index](_INDEX.md)
+- [Workspace context](features/workspace-editor/CONTEXT.md).
+- [Authorization context](features/auth-permissions/CONTEXT.md).
+- [GitHub synchronization](features/github-sync/CONTEXT.md).
