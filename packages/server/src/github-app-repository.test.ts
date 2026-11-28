@@ -35,6 +35,13 @@ function fakeGitHub(respond: (request: RequestRecord) => Response) {
     const authorization = request.headers.get("authorization");
     const method = request.method;
     const body: unknown = request.body ? await request.json() : undefined;
+    if (url.pathname === "/app") {
+      expect(method).toBe("GET");
+      expect(authorization).toMatch(/^Bearer ey/u);
+      const record = { url, method, authorization, body };
+      requests.push(record);
+      return respond(record);
+    }
     if (url.pathname === `/app/installations/${installationId}/access_tokens` && method === "POST") {
       expect(authorization).toMatch(/^Bearer ey/u);
       const { repository_ids, permissions } = body as { repository_ids: number[]; permissions: GitHubInstallationPermissions };
@@ -103,6 +110,43 @@ function gitResponses(request: RequestRecord, tree: readonly object[], blobs = n
 const ownCheck = { id: 79, name: githubValidationCheckName, head_sha: revision, app: { id: appId }, status: "completed", conclusion: "success" };
 
 describe("GitHub App repository access", () => {
+  it("discovers only private readable repositories of the signed-in actor and configured App", async () => {
+    const fixture = fakeGitHub((request) => {
+      const path = request.url.pathname;
+      if (path === "/app") return Response.json({ id: appId, slug: "nutshell-fixture" });
+      expect(request.authorization).toBe(`Bearer ${userToken}`);
+      if (path === "/user") return Response.json(actor);
+      if (path === "/user/installations") return Response.json({ installations: [activeInstallation,
+        { ...activeInstallation, id: installationId + 1, suspended_at: "2026-11-25" },
+        { ...activeInstallation, id: installationId + 2, app_id: appId + 1 },
+      ] });
+      expect(path).toBe(`/user/installations/${installationId}/repositories`);
+      const allowed = { ...metadata, permissions: { pull: true, push: false, admin: false } };
+      return Response.json({ repositories: [allowed, { ...allowed, id: repositoryId + 1, private: false },
+        { ...allowed, id: repositoryId + 2, owner: { id: account.id + 1, login: "different-owner" } },
+        { ...allowed, id: repositoryId + 3, permissions: { ...allowed.permissions, pull: false } },
+      ] });
+    });
+    expect(await fixture.repo.discoverConnections(userToken)).toEqual({
+      userId: actor.id, installationUrl: "https://github.com/apps/nutshell-fixture/installations/new",
+      candidates: [{ repositoryId, installationId, owner: account.login, name: repoName }],
+    });
+    expect(fixture.requests).toHaveLength(4);
+    expect(fixture.requests.every(({ method }) => method === "GET")).toBe(true);
+  });
+
+  it.each([{ id: appId + 1, slug: "some-other-app" }, { id: appId, slug: "//foreign.invalid" }])(
+    "fails closed for a mismatched App or invalid install slug", async (app) => {
+      const fixture = fakeGitHub((request) => {
+        if (request.url.pathname === "/app") return Response.json(app);
+        if (request.url.pathname === "/user") return Response.json(actor);
+        return Response.json({ installations: [activeInstallation] });
+      });
+      await expect(fixture.repo.discoverConnections(userToken)).rejects.toMatchObject({ code: "invalid_response" });
+      expect(fixture.requests).toHaveLength(3);
+    },
+  );
+
   it("verifies exact stable identities and provider capabilities across paginated user-token results", async () => {
     const fixture = fakeGitHub((request) => {
       if (request.url.pathname === "/user/installations" && !request.url.searchParams.has("page")) {

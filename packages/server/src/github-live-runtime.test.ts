@@ -1,11 +1,76 @@
 import { generateKeyPairSync, randomBytes } from "node:crypto";
+import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { expect, test, vi } from "vitest";
 import { loadConfig, requireLocalDatabaseUrl } from "./config.ts";
-import { closeRuntime, getAuth, listRepositories } from "./runtime.ts";
+import type { GitHubRepositoryAccess } from "./github-app-repository.ts";
+import { createGitHubLiveOnboarding } from "./github-live-onboarding.ts";
+import { closeRuntime, connectGitHubRepository, getAuth, listGitHubConnections, listRepositories } from "./runtime.ts";
+import { account, session, user } from "./schema.ts";
 import { migrateLiveDatabase } from "./setup.ts";
 
-test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts GitHub auth on an unseeded PostgreSQL runtime", async (context) => {
+const connection = { repositoryId: 523611, installationId: 428191 };
+
+async function proveControlledAssociation(connectionString: string, databaseName: string) {
+  const client = new pg.Client({ connectionString, connectionTimeoutMillis: 10_000 });
+  try {
+    await client.connect();
+    expect((await client.query("SELECT current_database() AS name")).rows).toEqual([{ name: databaseName }]);
+    const db = drizzle(client);
+    const owner = { userId: "controlled-owner", sessionId: "controlled-owner-session", githubId: 76541, token: "ghu_controlled_owner" };
+    const reader = { userId: "controlled-reader", sessionId: "controlled-reader-session", githubId: 87652, token: "ghu_controlled_reader" };
+    await db.insert(user).values([owner, reader].map(({ userId }) => ({
+      id: userId, email: `${userId}@nutshell.invalid`, name: userId,
+    })));
+    await db.insert(session).values([owner, reader].map(({ sessionId, userId }) => ({
+      id: sessionId, userId, token: `${sessionId}-token`, expiresAt: new Date(Date.now() + 60_000),
+    })));
+    await db.insert(account).values([owner, reader].map(({ userId, githubId }) => ({
+      id: userId + "-account", userId, accountId: String(githubId), providerId: "github",
+    })));
+
+    const identity = { id: connection.repositoryId, installationId: connection.installationId, ownerId: 95433,
+      nodeId: "R_ephemeral_controlled", owner: "sample-owner", name: "sample-private-repo", defaultBranch: "trunk" };
+    const lookup = vi.fn(async (token: string): Promise<GitHubRepositoryAccess> => {
+      const configure = token === owner.token;
+      return { identity, userId: (configure ? owner : reader).githubId, role: configure ? "admin" : "read",
+        canRead: true, canWrite: configure, canConfigure: configure };
+    });
+    const service = createGitHubLiveOnboarding(db, {
+      getAccessToken: async (userId) => {
+        const actor = [owner, reader].find((candidate) => candidate.userId === userId);
+        return actor ? { status: "ready", accessToken: actor.token, accountId: String(actor.githubId) } : { status: "reauthorize" };
+      },
+      repository: {
+        discoverConnections: async () => ({ userId: owner.githubId, installationUrl: "https://github.com/apps/nutshell-smoke/installations/new",
+          candidates: [{ ...connection, owner: identity.owner, name: identity.name }] }),
+        verifyCurrentUserAccess: lookup,
+      },
+    });
+    expect(await service.list(owner)).toMatchObject({ status: "ready", candidates: [{ ...connection, owner: identity.owner, name: identity.name }] });
+    expect(await service.connect(reader, connection)).toEqual({ status: "denied" });
+    expect((await client.query("SELECT id FROM provider_installation")).rows).toEqual([]);
+
+    const connected = { status: "connected", repositoryId: String(connection.repositoryId) };
+    expect(await service.connect(owner, connection)).toEqual(connected);
+    expect(await service.connect(owner, connection)).toEqual(connected);
+    expect(await service.connect(reader, connection)).toEqual(connected);
+    expect((await client.query(`SELECT installation_id::int, name, connection_epoch, owner_id::int, repository_node_id
+      FROM repository JOIN github_repository_association ON repository_id = id WHERE id = $1`, [connection.repositoryId])).rows).toEqual([{
+      installation_id: connection.installationId, name: `${identity.owner}/${identity.name}`, connection_epoch: 1,
+      owner_id: identity.ownerId, repository_node_id: identity.nodeId,
+    }]);
+
+    await client.query("UPDATE repository_membership SET active = false WHERE repository_id = $1 AND user_id = $2", [connection.repositoryId, reader.userId]);
+    expect(await service.connect(reader, connection)).toEqual({ status: "denied" });
+    expect((await client.query("SELECT user_id, active FROM repository_membership WHERE repository_id = $1 ORDER BY user_id", [connection.repositoryId])).rows)
+      .toEqual([{ user_id: owner.userId, active: true }, { user_id: reader.userId, active: false }]);
+  } finally {
+    await client.end();
+  }
+}
+
+test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts live GitHub auth unseeded and associates only verified repositories in PostgreSQL", async (context) => {
   const controlUrl = requireLocalDatabaseUrl(process.env.TEST_DATABASE_URL, "Verification database", "nutshell_alpha_test");
   const name = "nutshell_live_smoke_" + randomBytes(6).toString("hex");
   const target = new URL(controlUrl);
@@ -57,6 +122,8 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts GitHub auth on an unsee
       await data.end();
     }
     expect(await listRepositories(new Headers())).toBeNull();
+    expect(await listGitHubConnections(new Headers())).toEqual({ status: "unavailable" });
+    expect(await connectGitHubRepository(new Headers(), connection)).toEqual({ status: "unavailable" });
 
     const send = (path: string, body: object) => getAuth().handler(new Request(config.origin + path, {
       method: "POST",
@@ -71,6 +138,7 @@ test.skipIf(process.env.NUTSHELL_VERIFY !== "1")("starts GitHub auth on an unsee
     const authorization = new URL((await begin.json()).url);
     expect(authorization.origin).toBe("https://github.com");
     expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
+    await proveControlledAssociation(config.databaseUrl, name);
     expect(outbound).not.toHaveBeenCalled();
   } finally {
     vi.unstubAllGlobals();

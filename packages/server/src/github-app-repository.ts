@@ -6,6 +6,8 @@ const maxTreeEntries = 5_000;
 const maxManagedFiles = 400;
 const maxBlobBytes = 256 * 1024;
 const maxTreeBytes = 8 * 1024 * 1024;
+const maxDiscoveryInstallations = 20;
+const maxConnectionCandidates = 500;
 const handoffPaths = new Set(["AGENTS.md", "README.md", "SPEC.md"]);
 export const githubValidationCheckName = "Nutshell validation";
 
@@ -23,6 +25,7 @@ const treePath = z.string().min(1).max(512).refine((value) => value.isWellFormed
   && value.split("/").every((segment) => segment && !/[. ]$/u.test(segment) && !/^(?:\.git|git~1)$/iu.test(segment)));
 
 const account = z.object({ id: numericId, login });
+const appIdentity = z.object({ id: numericId, slug: z.string().regex(/^[a-z\d][a-z\d-]{0,99}$/u) });
 const installation = z.object({
   id: numericId, app_id: numericId, account, suspended_at: z.string().nullable(),
   target_type: z.enum(["User", "Organization"]),
@@ -70,6 +73,7 @@ export type GitHubRepositoryAccess = {
   canWrite: boolean;
   canConfigure: boolean;
 };
+export type GitHubConnectionCandidate = { repositoryId: number; installationId: number; owner: string; name: string };
 type GitHubImmutableTree = { treeSha: string; paths: readonly string[]; files: readonly { path: string; body: string }[] };
 type TrackedTreeEntry = z.infer<typeof treeEntry>;
 type GitHubPullTarget = { pullNumber: number; expectedHead: string; expectedBase?: string };
@@ -199,6 +203,41 @@ function decodeBlob(value: unknown, sha: string, size: number): string {
 }
 
 export function createGitHubAppRepository(transport: GitHubAppTransport) {
+  async function discoverConnections(userToken: string) {
+    const signal = AbortSignal.timeout(20_000);
+    const [appReply, actorReply, installationRows] = await Promise.all([
+      transport.appRequest("/app", { signal }),
+      transport.userRequest(userToken, "/user", { signal }),
+      transport.userPages(userToken, "/user/installations?per_page=100", {
+        key: "installations", maxItems: maxDiscoveryInstallations, signal,
+      }),
+    ]);
+    const app = parseResponse(appIdentity, appReply);
+    const actor = parseResponse(account, actorReply);
+    if (app.id !== transport.appId) throw new GitHubRepositoryError("invalid_response", "GitHub returned a different App identity.");
+    const seenInstallations = new Set<number>();
+    const candidates = new Map<number, GitHubConnectionCandidate>();
+    for (const row of installationRows) {
+      const installed = parseResponse(installation, row);
+      if (seenInstallations.has(installed.id)) throw new GitHubRepositoryError("invalid_response", "GitHub repeated an installation identity.");
+      seenInstallations.add(installed.id);
+      if (installed.app_id !== app.id || installed.suspended_at !== null) continue;
+      const repositories = await transport.userPages(userToken, `/user/installations/${installed.id}/repositories?per_page=100`, {
+        key: "repositories", maxItems: maxConnectionCandidates, signal,
+      });
+      for (const value of repositories) {
+        const repo = parseResponse(userRepository, value);
+        if (!repo.permissions.pull || !repo.private || repo.disabled || repo.owner.id !== installed.account.id ||
+            repo.owner.login.toLowerCase() !== installed.account.login.toLowerCase()) continue;
+        if (candidates.has(repo.id)) throw new GitHubRepositoryError("invalid_response", "GitHub repeated a repository identity.");
+        if (candidates.size >= maxConnectionCandidates) throw new GitHubRepositoryError("limit", "Too many GitHub repositories to list.");
+        candidates.set(repo.id, { repositoryId: repo.id, installationId: installed.id, owner: repo.owner.login, name: repo.name });
+      }
+    }
+    return { userId: actor.id, installationUrl: `https://github.com/apps/${app.slug}/installations/new`,
+      candidates: [...candidates.values()].sort((a, b) => `${a.owner}/${a.name}`.localeCompare(`${b.owner}/${b.name}`)) };
+  }
+
   async function verifyCurrentUserAccess(userToken: string, installationIdInput: number, repositoryIdInput: number): Promise<GitHubRepositoryAccess | null> {
     const installationId = parseInput(numericId, installationIdInput);
     const repositoryId = parseInput(numericId, repositoryIdInput);
@@ -422,7 +461,7 @@ export function createGitHubAppRepository(transport: GitHubAppTransport) {
     return { rule: required ? "required" : "unknown", bypass: "unknown" };
   }
 
-  return { verifyCurrentUserAccess, readDefaultRevision, readImmutableTree, observePullRequestHead, readPullRequestComparison, publishPullRequestCheck,
+  return { discoverConnections, verifyCurrentUserAccess, readDefaultRevision, readImmutableTree, observePullRequestHead, readPullRequestComparison, publishPullRequestCheck,
     readValidationStatus, readBranchCheckEnforcement };
 }
 

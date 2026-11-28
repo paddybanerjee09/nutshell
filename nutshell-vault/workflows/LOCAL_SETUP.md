@@ -96,7 +96,9 @@ For separately authorized live product acceptance, supply the registered develop
 
 Configured GitHub sign-in requires `NUTSHELL_MODE=live`, explicit `NUTSHELL_DEPLOYMENT`, an HTTPS `NUTSHELL_ORIGIN`, a separate `DATABASE_URL`, and `BETTER_AUTH_SECRET`. Set `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, and `GITHUB_APP_WEBHOOK_SECRET` in the server environment. The GitHub App callback is the configured origin plus `/api/auth/callback/github`. Enable expiring user access tokens and use the permission list in the contract.
 
-With the live environment loaded, run `node scripts/live-migrate.ts` to migrate the separately provisioned database without seeding local identities. Build with `pnpm --filter @nutshell/web build`. For a loopback origin behind configured HTTPS termination, run `pnpm --filter @nutshell/web exec next start --hostname 127.0.0.1 --port 3000` and forward the configured Host. `alpha:setup`, `alpha:dev`, and the fixture worker require local-alpha mode. Configured sign-in and access to existing authorized associations are available here. Live onboarding and live indexing remain separate integration work.
+With the live environment loaded, run `node scripts/live-migrate.ts` to migrate the separately provisioned database without seeding local identities. Build with `pnpm --filter @nutshell/web build`. For a loopback origin behind configured HTTPS termination, run `pnpm --filter @nutshell/web exec next start --hostname 127.0.0.1 --port 3000` and forward the configured Host. `alpha:setup`, `alpha:dev`, and the fixture worker require local-alpha mode.
+
+After GitHub sign-in, choose **Find GitHub repositories**. The **Install Nutshell on GitHub** action opens the verified App's installation page. The App's optional setup URL can return to the configured origin plus `/app`. Refresh discovery after installation, select the private repository, and choose **Connect repository**. A current repository administrator can establish the association. Setup proposals and live indexing have separate integration work.
 
 ## Consequences
 

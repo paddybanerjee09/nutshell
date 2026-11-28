@@ -12,6 +12,9 @@ import {
   createGitHubAppAdapter, createGitHubAppAuthOptions, createGitHubAppDrizzleTokenStore, createGitHubAppUserTokens,
 } from "./github-app.ts";
 import { createGitHubLiveAccessResolver } from "./github-live-access.ts";
+import {
+  createGitHubLiveOnboarding, type ConnectGitHubRepositoryInput, type ConnectGitHubRepositoryResult, type GitHubConnectionsResult,
+} from "./github-live-onboarding.ts";
 import { personas } from "./local-fixtures.ts";
 import {
   account, githubRepositoryAssociation, installation, membership, providerGrant, repository, session, user, verification,
@@ -84,7 +87,8 @@ function createRuntime() {
       }).getAccessToken(userId);
     },
   } : undefined;
-  return { db, auth, config, pool, github };
+  const githubOnboarding = github && createGitHubLiveOnboarding(db, github);
+  return { db, auth, config, pool, github, githubOnboarding };
 }
 
 let runtime: ReturnType<typeof createRuntime> | undefined;
@@ -158,6 +162,20 @@ export async function resolveRepositoryActor(headers: Headers) {
 }
 
 export type RepositoryActor = NonNullable<Awaited<ReturnType<typeof resolveRepositoryActor>>>;
+
+export async function listGitHubConnections(headers: Headers): Promise<GitHubConnectionsResult> {
+  const { githubOnboarding } = getRuntime();
+  if (!githubOnboarding) return { status: "unavailable" };
+  const actor = await resolveRepositoryActor(headers);
+  return actor ? githubOnboarding.list(actor) : { status: "unavailable" };
+}
+
+export async function connectGitHubRepository(headers: Headers, input: ConnectGitHubRepositoryInput): Promise<ConnectGitHubRepositoryResult> {
+  const { githubOnboarding } = getRuntime();
+  if (!githubOnboarding) return { status: "unavailable" };
+  const actor = await resolveRepositoryActor(headers);
+  return actor ? githubOnboarding.connect(actor, input) : { status: "unavailable" };
+}
 
 export async function lockRepositoryGrant(tx: FixtureTransaction, actor: RepositoryActor, repositoryId: number) {
   // Lock authorization facts so a concurrent revocation cannot commit before this operation.
