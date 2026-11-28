@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: live-access-revocation-2026-11-27
-task_state: in_progress
-task_revision: 145
+task_state: pr_open
+task_revision: 146
 repository_id: 1467144605
 branch: feature/live-access-revocation
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 28
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/28
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Record negative lifecycle deliveries and revoke affected associations atomically
 
 ## Consequences
 
-Guarded idle revision 144 is confirmed. Verify controlled provider behavior and real local PostgreSQL. Observe the draft PR before binding its identity.
+GitHub confirmed draft PR #28. The lead owns atomic revocation and PostgreSQL proof. The delegate owns the signed lifecycle route and controlled payload tests.
 
 ## Affected files
 

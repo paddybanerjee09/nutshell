@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { loadConfig } from "@nutshell/server/config";
 import { acceptFixtureDelivery } from "@nutshell/server/fixture-sync";
 import { isGitHubBranch } from "@nutshell/server/github-app";
+import { acceptLiveRevocation, type LiveRevocation } from "@nutshell/server/github-live-revocation";
 import { acceptLivePush } from "@nutshell/server/github-live-sync";
 import { readBoundedBody } from "../../request-body";
 
@@ -10,6 +11,7 @@ export const runtime = "nodejs";
 const maxFixtureBodyBytes = 64 * 1024;
 const maxLiveBodyBytes = 1024 * 1024;
 const branchPrefix = "refs/heads/";
+const revocationEvents = new Set(["installation", "installation_repositories", "repository", "github_app_authorization"]);
 
 function outcome(status: string, code: number) {
   return Response.json({ status }, { status: code, headers: { "Cache-Control": "no-store" } });
@@ -18,6 +20,11 @@ function outcome(status: string, code: number) {
 function readId(value: unknown) {
   if (!value || typeof value !== "object" || !("id" in value)) return null;
   return typeof value.id === "number" && Number.isSafeInteger(value.id) && value.id > 0 ? value.id : null;
+}
+
+function isRepositoryNodeId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 256 &&
+    value.isWellFormed() && !/[\s\p{Cc}]/u.test(value);
 }
 
 function readPush(value: unknown) {
@@ -38,9 +45,48 @@ function readLiveRepository(value: unknown) {
   if (!value || typeof value !== "object" || !("owner" in value) || !("node_id" in value) || !("default_branch" in value)) return null;
   const { owner, node_id: repositoryNodeId, default_branch: defaultBranch } = value;
   const ownerId = readId(owner);
-  if (!ownerId || typeof repositoryNodeId !== "string" || repositoryNodeId.length === 0 || repositoryNodeId.length > 256 ||
-      !repositoryNodeId.isWellFormed() || /[\s\p{Cc}]/u.test(repositoryNodeId) || !isGitHubBranch(defaultBranch)) return null;
+  if (!ownerId || !isRepositoryNodeId(repositoryNodeId) || !isGitHubBranch(defaultBranch)) return null;
   return { ownerId, repositoryNodeId, defaultBranch };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function readLiveRevocation(event: string, value: unknown): LiveRevocation | "ignored" | "invalid" {
+  if (!isObject(value) || typeof value.action !== "string") return "invalid";
+  const { action, installation, repository, sender, repositories_removed: removed } = value;
+
+  if (event === "github_app_authorization") {
+    if (action !== "revoked") return "ignored";
+    const githubUserId = readId(sender);
+    return githubUserId ? { kind: "account", githubUserId } : "invalid";
+  }
+
+  if (event === "repository") {
+    if (action !== "deleted" && action !== "transferred" && action !== "publicized") return "ignored";
+    if (installation === undefined || installation === null) return "ignored";
+    const installationId = readId(installation);
+    const repositoryId = readId(repository);
+    if (!installationId || !repositoryId || !isObject(repository) || !isRepositoryNodeId(repository.node_id)) return "invalid";
+    return { kind: "repository", installationId, repositoryId, repositoryNodeId: repository.node_id };
+  }
+
+  if (event === "installation" ? action !== "deleted" && action !== "suspend" : action !== "removed") return "ignored";
+  const installationId = readId(installation);
+  const ownerId = isObject(installation) ? readId(installation.account) : null;
+  if (!installationId || !ownerId) return "invalid";
+  if (event === "installation") return { kind: "installation", installationId, ownerId };
+
+  if (!Array.isArray(removed)) return "invalid";
+  const repositoryIds = new Set<number>();
+  for (const repository of removed) {
+    const repositoryId = readId(repository);
+    if (!repositoryId) return "invalid";
+    repositoryIds.add(repositoryId);
+  }
+  if (!repositoryIds.size && value.repository_selection !== "selected") return "ignored";
+  return { kind: "repository_selection", installationId, ownerId, repositoryIds: [...repositoryIds] };
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -69,27 +115,35 @@ export async function POST(request: Request): Promise<Response> {
   if (!timingSafeEqual(digest, Buffer.from(signature, "hex"))) return outcome("unauthorized", 401);
 
   const event = request.headers.get("x-github-event");
-  const deliveryId = request.headers.get("x-github-delivery");
+  const deliveryId = request.headers.get("x-github-delivery")?.toLowerCase();
   if (!event || !/^[a-z_]{1,64}$/u.test(event) ||
-    !deliveryId || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/iu.test(deliveryId)) {
+    !deliveryId || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(deliveryId)) {
     return outcome("invalid", 400);
   }
-  if (event !== "push") return outcome("ignored", 202);
+  if (event !== "push" && (config.mode !== "live" || !revocationEvents.has(event))) return outcome("ignored", 202);
 
-  let push: ReturnType<typeof readPush>;
+  let body: unknown;
   try {
-    push = readPush(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(payload)));
+    body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(payload));
   } catch {
     return outcome("invalid", 400);
   }
-  if (!push) return outcome("invalid", 400);
-  if (push.deleted || /^0+$/u.test(push.revision)) {
-    return outcome("ignored", 202);
-  }
 
-  const { repositoryId, installationId, revision, ref } = push;
-  const delivery = { deliveryId: deliveryId.toLowerCase(), repositoryId, installationId, revision };
   try {
+    if (event !== "push") {
+      const target = readLiveRevocation(event, body);
+      if (target === "ignored") return outcome("ignored", 202);
+      if (target === "invalid") return outcome("invalid", 400);
+      const status = await acceptLiveRevocation(deliveryId, target);
+      return outcome(status, status === "unavailable" ? 404 : 202);
+    }
+
+    const push = readPush(body);
+    if (!push) return outcome("invalid", 400);
+    if (push.deleted || /^0+$/u.test(push.revision)) return outcome("ignored", 202);
+
+    const { repositoryId, installationId, revision, ref } = push;
+    const delivery = { deliveryId, repositoryId, installationId, revision };
     if (config.mode === "live") {
       if (!ref.startsWith(branchPrefix)) return outcome("ignored", 202);
       const repository = readLiveRepository(push.repository);

@@ -35,6 +35,8 @@ In live mode the webhook verifies the GitHub App HMAC over the raw body and acce
 
 Current GitHub administrators can request indexing of the provider-observed default revision from the repository overview. The durable job records whether it came from reconciliation or a signed webhook. Repeated requests for the same queued ref, epoch, and policy share one job. An already current revision needs no new job. The same worker verifies and publishes both sources.
 
+Signed lifecycle receipts and their local access changes commit atomically. The service stores a digest of the normalized target to make redelivery idempotent and keep the raw webhook outside durable storage. GitHub can report a narrowing to selected repositories without enumerating removals. Nutshell records that delivery and relies on current provider verification for each repository when no removal IDs are present. [GitHub installation repository events](https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation_repositories).
+
 Simulated setup and Markdown proposals use the same changed-path validation with repository-scoped retained events. The simulated merge checks the proposed tree again. Pending setup proposals from the earlier policy can be refreshed on the same proposal after revalidation. Signed default-branch ingestion continues to validate the actual published tree.
 
 ## Consequences
@@ -57,4 +59,5 @@ Controlled transport, repository, and setup tests cover authority separation, im
 - [Live setup route](../../../apps/web/src/app/api/repos/%5BrepositoryId%5D/github-setup/route.ts) and [repository setup panel](../../../apps/web/src/app/app/repos/%5BrepositoryId%5D/github-setup.tsx).
 - [Live push outbox and index](../../../packages/server/src/github-live-sync.ts), [persistence migration](../../../packages/server/migrations/0011_github_live_index.sql), and [configured worker](../../../apps/worker/src/main.ts).
 - [Reconciliation route](../../../apps/web/src/app/api/repos/%5BrepositoryId%5D/github-index/route.ts) and [queue source migration](../../../packages/server/migrations/0012_github_index_reconciliation.sql).
+- [Signed access revocation service](../../../packages/server/src/github-live-revocation.ts) and [receipt migration](../../../packages/server/migrations/0013_github_access_revocation.sql).
 - [Trusted change validator](../../../packages/core/src/repository-change-validation.ts), [GitHub Check orchestration](../../../packages/server/src/github-app-validation.ts), and [simulated proposal validation](../../../packages/server/src/fixture-change-validation.ts).
