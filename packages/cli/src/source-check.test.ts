@@ -125,7 +125,7 @@ describe("trusted GitHub source check", () => {
     const readSnapshot = snapshots({ revision: 4, index: table.replace("Handoff.", "") });
     const result = await checkSourcePullRequest({ event: event(), token, cwd: "trusted", fetcher, readSnapshot });
 
-    expect(result.state).toBe("failure");
+    if (result.state !== "failure") throw new Error(`Expected a failed validation, received ${result.state}.`);
     expect(result.issues).toContain("task-revision");
     expect(result.issues.some((code) => code.startsWith("index-"))).toBe(true);
     expect(fetcher.mock.lastCall?.[0]).toBe(`${api}/statuses/${head}`);
@@ -156,24 +156,46 @@ describe("trusted GitHub source check", () => {
     expect(readSnapshot).not.toHaveBeenCalled();
   });
 
-  it.each(["base", "head"] as const)("stops a stale event when the %s SHA changed", async (ref) => {
-    const pr = pull();
-    pr[ref].sha = "c".repeat(40);
-    const fetcher = provider(pr);
-    const readSnapshot = snapshots();
-    await expect(checkSourcePullRequest({ event: event(), token, cwd: "trusted", fetcher, readSnapshot }))
-      .rejects.toThrow("event is stale");
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(readSnapshot).not.toHaveBeenCalled();
-  });
+  describe.each([
+    { phase: "before reading snapshots", afterSnapshots: false },
+    { phase: "after reading snapshots", afterSnapshots: true },
+  ])("$phase", ({ afterSnapshots }) => {
+    const original = pull();
+    const closed = { ...original, state: "closed" };
+    const changedSha = "c".repeat(40);
 
-  it("does not post if the PR description changes while validation runs", async () => {
-    const fetcher = provider(pull(), pull(`Nutshell task: different-task`));
-    const readSnapshot = snapshots();
-    await expect(checkSourcePullRequest({ event: event(), token, cwd: "trusted", fetcher, readSnapshot }))
-      .rejects.toThrow("changed during validation");
-    expect(readSnapshot).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls.every(([, options]) => options?.method === "GET")).toBe(true);
+    it.each([
+      { change: "closed pull request", current: closed, reason: "closed" },
+      { change: "changed base SHA", current: { ...original, base: { ...original.base, sha: changedSha } }, reason: "superseded" },
+      { change: "changed head SHA", current: { ...original, head: { ...original.head, sha: changedSha } }, reason: "superseded" },
+      { change: "edited description", current: pull("Nutshell task: different-task"), reason: "superseded" },
+    ])("skips a $change without publishing a status", async ({ current, reason }) => {
+      const fetcher = afterSnapshots ? provider(original, current) : provider(current);
+      // A stale run must also suppress a failure that it has already computed.
+      const readSnapshot = snapshots({ revision: 4 });
+      const result = await checkSourcePullRequest({ event: event(original), token, cwd: "trusted", fetcher, readSnapshot });
+
+      expect(result).toEqual({ state: "skipped", reason, number, head });
+      expect(readSnapshot.mock.calls).toEqual(afterSnapshots ? [["trusted", base, base], ["trusted", base, head]] : []);
+      expect(fetcher.mock.calls.map(([url, options]) => [url, options?.method])).toEqual(afterSnapshots
+        ? [[`${api}/pulls/${number}`, "GET"], [`${api}/pulls/${number}`, "GET"]]
+        : [[`${api}/pulls/${number}`, "GET"]]);
+    });
+
+    it.each([
+      { change: "unexpected lifecycle state", current: { ...original, state: "merged" } },
+      { change: "different closed pull request identity", current: { ...closed, id: closed.id + 1 } },
+      { change: "different pull request number", current: { ...closed, number: number + 1, html_url: `https://github.com/${repository.full_name}/pull/${number + 1}` } },
+      { change: "foreign closed pull request repository", current: { ...closed, head: { ...closed.head, repo: { ...repository, id: repository.id + 1 } } } },
+      { change: "malformed closed pull request SHA", current: { ...closed, head: { ...closed.head, sha: "invalid" } } },
+    ])("rejects a $change without publishing a status", async ({ current }) => {
+      const fetcher = afterSnapshots ? provider(original, current) : provider(current);
+      const readSnapshot = snapshots();
+      await expect(checkSourcePullRequest({ event: event(original), token, cwd: "trusted", fetcher, readSnapshot })).rejects.toThrow();
+      expect(readSnapshot).toHaveBeenCalledTimes(afterSnapshots ? 2 : 0);
+      expect(fetcher).toHaveBeenCalledTimes(afterSnapshots ? 2 : 1);
+      expect(fetcher.mock.calls.every(([, options]) => options?.method === "GET")).toBe(true);
+    });
   });
 
   it("rejects provider errors without including the response payload", async () => {

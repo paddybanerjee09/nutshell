@@ -58,6 +58,8 @@ Agent instructions establish the workflow; local validators can check task ident
 
 The source workflow associates the task with the current GitHub PR and publishes `nutshell/source-task` on the candidate head. It installs pinned dependencies from the trusted base and validates candidate Git objects as data. The [pull_request_target guidance](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request_target) governs the boundary.
 
+The initial draft opening skips the job while GitHub assigns the PR number. The binding push triggers validation. If the current GitHub PR is already closed or its exact comparison or description superseded the event, the runner ends without publishing a commit status. Verify a passing PR-bound status on the final current head before merging.
+
 Where supported, the repository owner can require PRs and trusted checks on the default branch. GitHub permits requiring a PR without necessarily requiring human approval; preserve any existing review requirements. Availability depends on plan and configuration. Do not weaken policy or add a bypass merely to make cleanup succeed. [GitHub ruleset requirements](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
 
 ## Consequences
