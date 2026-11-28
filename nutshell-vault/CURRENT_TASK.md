@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: final-alpha-evidence-2026-11-27
-task_state: in_progress
-task_revision: 162
+task_state: ready_for_review
+task_revision: 163
 repository_id: 1467144605
 branch: codex/final-alpha-evidence
 base_branch: main
-pr_number: null
-pr_url: null
-last_verified_head: null
+pr_number: 32
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/32
+last_verified_head: b1339396486c8459dae8c3c62525a81507743387
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ Record Chrome native zoom and editor composition separately from OS keyboard inp
 
 ## Consequences
 
-Chrome verified the actual app and workspace at native 200% zoom and saved exact composition text in a local draft. OS keyboard IME remains open. PR #31 merged and canonical cleanup is verified.
+The final app, worker and database were confirmed locally. Both browser checks and the vault validator passed. GitHub skipped the job at draft opening without posting a candidate status. Verify the bound head before merging and confirm guarded cleanup.
 
 ## Affected files
 
