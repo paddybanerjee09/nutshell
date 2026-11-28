@@ -3,34 +3,35 @@ id: control-current-task
 date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
-task_id: null
-task_state: idle
-task_revision: 157
-repository_id: null
-branch: null
-base_branch: null
+task_id: source-check-lifecycle-2026-11-27
+task_state: in_progress
+task_revision: 158
+repository_id: 1467144605
+branch: codex/source-check-lifecycle
+base_branch: main
 pr_number: null
 pr_url: null
 last_verified_head: null
-lead_agent: null
-integration_checkout: null
+lead_agent: root
+integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
 ---
-# Current task
+# Source check lifecycle
 
 ## Context
 
-No feature is currently active. Every agent reads [_INDEX.md](_INDEX.md) first, then this file, before selecting relevant context.
+Prevent premature and obsolete source validation runs from producing failure emails while retaining the exact-head merge gate.
 
 ## Decision
 
-The lead starts the next feature only after verifying the canonical idle task and confirming the source preflight remains valid.
+Skip the initial draft opening. Revalidate current GitHub identity before publishing a status and finish obsolete runs without posting one.
 
 ## Consequences
 
-See [ACCEPTANCE.md](runs/ACCEPTANCE.md) for observed verification and [GIT_WORKFLOW.md](workflows/GIT_WORKFLOW.md) for the feature and cleanup procedure.
+Canonical cleanup for PR #30 is confirmed at revision 157. Open a draft for this feature, record its assigned identity, and verify the focused lifecycle cases before merging.
 
 ## Affected files
 
-- [Task template](templates/TASK.md)
-- [Vault index](_INDEX.md)
+- [Source workflow](../.github/workflows/source-task.yml).
+- [Source validator](../packages/cli/src/source-check.ts).
+- [Source workflow guide](workflows/GIT_WORKFLOW.md).
