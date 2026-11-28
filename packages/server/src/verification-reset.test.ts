@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import { beforeEach, expect, test, vi } from "vitest";
 import { fixtureGrants, fixtureRepositories, personas } from "./local-fixtures.ts";
 import { resetVerificationFixtures, withVerificationLock } from "./verification-reset.ts";
@@ -8,7 +9,8 @@ const postgres = vi.hoisted(() => ({
 }));
 vi.mock("pg", async (load) => {
   const { default: pg } = await load<typeof import("pg")>();
-  return { default: { ...pg, Client: class {
+  const { EventEmitter } = await import("node:events");
+  return { default: { ...pg, Client: class extends EventEmitter {
     connect = postgres.connect;
     end = postgres.end;
     query = postgres.query;
@@ -35,6 +37,27 @@ function replyToReset(statement: string | { text: string }): { rows: unknown[] }
 beforeEach(() => {
   vi.clearAllMocks();
   postgres.query.mockReset().mockImplementation(async (statement) => replyToReset(statement));
+});
+
+test.each(["error", "end"])("waits for verification cleanup after a PostgreSQL %s event", async (event) => {
+  const stopping = Promise.withResolvers<void>();
+  const stopped = Promise.withResolvers<void>();
+  const verification = withVerificationLock(testDatabase, async (client, signal) => {
+    const disconnected = once(signal, "abort");
+    client.emit(event, new Error("Controlled idle disconnect"));
+    await disconnected;
+    stopping.resolve();
+    await stopped.promise;
+    if (event === "error") throw new Error("A verification child lost its connection.");
+    return "unfinished verification";
+  });
+  const rejected = expect(verification).rejects.toThrow("The dedicated PostgreSQL verification connection was lost.");
+  await stopping.promise;
+  expect(postgres.end).not.toHaveBeenCalled();
+  stopped.resolve();
+  await rejected;
+  expect(postgres.end).toHaveBeenCalledOnce();
+  await expect(withVerificationLock(testDatabase, async (_client, signal) => signal.aborted)).resolves.toBe(false);
 });
 
 test.each([

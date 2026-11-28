@@ -1258,7 +1258,8 @@ async function verifyMarketingPreview(page: Page, browser: Browser, origin: stri
   }
 }
 
-export async function verifyEntryFlow(origin: string) {
+export async function verifyEntryFlow(origin: string, signal?: AbortSignal) {
+  signal?.throwIfAborted();
   if (!process.env.PLAYWRIGHT_BROWSERS_PATH && existsSync(".local/playwright-preflight/browsers")) {
     process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(".local/playwright-preflight/browsers");
   }
@@ -1267,9 +1268,13 @@ export async function verifyEntryFlow(origin: string) {
   const server = await browserType.launchServer({ headless: true, host: "127.0.0.1", timeout: 30_000 });
   let journeyFailure: { error: unknown } | null = null;
   let client: Browser | null = null;
+  const disconnect = () => { void client?.close().catch(() => {}); };
+  signal?.addEventListener("abort", disconnect, { once: true });
   try {
+    signal?.throwIfAborted();
     const browser = await browserType.connect(server.wsEndpoint(), { timeout: 10_000 });
     client = browser;
+    signal?.throwIfAborted();
     const withoutJavaScript = await browser.newPage({ javaScriptEnabled: false });
     await withoutJavaScript.goto(origin + "/login");
     assert.ok(await withoutJavaScript.getByRole("button", { name: /^Coordinator/ }).isDisabled());
@@ -1370,6 +1375,8 @@ export async function verifyEntryFlow(origin: string) {
     await other.close();
   } catch (error) {
     journeyFailure = { error };
+  } finally {
+    signal?.removeEventListener("abort", disconnect);
   }
   if (client) {
     const fixtures = client.contexts().flatMap((context) => context.pages());
