@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { listRepositories } from "@nutshell/server/runtime";
 import { SiteHeader } from "../brand";
 import { entryMode } from "../entry-mode";
+import { GitHubConnections } from "./github-connections";
 import { SignOut } from "./sign-out";
 
 export const metadata: Metadata = { title: "Repositories" };
@@ -41,6 +42,7 @@ export default async function RepositorySelection() {
             ))}
           </ul>
         )}
+        {mode === "live" && <GitHubConnections />}
       </main>
     </>
   );

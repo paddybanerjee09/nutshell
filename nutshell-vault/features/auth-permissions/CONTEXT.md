@@ -19,7 +19,7 @@ The GitHub App auth adapter configures HTTPS-only Better Auth sessions, S256 PKC
 
 Live repository authorization matches the current GitHub user to their linked account and compares the observed repository, installation, owner, and node identities with the active local association. The resolver reuses results only within the same request and exact connection epoch. The caller rechecks active local facts before disclosure.
 
-The configured runtime selects the GitHub Better Auth handler in live mode and excludes the local persona plugin. Live connections use a separate PostgreSQL database. The repository list and overview disclose only currently authorized local associations. The fixture worker and local tooling require local-alpha configuration.
+The configured runtime selects the GitHub Better Auth handler in live mode and excludes the local persona plugin. Live connections use a separate PostgreSQL database. The default repository list and overview disclose only currently authorized local associations. Discovery is a separate live-only action on the repository list, and connection requests require the configured origin and exact numeric targets. The fixture worker and local tooling require local-alpha configuration.
 
 The browser starts GitHub authorization with a same-origin POST and accepts only the configured GitHub OAuth destination and callback. Unavailable live authorization exposes a generic reconnect state. Local persona controls are rendered only in local-alpha mode.
 
@@ -42,5 +42,6 @@ Controlled authorization tests cover mismatched accounts, provider denial, owner
 - [Server access and sessions](../../../packages/server/src/runtime.ts) and [integration tests](../../../packages/server/src/runtime.test.ts).
 - [GitHub App auth](../../../packages/server/src/github-app-auth.ts), [account token storage](../../../packages/server/src/github-app-auth-tokens.ts), and [controlled auth tests](../../../packages/server/src/github-app-auth.test.ts).
 - [Current GitHub authorization](../../../packages/server/src/github-live-access.ts) and [controlled authorization tests](../../../packages/server/src/github-live-access.test.ts).
+- [Verified local connections](../../../packages/server/src/github-live-onboarding.ts) and [connection route](../../../apps/web/src/app/api/github/connections/route.ts).
 - [Runtime configuration](../../../packages/server/src/config.ts), [unseeded live migration](../../../scripts/live-migrate.ts), and [local and live setup](../../workflows/LOCAL_SETUP.md).
 - [Sign-in page](../../../apps/web/src/app/login/page.tsx), [GitHub authorization request](../../../apps/web/src/app/login/github-sign-in-request.ts), and [entry surface tests](../../../apps/web/src/app/entry-surfaces.test.tsx).

@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: verified-github-connections-2026-11-27
 task_state: pr_open
-task_revision: 125
+task_revision: 126
 repository_id: 1467144605
 branch: feature/verified-github-connections
 base_branch: main
@@ -28,7 +28,7 @@ Verify the linked GitHub identity, repository and installation using provider re
 
 ## Consequences
 
-Forty-two focused tests passed, including the actual isolated PostgreSQL connection with controlled GitHub responses and zero outbound product calls. Strict types and lint passed in sequence. Confirm optimized local mode isolation and finish the trusted source gate.
+Forty-two focused tests passed, including the isolated PostgreSQL connection with controlled GitHub responses and zero outbound product calls. Serial strict types, lint and the optimized build passed. The running local fixture app rendered its repository and refused both live-only connection endpoints. Finish exact-head source checks.
 
 ## Affected files
 

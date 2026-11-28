@@ -23,6 +23,7 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("next/navigation", () => ({
   notFound: () => { throw new Error("not-found"); },
   redirect: (url: string) => { throw new Error("redirect " + url); },
+  useRouter: () => ({ push: vi.fn() }),
 }));
 vi.mock("./brand", () => ({ BrandArtwork: () => null, SiteHeader: () => null }));
 vi.mock("./app/repos/[repositoryId]/workspace/workspace-shell", () => ({ WorkspaceShell: () => null }));
@@ -59,6 +60,7 @@ describe("mode-specific entry surfaces", () => {
     const empty = renderToStaticMarkup(await RepositorySelection());
     expect(empty).toContain("Reconnect GitHub");
     expect(empty).toContain("check the repository association");
+    expect(empty).toContain("Find GitHub repositories");
     expect(empty).not.toContain(repo.name);
 
     listRepositories.mockResolvedValueOnce([repo]);
@@ -67,6 +69,12 @@ describe("mode-specific entry surfaces", () => {
     expect(available).toContain("GitHub role · maintain");
     listRepositories.mockResolvedValueOnce(null);
     await expect(RepositorySelection()).rejects.toThrow("redirect /login");
+
+    loadConfig.mockReturnValue({ mode: "local-alpha" });
+    listRepositories.mockResolvedValueOnce([]);
+    const local = renderToStaticMarkup(await RepositorySelection());
+    expect(local).toContain("No repositories are available to this identity.");
+    expect(local).not.toContain("Find GitHub repositories");
   });
 
   it("does not call fixture setup or workspace services on protected live routes", async () => {
