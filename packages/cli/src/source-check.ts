@@ -212,7 +212,7 @@ export async function checkSourcePullRequest({ event, token, cwd, fetcher = fetc
   const after = obsoleteReason(payload, await currentPull());
   if (after) return { state: "skipped" as const, reason: after, ...identity };
 
-  const state = issues.length === 0 ? "success" : "failure";
+  const state: "success" | "failure" = issues.length === 0 ? "success" : "failure";
   const response = await github(`${repositoryApi}/statuses/${verified.head.sha}`, {
     context,
     state,
