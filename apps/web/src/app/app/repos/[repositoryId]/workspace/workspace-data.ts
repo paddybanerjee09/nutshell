@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { parseFrontmatter } from "@nutshell/core/frontmatter";
-import type { FixtureSnapshotRead } from "@nutshell/server/fixture-sync";
+import type { RepositoryProjection } from "@nutshell/core/snapshot";
 import { documentResolver, markdownLinks } from "./workspace-markdown";
 
-type Projection = NonNullable<FixtureSnapshotRead["snapshot"]>;
-type IndexedSnapshot = FixtureSnapshotRead & { status: WorkspaceData["status"]; snapshot: Projection; revision: string };
+type Projection = RepositoryProjection;
+type WorkspaceSnapshotRead = { status: WorkspaceData["status"] | "pending"; headRevision: string | null;
+  revision: string | null; snapshot: Projection | null; indexedAt?: string | null };
+type IndexedSnapshot = WorkspaceSnapshotRead & { status: WorkspaceData["status"]; snapshot: Projection; revision: string };
 
 type Item = { id: string; title: string; path: string };
 type DocumentItem = Item & {
@@ -25,21 +27,24 @@ export type WorkspaceData = {
   repositoryId: string;
   repositoryName: string;
   repositoryHref: string;
+  provider: "fixture" | "github" | "demo";
   canEdit: boolean;
   layoutKey: string;
   revision: string;
   headRevision: string | null;
+  indexedAt?: string | null;
   status: "current" | "stale" | "invalid";
   initialItemId: string | null;
   items: WorkspaceItem[];
   changes: Projection["changes"];
 };
 
-export function hasIndexedSnapshot(snapshot: FixtureSnapshotRead): snapshot is IndexedSnapshot {
+export function hasIndexedSnapshot(snapshot: WorkspaceSnapshotRead): snapshot is IndexedSnapshot {
   return snapshot.status !== "pending" && snapshot.revision !== null && snapshot.snapshot !== null;
 }
 
-export function workspaceData(repository: { id: string; name: string }, userId: string, indexed: IndexedSnapshot, canEdit = false): WorkspaceData {
+export function workspaceData(repository: { id: string; name: string }, userId: string, indexed: IndexedSnapshot,
+  canEdit = false, provider: "fixture" | "github" = "fixture"): WorkspaceData {
   const documents = indexed.snapshot.documents.map(({ path, markdown }): DocumentItem => {
     const parsed = parseFrontmatter(markdown);
     const body = parsed.ok ? parsed.lines.slice(parsed.bodyStart).join("\n") : markdown;
@@ -66,15 +71,17 @@ export function workspaceData(repository: { id: string; name: string }, userId: 
   }));
   const items = [...documents, ...entities];
   const initial = documents.find(({ path }) => path.startsWith("nutshell-vault/features/")) ?? items[0];
-  const scope = createHash("sha256").update(JSON.stringify([userId, repository.id])).digest("hex");
+  const scope = createHash("sha256").update(JSON.stringify(provider === "github" ? [provider, userId, repository.id] : [userId, repository.id])).digest("hex");
   return {
     repositoryId: repository.id,
     repositoryName: repository.name,
     repositoryHref: "/app/repos/" + repository.id,
+    provider,
     canEdit,
     layoutKey: "nutshell.workspace." + scope,
     revision: indexed.revision,
     headRevision: indexed.headRevision,
+    indexedAt: indexed.indexedAt,
     status: indexed.status,
     initialItemId: initial?.id ?? null,
     items,

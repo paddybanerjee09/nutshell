@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { WorkspaceContent } from "./workspace-content";
 import { workspaceData } from "./workspace-data";
 import { documentResolver, markdownLinks } from "./workspace-markdown";
+import { WorkspaceShell } from "./workspace-shell";
 
 const root = "nutshell-vault/notes/";
 
@@ -54,5 +55,24 @@ describe("authorized snapshot workspace", () => {
     expect(html).toContain('class="workspace-wikilink">Open note</button>');
     expect(html).toContain("Image unavailable. Fixture");
     expect(html).not.toMatch(/<img|<script|javascript:|private\.invalid/u);
+  });
+
+  it("uses the same live reading surface and graphs while keeping fixture operations private to fixture mode", () => {
+    const revision = "a".repeat(40);
+    const indexedAt = "2026-11-27T16:40:00.000Z";
+    const snapshot = { status: "current", revision, headRevision: revision, indexedAt, snapshot: {
+      config: { schema_version: 1, vault_root: "nutshell-vault", entity_kinds: [], coverage: { include: [], exclude: [] } },
+      documents: [{ path: root + "Guide.md", markdown: "# Indexed GitHub guide" }], entities: [], changes: [],
+    } } satisfies Parameters<typeof workspaceData>[2];
+    const repository = { id: "31", name: "Controlled repository" };
+    const live = workspaceData(repository, "reader", snapshot, false, "github");
+    const fixture = workspaceData(repository, "reader", snapshot, false, "fixture");
+    expect(live.layoutKey).not.toBe(fixture.layoutKey);
+    const markup = renderToStaticMarkup(<WorkspaceShell data={live} />);
+    expect(markup).toContain("Indexed GitHub guide");
+    expect(markup).toContain('aria-label="Memory Graph"');
+    expect(markup).toContain('aria-label="Product Map"');
+    expect(markup).toContain(indexedAt);
+    expect(markup).not.toMatch(/aria-label="(?:Team tasks|Team notes|History)"|Simulate|New Markdown note/u);
   });
 });

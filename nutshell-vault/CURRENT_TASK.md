@@ -4,13 +4,13 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: authorized-live-workspace-2026-11-27
-task_state: in_progress
-task_revision: 137
+task_state: pr_open
+task_revision: 138
 repository_id: 1467144605
 branch: feature/authorized-live-workspace
 base_branch: main
-pr_number: null
-pr_url: null
+pr_number: 26
+pr_url: https://github.com/paddybanerjee09/nutshell/pull/26
 last_verified_head: null
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
@@ -28,7 +28,7 @@ Authorize the exact current session, linked user, and active installation associ
 
 ## Consequences
 
-Guarded idle revision 136 is confirmed. The runtime and workspace surfaces will be covered with controlled GitHub responses. Observe the draft PR before binding its identity.
+GitHub confirmed draft PR #26. The runtime delegate owns exact live authorization and PostgreSQL regressions. The lead owns the repository overview, private snapshot route, workspace, and acceptance evidence.
 
 ## Affected files
 
