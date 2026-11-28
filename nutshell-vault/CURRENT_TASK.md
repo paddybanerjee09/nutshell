@@ -4,14 +4,14 @@ date: "2026-11-27"
 status: active
 tags: [control, task, pull-requests]
 task_id: live-setup-proposals-2026-11-27
-task_state: pr_open
-task_revision: 130
+task_state: ready_for_review
+task_revision: 131
 repository_id: 1467144605
 branch: feature/live-setup-proposals
 base_branch: main
 pr_number: 24
 pr_url: https://github.com/paddybanerjee09/nutshell/pull/24
-last_verified_head: null
+last_verified_head: 0680d1957b7eca581517aef6f3563b4e6a6322ed
 lead_agent: root
 integration_checkout: 'C:\Users\paddy\dev\nutshell'
 cleanup_pr_url: null
@@ -28,7 +28,7 @@ Reuse the checked user-token setup adapter and active local association. Recheck
 
 ## Consequences
 
-GitHub confirmed draft PR #24. The provider, runtime, and repository setup panel are implemented. Verify immutable retry identity, stale source behavior, and PostgreSQL session and revocation checks before requesting the source check.
+The 46 scoped tests and full Windows verifier passed. The full run exercised 299 tests, the optimized web app, PostgreSQL worker recovery, signed fixture deliveries, Firefox, and shutdown. Product GitHub requests used controlled contract tests. Confirm the exact trusted source check, merge PR #24, and run canonical guarded cleanup.
 
 ## Affected files
 
