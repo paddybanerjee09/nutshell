@@ -5,7 +5,7 @@ status: active
 tags: [control, task, pull-requests]
 task_id: local-alpha-handoff-2026-11-27
 task_state: pr_open
-task_revision: 154
+task_revision: 155
 repository_id: 1467144605
 branch: feature/local-alpha-handoff
 base_branch: main
@@ -28,7 +28,7 @@ Keep the default verification and add an explicit Webpack build option that runs
 
 ## Consequences
 
-GitHub confirmed draft PR #30. The lead owns the verification option, local lifecycle and handoff. The delegate is checking native browser zoom and text composition.
+The database lease-loss tests, real PostgreSQL disconnect and recovery probe, typecheck, lint, and vault validation passed. Browser-native zoom and keyboard composition in the app remain unverified after Windows paging exhaustion. Run the full verifier with Webpack on the committed feature head, then confirm the exact source check and merge before canonical cleanup.
 
 ## Affected files
 
