@@ -1,11 +1,15 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { loadConfig } from "@nutshell/server/config";
 import { acceptFixtureDelivery } from "@nutshell/server/fixture-sync";
+import { isGitHubBranch } from "@nutshell/server/github-app";
+import { acceptLivePush } from "@nutshell/server/github-live-sync";
 import { readBoundedBody } from "../../request-body";
 
 export const runtime = "nodejs";
 
-const maxBodyBytes = 64 * 1024;
+const maxFixtureBodyBytes = 64 * 1024;
+const maxLiveBodyBytes = 1024 * 1024;
+const branchPrefix = "refs/heads/";
 
 function outcome(status: string, code: number) {
   return Response.json({ status }, { status: code, headers: { "Cache-Control": "no-store" } });
@@ -27,7 +31,16 @@ function readPush(value: unknown) {
   if (!repositoryId || !installationId) return null;
   const deleted = "deleted" in value ? value.deleted : false;
   if (typeof deleted !== "boolean") return null;
-  return { ref, revision: after, repositoryId, installationId, deleted };
+  return { ref, revision: after, repository, repositoryId, installationId, deleted };
+}
+
+function readLiveRepository(value: unknown) {
+  if (!value || typeof value !== "object" || !("owner" in value) || !("node_id" in value) || !("default_branch" in value)) return null;
+  const { owner, node_id: repositoryNodeId, default_branch: defaultBranch } = value;
+  const ownerId = readId(owner);
+  if (!ownerId || typeof repositoryNodeId !== "string" || repositoryNodeId.length === 0 || repositoryNodeId.length > 256 ||
+      !repositoryNodeId.isWellFormed() || /[\s\p{Cc}]/u.test(repositoryNodeId) || !isGitHubBranch(defaultBranch)) return null;
+  return { ownerId, repositoryNodeId, defaultBranch };
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -37,7 +50,8 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return outcome("unavailable", 503);
   }
-  if (config.mode !== "local-alpha" || config.deployment !== "local" || !config.webhookSecret) {
+  const secret = config.mode === "live" ? config.githubApp.webhookSecret : config.webhookSecret;
+  if (!secret || (config.mode === "local-alpha" && config.deployment !== "local")) {
     return outcome("unavailable", 404);
   }
 
@@ -46,12 +60,12 @@ export async function POST(request: Request): Promise<Response> {
 
   let payload: Buffer | null;
   try {
-    payload = await readBoundedBody(request, maxBodyBytes);
+    payload = await readBoundedBody(request, config.mode === "live" ? maxLiveBodyBytes : maxFixtureBodyBytes);
   } catch {
     return outcome("invalid", 400);
   }
   if (!payload) return outcome("too_large", 413);
-  const digest = createHmac("sha256", config.webhookSecret).update(payload).digest();
+  const digest = createHmac("sha256", secret).update(payload).digest();
   if (!timingSafeEqual(digest, Buffer.from(signature, "hex"))) return outcome("unauthorized", 401);
 
   const event = request.headers.get("x-github-event");
@@ -69,13 +83,23 @@ export async function POST(request: Request): Promise<Response> {
     return outcome("invalid", 400);
   }
   if (!push) return outcome("invalid", 400);
-  if (push.ref !== "refs/heads/main" || push.deleted || /^0+$/u.test(push.revision)) {
+  if (push.deleted || /^0+$/u.test(push.revision)) {
     return outcome("ignored", 202);
   }
 
-  const { repositoryId, installationId, revision } = push;
+  const { repositoryId, installationId, revision, ref } = push;
+  const delivery = { deliveryId: deliveryId.toLowerCase(), repositoryId, installationId, revision };
   try {
-    const status = await acceptFixtureDelivery({ deliveryId: deliveryId.toLowerCase(), repositoryId, installationId, revision });
+    if (config.mode === "live") {
+      if (!ref.startsWith(branchPrefix)) return outcome("ignored", 202);
+      const repository = readLiveRepository(push.repository);
+      if (!repository || !isGitHubBranch(ref.slice(branchPrefix.length))) return outcome("invalid", 400);
+      if (ref !== branchPrefix + repository.defaultBranch) return outcome("ignored", 202);
+      const status = await acceptLivePush({ ...delivery, ownerId: repository.ownerId, repositoryNodeId: repository.repositoryNodeId, ref });
+      return outcome(status, status === "unavailable" ? 404 : 202);
+    }
+    if (ref !== branchPrefix + "main") return outcome("ignored", 202);
+    const status = await acceptFixtureDelivery(delivery);
     return outcome(status, status === "unavailable" ? 404 : 202);
   } catch {
     return outcome("unavailable", 503);
